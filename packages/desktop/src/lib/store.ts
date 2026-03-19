@@ -47,6 +47,15 @@ export interface SavedMachine {
   useTLS: boolean
 }
 
+export interface AgentStep {
+  id: string
+  type: 'thinking' | 'tool_call' | 'tool_result'
+  label: string
+  toolName?: string
+  status: 'active' | 'complete' | 'error'
+  timestamp: number
+}
+
 export type AgentStatus = 'idle' | 'working' | 'error' | 'unknown'
 export type SidebarTab = 'history' | 'skills'
 
@@ -94,6 +103,13 @@ interface AppState {
   turnUsage: TokenUsage | null
   sessionUsage: TokenUsage | null
 
+  // Agent status detail & steps
+  agentStatusDetail: string | null
+  agentSteps: AgentStep[]
+
+  // Session readiness tracking (race condition fix)
+  _sessionResolvers: Map<string, () => void>
+
   // Pending confirmation
   pendingConfirm: { id: string; command: string; reason: string } | null
 
@@ -117,9 +133,20 @@ interface AppState {
   getActiveConversation: () => Conversation | null
   findConversationBySession: (sessionId: string) => Conversation | undefined
   loadSessionMessages: (sessionId: string, messages: ChatMessage[]) => void
+  updateConversationTitle: (sessionId: string, title: string) => void
 
   // Usage actions
   setUsage: (turn: TokenUsage | null, session: TokenUsage | null) => void
+
+  // Agent status & steps actions
+  setAgentStatusDetail: (detail: string | null) => void
+  addAgentStep: (step: AgentStep) => void
+  updateAgentStep: (id: string, updates: Partial<AgentStep>) => void
+  clearAgentSteps: () => void
+
+  // Session readiness actions
+  registerPendingSession: (id: string) => Promise<void>
+  resolvePendingSession: (id: string) => void
 
   // Confirm actions
   setPendingConfirm: (confirm: { id: string; command: string; reason: string } | null) => void
@@ -144,6 +171,9 @@ export const useStore = create<AppState>((set, get) => {
     searchQuery: '',
     turnUsage: null,
     sessionUsage: null,
+    agentStatusDetail: null,
+    agentSteps: [],
+    _sessionResolvers: new Map(),
     pendingConfirm: null,
 
     setConnectionStatus: (status) => set({ connectionStatus: status }),
@@ -253,7 +283,47 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
+    updateConversationTitle: (sessionId, title) => {
+      set((state) => {
+        const conversations = state.conversations.map((c) => {
+          if (c.sessionId !== sessionId) return c
+          return { ...c, title, updatedAt: Date.now() }
+        })
+        saveConversations(conversations)
+        return { conversations }
+      })
+    },
+
     setUsage: (turn, session) => set({ turnUsage: turn, sessionUsage: session }),
+
+    setAgentStatusDetail: (detail) => set({ agentStatusDetail: detail }),
+
+    addAgentStep: (step) =>
+      set((state) => ({ agentSteps: [...state.agentSteps, step] })),
+
+    updateAgentStep: (id, updates) =>
+      set((state) => ({
+        agentSteps: state.agentSteps.map((s) =>
+          s.id === id ? { ...s, ...updates } : s,
+        ),
+      })),
+
+    clearAgentSteps: () => set({ agentSteps: [] }),
+
+    registerPendingSession: (id) => {
+      return new Promise<void>((resolve) => {
+        get()._sessionResolvers.set(id, resolve)
+      })
+    },
+
+    resolvePendingSession: (id) => {
+      const resolvers = get()._sessionResolvers
+      const resolver = resolvers.get(id)
+      if (resolver) {
+        resolver()
+        resolvers.delete(id)
+      }
+    },
 
     setPendingConfirm: (confirm) => set({ pendingConfirm: confirm }),
   }
@@ -270,6 +340,10 @@ connection.onMessage((channel, msg) => {
 
   if (channel === Channel.EVENTS && msg.type === 'agent_status') {
     store.setAgentStatus(msg.status)
+    store.setAgentStatusDetail(msg.detail || null)
+    if (msg.status === 'idle') {
+      store.clearAgentSteps()
+    }
     return
   }
 
@@ -300,6 +374,14 @@ connection.onMessage((channel, msg) => {
         toolInput: msg.input,
         timestamp: Date.now(),
       })
+      store.addAgentStep({
+        id: msg.id,
+        type: 'tool_call',
+        label: `Running: ${msg.name}`,
+        toolName: msg.name,
+        status: 'active',
+        timestamp: Date.now(),
+      })
       store.setAgentStatus('working')
       break
 
@@ -310,6 +392,9 @@ connection.onMessage((channel, msg) => {
         content: msg.output,
         isError: msg.isError,
         timestamp: Date.now(),
+      })
+      store.updateAgentStep(msg.id, {
+        status: msg.isError ? 'error' : 'complete',
       })
       break
 
@@ -332,8 +417,16 @@ connection.onMessage((channel, msg) => {
       store.setAgentStatus('error')
       break
 
+    case 'title_update':
+      if (msg.sessionId) {
+        store.updateConversationTitle(msg.sessionId, msg.title)
+      }
+      break
+
     case 'done':
       store.setAgentStatus('idle')
+      store.clearAgentSteps()
+      store.setAgentStatusDetail(null)
       if (msg.usage) {
         store.setUsage(msg.usage, msg.cumulativeUsage || null)
       }
@@ -342,6 +435,7 @@ connection.onMessage((channel, msg) => {
     // ── Session responses ──────────────────────────────────────
     case 'session_created':
       store.setCurrentSession(msg.id, msg.provider, msg.model)
+      store.resolvePendingSession(msg.id)
       break
 
     case 'session_resumed':

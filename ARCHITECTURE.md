@@ -284,6 +284,137 @@ Same protocol, same session management, text-only interface.
 Auto-resumes most recent session on connect.
 ```
 
+## Tool Calling
+
+### How the Agent Loop Works
+
+The agent uses pi SDK's agentic loop. When a user sends a message, pi SDK handles the entire think → act → observe cycle:
+
+```
+User message
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  pi SDK Agent Loop                                              │
+│                                                                 │
+│  1. Build prompt: system prompt + message history + user msg    │
+│  2. Call LLM (Claude/GPT/Gemini/etc)                           │
+│  3. LLM responds with text AND/OR tool_use blocks              │
+│                                                                 │
+│  If tool_use in response:                                       │
+│    4. beforeToolCall hook → confirmation check                  │
+│    5. tool.execute(toolCallId, params) → run the tool           │
+│    6. Feed tool result back to LLM as tool_result message       │
+│    7. GOTO step 2 (LLM may call more tools or produce text)    │
+│                                                                 │
+│  If no tool_use (just text):                                    │
+│    8. Turn complete → yield done event                          │
+│                                                                 │
+│  Events emitted at each step:                                   │
+│    message_update → text deltas                                 │
+│    tool_execution_start → tool_call event                       │
+│    tool_execution_end → tool_result event                       │
+│    turn_end → token usage                                       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+The LLM decides when and which tools to call. pi SDK handles parsing the response, executing tools, and feeding results back. The session just translates events and manages persistence.
+
+### Tool Definitions
+
+Tools are defined in `packages/agent-core/src/agent.ts` using pi SDK's schema system:
+
+```typescript
+{
+  name: 'shell',
+  label: 'Shell',
+  description: 'Execute a shell command on the server',
+  parameters: Type.Object({
+    command: Type.String({ description: 'Command to execute' }),
+    timeout_seconds: Type.Optional(Type.Number()),
+    working_directory: Type.Optional(Type.String()),
+  }),
+  async execute(toolCallId, params) {
+    const output = await executeShell(params, config)
+    return { content: [{ type: 'text', text: output }] }
+  },
+}
+```
+
+Each tool has a name, description, typed parameter schema, and an async `execute` function. pi SDK passes these to the LLM as function definitions and calls `execute` when the LLM requests a tool.
+
+### Available Tools
+
+| Tool | Operations | What it does |
+|------|-----------|-------------|
+| **shell** | execute | Run any shell command with timeout, streaming output |
+| **filesystem** | read, write, list, search, tree | Full file operations on the server |
+| **browser** | fetch, screenshot, extract | HTTP requests, web scraping (curl-based) |
+| **process** | list, kill, info | View and manage running processes |
+| **network** | ports, curl, dns, ping | Port scanning, HTTP calls, DNS lookups |
+
+### Tool Results in the LLM Context
+
+Tool results become part of the message history in the standard LLM format:
+
+```json
+[
+  { "role": "user", "content": [{ "type": "text", "text": "install nginx" }] },
+  { "role": "assistant", "content": [
+    { "type": "text", "text": "I'll install nginx for you." },
+    { "type": "tool_use", "id": "tc_1", "name": "shell", "input": { "command": "apt install -y nginx" } }
+  ]},
+  { "role": "tool", "tool_use_id": "tc_1", "content": [
+    { "type": "text", "text": "Reading package lists... Done\nSetting up nginx..." }
+  ]},
+  { "role": "assistant", "content": [
+    { "type": "text", "text": "Nginx is installed and running." }
+  ]}
+]
+```
+
+This history is:
+- Kept in memory by pi SDK during the session
+- Persisted to disk after each turn (the full array)
+- Subject to compaction when it gets too long (tool outputs are trimmed first)
+
+### Confirmation Flow (Dangerous Commands)
+
+Only shell commands are subject to confirmation. The flow:
+
+```
+pi SDK: beforeToolCall(shell, { command: "sudo rm -rf /tmp" })
+    │
+    ▼
+Session: Does "sudo rm -rf /tmp" match any confirmPattern?
+    │    Patterns: ["rm -rf", "sudo", "shutdown", "reboot", "mkfs", "dd if="]
+    │
+    ├─ NO match → tool executes immediately
+    │
+    ├─ YES match → call confirmHandler(command, reason)
+    │    │
+    │    ▼
+    │  Server: send { type: "confirm", id: "c_1", command, reason } to client
+    │    │
+    │    ▼
+    │  Client: shows ConfirmDialog ("Agent wants to run: sudo rm -rf /tmp")
+    │    │
+    │    ├─ User clicks Approve → { type: "confirm_response", id: "c_1", approved: true }
+    │    │    → tool executes
+    │    │
+    │    ├─ User clicks Deny → { type: "confirm_response", id: "c_1", approved: false }
+    │    │    → tool blocked, LLM told "Command denied by user"
+    │    │
+    │    └─ 60s timeout → auto-deny
+    │         → tool blocked
+```
+
+The confirmation is a blocking `Promise` — the entire agent loop pauses until the user responds or the timeout fires.
+
+### Tools Are Stateless
+
+All tools receive the `AgentConfig` at creation time (for security rules) but hold no state between calls. The pi SDK manages the conversation state and tool results.
+
 ## Tech Stack
 
 | Layer | Technology |

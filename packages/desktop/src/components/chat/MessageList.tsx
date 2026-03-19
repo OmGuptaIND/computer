@@ -1,8 +1,9 @@
 import { AnimatePresence } from 'framer-motion'
 import { ArrowDown } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ChatMessage } from '../../lib/store.js'
+import { useAgentStatus, type ChatMessage } from '../../lib/store.js'
 import { MessageBubble } from './MessageBubble.js'
+import { ThinkingIndicator } from './ThinkingIndicator.js'
 
 interface Props {
   messages: ChatMessage[]
@@ -12,6 +13,7 @@ export function MessageList({ messages }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const agentStatus = useAgentStatus()
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -52,6 +54,7 @@ export function MessageList({ messages }: Props) {
             <MessageBubble key={msg.id} message={msg} />
           ))}
         </AnimatePresence>
+        {agentStatus === 'working' && <ThinkingIndicator />}
         <div ref={bottomRef} />
       </div>
 

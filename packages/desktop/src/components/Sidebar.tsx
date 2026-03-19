@@ -1,237 +1,187 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  ChevronRight,
-  LibraryBig,
-  LogOut,
+  Bell,
+  FolderOpen,
   MessageSquareText,
-  Monitor,
-  Search,
-  SlidersHorizontal,
-  Sparkles,
-  SquarePen,
+  Plus,
+  TerminalSquare,
+  X,
 } from 'lucide-react'
-import type React from 'react'
-import { useMemo } from 'react'
+import { useState } from 'react'
 import { connection } from '../lib/connection.js'
 import { useConnectionStatus, useStore } from '../lib/store.js'
-import { SkillsPanel } from './skills/SkillsPanel.js'
-import { SearchInput } from './ui/SearchInput.js'
+import { AntonLogo } from './AntonLogo.js'
+import { FileBrowser } from './FileBrowser.js'
 
 interface Props {
   onDisconnect: () => void
+  activeView: 'agent' | 'terminal'
+  onViewChange: (view: 'agent' | 'terminal') => void
 }
 
-export function Sidebar({ onDisconnect }: Props) {
+type SidebarPanel = 'recent' | 'files'
+
+export function Sidebar({ onDisconnect, activeView, onViewChange }: Props) {
   useConnectionStatus()
-  const sidebarTab = useStore((s) => s.sidebarTab)
-  const setSidebarTab = useStore((s) => s.setSidebarTab)
   const conversations = useStore((s) => s.conversations)
   const activeId = useStore((s) => s.activeConversationId)
   const switchConversation = useStore((s) => s.switchConversation)
   const newConversation = useStore((s) => s.newConversation)
-  const searchQuery = useStore((s) => s.searchQuery)
-  const setSearchQuery = useStore((s) => s.setSearchQuery)
+  const deleteConversation = useStore((s) => s.deleteConversation)
+  const [panel, setPanel] = useState<SidebarPanel>('recent')
 
-  const filteredConversations = useMemo(() => {
-    if (!searchQuery) return conversations
-    const q = searchQuery.toLowerCase()
-    return conversations.filter((c) => c.title.toLowerCase().includes(q))
-  }, [conversations, searchQuery])
+  const handleNewTask = () => {
+    // If the active conversation is already empty (no messages), just reuse it
+    const activeConv = conversations.find((c) => c.id === activeId)
+    if (activeConv && activeConv.messages.length === 0) {
+      onViewChange('agent')
+      setPanel('recent')
+      return
+    }
+
+    const sessionId = `sess_${Date.now().toString(36)}`
+    const store = useStore.getState()
+    newConversation(undefined, sessionId)
+    connection.sendSessionCreate(sessionId, {
+      provider: store.currentProvider,
+      model: store.currentModel,
+    })
+    onViewChange('agent')
+    setPanel('recent')
+  }
+
+  const handleDelete = (e: React.MouseEvent, convId: string, sessionId: string) => {
+    e.stopPropagation()
+    // Destroy the session on the VM
+    if (sessionId) {
+      connection.sendSessionDestroy(sessionId)
+    }
+    deleteConversation(convId)
+  }
 
   return (
     <aside className="sidebar" data-tauri-drag-region>
-      <div className="sidebar__top" data-tauri-drag-region>
-        <div className="sidebar__brandRow">
-          <div className="sidebar__brand">
-            <Sparkles className="sidebar__brandIcon" />
-            <span className="sidebar__brandText">computer</span>
-          </div>
-          <button type="button" className="sidebar__brandAction" aria-label="Sidebar options">
-            <LibraryBig className="sidebar__brandActionIcon" />
-          </button>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            const sessionId = `sess_${Date.now().toString(36)}`
-            const store = useStore.getState()
-            newConversation(undefined, sessionId)
-            connection.sendSessionCreate(sessionId, {
-              provider: store.currentProvider,
-              model: store.currentModel,
-            })
-          }}
-          className="sidebar__newTask"
-        >
-          <SquarePen className="sidebar__newTaskIcon" />
-          <span>New task</span>
-        </button>
-
-        <div className="sidebar__tabs">
-          <SidebarTabButton
-            active={sidebarTab === 'history'}
-            onClick={() => setSidebarTab('history')}
-            icon={<MessageSquareText className="sidebar__tabIcon" />}
-            label="All tasks"
-          />
-          <SidebarTabButton
-            active={sidebarTab === 'skills'}
-            onClick={() => setSidebarTab('skills')}
-            icon={<Sparkles className="sidebar__tabIcon" />}
-            label="Skills"
-          />
-          <SidebarTabButton
-            active={false}
-            onClick={() => {}}
-            icon={<Monitor className="sidebar__tabIcon" />}
-            label="Terminal"
-            muted
-          />
-        </div>
+      {/* Brand */}
+      <div className="sidebar-brand">
+        <AntonLogo size={20} />
+        <span className="sidebar-brand__text">anton.computer</span>
       </div>
 
-      <div className="sidebar__sectionHeader">
-        <p className="sidebar__sectionTitle">
-          {sidebarTab === 'history' ? 'All tasks' : 'Library'}
-        </p>
-        <button type="button" className="sidebar__sectionAction" aria-label="Filter">
-          <SlidersHorizontal className="sidebar__sectionActionIcon" />
-        </button>
+      {/* Primary nav */}
+      <div className="sidebar-primary">
+        <NavItem icon={<Plus />} label="New thread" onClick={handleNewTask} />
+        <NavItem
+          icon={<FolderOpen />}
+          label="Files"
+          active={panel === 'files'}
+          onClick={() => setPanel(panel === 'files' ? 'recent' : 'files')}
+        />
+        <NavItem
+          icon={<TerminalSquare />}
+          label="Terminal"
+          active={activeView === 'terminal'}
+          onClick={() => onViewChange(activeView === 'terminal' ? 'agent' : 'terminal')}
+        />
       </div>
 
-      <div className="sidebar__body">
+      {/* Panel content */}
+      <div className="sidebar-panel">
         <AnimatePresence mode="wait">
-          {sidebarTab === 'history' ? (
+          {panel === 'files' ? (
             <motion.div
-              key="history"
+              key="files"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.12 }}
-              className="sidebar__panel"
+              className="sidebar-panel__inner"
             >
-              <div className="sidebar__searchWrap">
-                <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search" />
-              </div>
-              <div className="sidebar__conversationList">
-                {filteredConversations.length === 0 && (
-                  <div className="sidebar__emptyState">
-                    <MessageSquareText className="sidebar__emptyStateIcon" />
-                    <p className="sidebar__emptyStateTitle">
-                      {conversations.length === 0 ? 'No conversations yet' : 'No matches'}
-                    </p>
-                    <p className="sidebar__emptyStateCopy">
-                      {conversations.length === 0
-                        ? 'Create a task to start building history.'
-                        : 'Try a different word or clear the filter.'}
-                    </p>
-                  </div>
-                )}
-
-                {filteredConversations.map((conv) => (
-                  <button
-                    type="button"
-                    key={conv.id}
-                    onClick={() => {
-                      switchConversation(conv.id)
-                      if (conv.sessionId) {
-                        connection.sendSessionResume(conv.sessionId)
-                      }
-                    }}
-                    className={
-                      conv.id === activeId
-                        ? 'conversation-item conversation-item--active'
-                        : 'conversation-item'
-                    }
-                  >
-                    <MessageSquareText className="conversation-item__iconGlyph" />
-                    <div className="conversation-item__content">
-                      <span className="conversation-item__title">{conv.title}</span>
-                      <span className="conversation-item__time">{formatTime(conv.updatedAt)}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
+              <FileBrowser />
             </motion.div>
           ) : (
             <motion.div
-              key="skills"
+              key="recent"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.12 }}
-              className="sidebar__panel sidebar__panel--skills"
+              className="sidebar-panel__inner"
             >
-              <SkillsPanel />
+              {conversations.length > 0 && (
+                <>
+                  <div className="sidebar-section-label">Recent</div>
+                  <div className="sidebar-recent__list">
+                    {conversations.map((conv) => (
+                      <div
+                        key={conv.id}
+                        onClick={() => {
+                          switchConversation(conv.id)
+                          if (conv.sessionId) {
+                            connection.sendSessionResume(conv.sessionId)
+                          }
+                          onViewChange('agent')
+                        }}
+                        className={`sidebar-recent__item${conv.id === activeId ? ' sidebar-recent__item--active' : ''}`}
+                      >
+                        <span className="sidebar-recent__title">{conv.title}</span>
+                        <button
+                          type="button"
+                          className="sidebar-recent__delete"
+                          onClick={(e) => handleDelete(e, conv.id, conv.sessionId)}
+                          aria-label="Delete conversation"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              {conversations.length === 0 && (
+                <div className="sidebar-empty">
+                  <MessageSquareText className="sidebar-empty__icon" />
+                  <p className="sidebar-empty__text">No conversations yet</p>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      <div className="sidebar__footer">
-        <div className="sidebar__footerRow">
-          <button type="button" className="sidebar__footerIconButton" aria-label="Search">
-            <Search className="sidebar__footerIcon" />
-          </button>
-          <button type="button" className="sidebar__footerIconButton" aria-label="Library">
-            <LibraryBig className="sidebar__footerIcon" />
-          </button>
-          <button
-            type="button"
-            onClick={onDisconnect}
-            className="sidebar__footerIconButton"
-            aria-label="Disconnect"
-          >
-            <LogOut className="sidebar__footerIcon" />
-          </button>
+      {/* User profile */}
+      <div className="sidebar-profile">
+        <div className="sidebar-profile__left">
+          <div className="sidebar-profile__avatar">O</div>
+          <span className="sidebar-profile__name">Om Gupta</span>
+          <span className="sidebar-profile__badge">Pro</span>
         </div>
+        <button type="button" className="sidebar-profile__bell" aria-label="Notifications">
+          <Bell />
+        </button>
       </div>
     </aside>
   )
 }
 
-function SidebarTabButton({
-  active,
-  onClick,
+function NavItem({
   icon,
   label,
-  muted = false,
+  active = false,
+  onClick,
 }: {
-  active: boolean
-  onClick: () => void
   icon: React.ReactNode
   label: string
-  muted?: boolean
+  active?: boolean
+  onClick?: () => void
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={
-        active
-          ? 'sidebar-tab sidebar-tab--active'
-          : muted
-            ? 'sidebar-tab sidebar-tab--muted'
-            : 'sidebar-tab'
-      }
+      className={`sidebar-nav-item${active ? ' sidebar-nav-item--active' : ''}`}
     >
-      <span className="sidebar-tab__iconWrap">{icon}</span>
-      <span className="sidebar-tab__label">{label}</span>
-      {!muted && <ChevronRight className="sidebar-tab__chevron" />}
+      <span className="sidebar-nav-item__icon">{icon}</span>
+      <span className="sidebar-nav-item__label">{label}</span>
     </button>
   )
-}
-
-function formatTime(ts: number): string {
-  const now = Date.now()
-  const diff = now - ts
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'now'
-  if (mins < 60) return `${mins}m`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `${days}d`
-  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }

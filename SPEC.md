@@ -123,9 +123,14 @@ All AI chat messages accept an optional `sessionId` field:
 { type: "tool_result", id, output, isError?, sessionId?: string }
 { type: "confirm", id, command, reason, sessionId?: string }
 { type: "confirm_response", id, approved }
+{ type: "title_update", title, sessionId?: string }
 { type: "done", sessionId?: string }
 { type: "error", message, sessionId?: string }
 ```
+
+### AI Title Generation
+
+On the first message of a session, the server generates a conversation title using the LLM. A regex-based title is set immediately as a placeholder, then replaced asynchronously with an AI-generated title via `title_update`. Clients should update the sidebar conversation title when this event is received.
 
 ### Token Usage (v0.3.0)
 

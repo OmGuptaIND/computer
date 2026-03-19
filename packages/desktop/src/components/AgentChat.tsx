@@ -6,14 +6,7 @@ import { ChatInput } from './chat/ChatInput.js'
 import { ConfirmDialog } from './chat/ConfirmDialog.js'
 import { EmptyState } from './chat/EmptyState.js'
 import { MessageList } from './chat/MessageList.js'
-import { ModelSelector } from './chat/ModelSelector.js'
 import { SkillDialog } from './skills/SkillDialog.js'
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
-  return String(n)
-}
 
 export function AgentChat() {
   const activeConv = useStore((s) => s.getActiveConversation())
@@ -21,17 +14,17 @@ export function AgentChat() {
   const newConversation = useStore((s) => s.newConversation)
   const pendingConfirm = useStore((s) => s.pendingConfirm)
   const setPendingConfirm = useStore((s) => s.setPendingConfirm)
-  const _currentSessionId = useStore((s) => s.currentSessionId)
   const currentProvider = useStore((s) => s.currentProvider)
   const currentModel = useStore((s) => s.currentModel)
-  const sessionUsage = useStore((s) => s.sessionUsage)
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null)
 
-  // Auto-create a conversation + server session if none active
+  // Auto-create a conversation + session on mount if none exists
   useEffect(() => {
     if (!activeConv) {
       const sessionId = `sess_${Date.now().toString(36)}`
       newConversation(undefined, sessionId)
+      const store = useStore.getState()
+      store.registerPendingSession(sessionId)
       connection.sendSessionCreate(sessionId, {
         provider: currentProvider,
         model: currentModel,
@@ -40,18 +33,39 @@ export function AgentChat() {
   }, [activeConv, newConversation, currentProvider, currentModel])
 
   const handleSend = useCallback(
-    (text: string) => {
+    async (text: string) => {
       const store = useStore.getState()
-      let sessionId = store.currentSessionId
+      const conv = store.getActiveConversation()
+      let sessionId = conv?.sessionId || store.currentSessionId
 
-      if (!store.activeConversationId) {
+      if (!conv) {
+        // No conversation at all — create one
         sessionId = `sess_${Date.now().toString(36)}`
         newConversation(undefined, sessionId)
+        const waitPromise = store.registerPendingSession(sessionId)
         connection.sendSessionCreate(sessionId, {
           provider: store.currentProvider,
           model: store.currentModel,
         })
+        await waitPromise
+      } else if (sessionId && !store.currentSessionId) {
+        // Conversation exists but session hasn't been confirmed yet — wait for it
+        const resolvers = store._sessionResolvers
+        if (resolvers.has(sessionId)) {
+          await new Promise<void>((resolve) => {
+            const existing = resolvers.get(sessionId!)
+            // Chain: resolve the original AND our new waiter
+            resolvers.set(sessionId!, () => {
+              existing?.()
+              resolve()
+            })
+          })
+        }
       }
+
+      // Re-read sessionId after potential await
+      const freshStore = useStore.getState()
+      sessionId = freshStore.currentSessionId || sessionId
 
       addMessage({
         id: `user_${Date.now()}`,
@@ -63,6 +77,7 @@ export function AgentChat() {
       if (sessionId) {
         connection.sendAiMessageToSession(text, sessionId)
       } else {
+        // Absolute fallback — should not normally happen
         connection.sendAiMessage(text)
       }
     },
@@ -90,25 +105,11 @@ export function AgentChat() {
 
   return (
     <div className="chat-shell">
-      <div className="chat-shell__header">
-        <ModelSelector />
-        {sessionUsage && (
-          <span
-            className="token-badge"
-            title={`Input: ${sessionUsage.inputTokens} | Output: ${sessionUsage.outputTokens} | Cache read: ${sessionUsage.cacheReadTokens}`}
-          >
-            {formatTokens(sessionUsage.totalTokens)} tokens
-          </span>
-        )}
-      </div>
-
       {messages.length === 0 ? (
         <EmptyState
           onSend={handleSend}
           onSkillSelect={setSelectedSkill}
-          onSelectExample={(text) => {
-            handleSend(text)
-          }}
+          onSelectExample={(text) => handleSend(text)}
         />
       ) : (
         <MessageList messages={messages} />

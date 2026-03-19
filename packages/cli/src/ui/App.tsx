@@ -3,7 +3,7 @@
  *
  * Keybindings:
  *   Ctrl+P  Provider panel (manage API keys)
- *   Ctrl+M  Model picker (switch model for current session)
+ *   Ctrl+E  Model picker (switch model for current session)
  *   Ctrl+S  Session list (view/switch/create sessions)
  *   Ctrl+Q  Quit
  *   Ctrl+C  Quit
@@ -12,7 +12,8 @@
 import { Channel } from '@anton/protocol'
 import type { AiMessage, ControlMessage, EventMessage } from '@anton/protocol'
 import { Box, useApp, useInput } from 'ink'
-import { useCallback, useEffect, useState } from 'react'
+import type { TokenUsage } from '@anton/protocol'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Connection } from '../lib/connection.js'
 import type { ConnectionStatus } from '../lib/connection.js'
 import type { SavedMachine } from '../lib/machines.js'
@@ -53,6 +54,11 @@ export function App({ machine }: AppProps) {
   const [currentModel, setCurrentModel] = useState('claude-sonnet-4-6')
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [hasAutoResumed, setHasAutoResumed] = useState(false)
+  const hasAutoResumedRef = useRef(false)
+
+  // Token usage state
+  const [turnUsage, setTurnUsage] = useState<TokenUsage | null>(null)
+  const [sessionUsage, setSessionUsage] = useState<TokenUsage | null>(null)
 
   // Provider state
   const [providers, setProviders] = useState<ProviderInfo[]>([])
@@ -60,43 +66,6 @@ export function App({ machine }: AppProps) {
 
   // Overlay state
   const [overlay, setOverlay] = useState<Overlay>('none')
-
-  // Connect on mount — conn and machine are stable refs, intentionally run once
-  // biome-ignore lint/correctness/useExhaustiveDependencies: one-time connection setup
-  useEffect(() => {
-    conn.onStatusChange((status) => {
-      setConnStatus(status)
-      if (status === 'connected') {
-        setAgentId(conn.agentId)
-        // Fetch providers and sessions after connecting
-        conn.sendProvidersList()
-        conn.sendSessionsList()
-      }
-    })
-
-    conn.onMessage((channel, payload) => {
-      if (channel === Channel.AI) {
-        handleAiMessage(payload as AiMessage)
-      } else if (channel === Channel.EVENTS) {
-        handleEvent(payload as EventMessage)
-      } else if (channel === Channel.CONTROL) {
-        handleControl(payload as ControlMessage)
-      }
-    })
-
-    conn
-      .connect({
-        host: machine.host,
-        port: machine.port,
-        token: machine.token,
-        useTLS: machine.useTLS,
-      })
-      .catch((err) => {
-        addMessage({ role: 'error', content: `Connection failed: ${err.message}` })
-      })
-
-    return () => conn.disconnect()
-  }, [])
 
   const addMessage = useCallback((msg: Omit<ChatMessage, 'id' | 'timestamp'>) => {
     setMessages((prev) => [
@@ -161,6 +130,8 @@ export function App({ machine }: AppProps) {
           addMessage({ role: 'error', content: msg.message })
           break
         case 'done':
+          if (msg.usage) setTurnUsage(msg.usage)
+          if (msg.cumulativeUsage) setSessionUsage(msg.cumulativeUsage)
           break
 
         // Compaction events
@@ -195,7 +166,8 @@ export function App({ machine }: AppProps) {
         case 'sessions_list_response':
           setSessions(msg.sessions)
           // Auto-resume the most recent session on first connect
-          if (!hasAutoResumed && msg.sessions.length > 0) {
+          if (!hasAutoResumedRef.current && msg.sessions.length > 0) {
+            hasAutoResumedRef.current = true
             setHasAutoResumed(true)
             const latest = msg.sessions[0] // already sorted by lastActiveAt desc
             conn.sendSessionResume(latest.id)
@@ -240,6 +212,57 @@ export function App({ machine }: AppProps) {
 
   const handleControl = useCallback((_msg: ControlMessage) => {
     // Handle config responses if needed
+  }, [])
+
+  // Keep a ref to the latest message handler so the useEffect closure always calls the current version
+  const handleAiMessageRef = useRef(handleAiMessage)
+  const handleEventRef = useRef(handleEvent)
+  const handleControlRef = useRef(handleControl)
+  useEffect(() => {
+    handleAiMessageRef.current = handleAiMessage
+  }, [handleAiMessage])
+  useEffect(() => {
+    handleEventRef.current = handleEvent
+  }, [handleEvent])
+  useEffect(() => {
+    handleControlRef.current = handleControl
+  }, [handleControl])
+
+  // Connect on mount — conn and machine are stable refs, intentionally run once
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one-time connection setup
+  useEffect(() => {
+    conn.onStatusChange((status) => {
+      setConnStatus(status)
+      if (status === 'connected') {
+        setAgentId(conn.agentId)
+        // Fetch providers and sessions after connecting
+        conn.sendProvidersList()
+        conn.sendSessionsList()
+      }
+    })
+
+    conn.onMessage((channel, payload) => {
+      if (channel === Channel.AI) {
+        handleAiMessageRef.current(payload as AiMessage)
+      } else if (channel === Channel.EVENTS) {
+        handleEventRef.current(payload as EventMessage)
+      } else if (channel === Channel.CONTROL) {
+        handleControlRef.current(payload as ControlMessage)
+      }
+    })
+
+    conn
+      .connect({
+        host: machine.host,
+        port: machine.port,
+        token: machine.token,
+        useTLS: machine.useTLS,
+      })
+      .catch((err) => {
+        addMessage({ role: 'error', content: `Connection failed: ${err.message}` })
+      })
+
+    return () => conn.disconnect()
   }, [])
 
   // ── Actions ─────────────────────────────────────────────────────
@@ -332,7 +355,7 @@ export function App({ machine }: AppProps) {
     if (key.ctrl && input === 'p') {
       conn.sendProvidersList()
       setOverlay('providers')
-    } else if (key.ctrl && input === 'm') {
+    } else if (key.ctrl && input === 'e') {
       conn.sendProvidersList()
       setOverlay('models')
     } else if (key.ctrl && input === 's') {
@@ -417,6 +440,8 @@ export function App({ machine }: AppProps) {
         provider={currentProvider}
         model={currentModel}
         sessionId={currentSessionId}
+        turnUsage={turnUsage}
+        sessionUsage={sessionUsage}
       />
     </Box>
   )

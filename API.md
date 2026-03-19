@@ -838,6 +838,76 @@ If no sessions exist, skip steps 7-10 and create a new session:
 
 ---
 
+## Tool Calling Flow
+
+Tools are **server-side only**. The client never executes tools — it only observes events. Here's the sequence for a single tool call:
+
+```
+Client                              Agent
+  │                                   │
+  │  message { "install nginx" }      │
+  │ ─────────────────────────────────►│
+  │                                   │  LLM decides to call shell tool
+  │                                   │
+  │  tool_call { id: "tc_1",         │
+  │    name: "shell",                 │
+  │    input: { command: "apt..." } } │
+  │ ◄─────────────────────────────────│  Tool starts executing
+  │                                   │
+  │  tool_result { id: "tc_1",       │
+  │    output: "Reading packages..." }│
+  │ ◄─────────────────────────────────│  Tool finished
+  │                                   │
+  │  text { "Nginx is installed." }   │  LLM produces final response
+  │ ◄─────────────────────────────────│
+  │                                   │
+  │  done { usage: {...} }            │
+  │ ◄─────────────────────────────────│
+```
+
+### Multi-tool sequence
+
+The LLM can call multiple tools in one turn. Each tool call produces a `tool_call` → `tool_result` pair:
+
+```
+message → tool_call A → tool_result A → tool_call B → tool_result B → text → done
+```
+
+The LLM may also interleave text between tool calls.
+
+### With confirmation
+
+If a shell command matches `security.confirmPatterns`, the flow pauses:
+
+```
+Client                              Agent
+  │                                   │
+  │  tool_call { shell, "sudo..." }   │
+  │ ◄─────────────────────────────────│
+  │                                   │
+  │  confirm { id: "c_1",            │  ← Agent pauses here
+  │    command: "sudo rm -rf /tmp",   │
+  │    reason: "Matches: sudo" }      │
+  │ ◄─────────────────────────────────│
+  │                                   │
+  │  confirm_response { id: "c_1",   │
+  │    approved: true }               │
+  │ ─────────────────────────────────►│  ← Agent unblocks
+  │                                   │
+  │  tool_result { id, output }       │
+  │ ◄─────────────────────────────────│
+```
+
+If the user denies or 60s elapses, the tool is blocked and the LLM receives "Command denied by user."
+
+### Client responsibilities
+
+- Display `tool_call` events (show tool name + input)
+- Display `tool_result` events (show output, highlight if `isError`)
+- Show confirmation dialog on `confirm` events
+- Send `confirm_response` promptly (60s timeout)
+- The `id` field links `tool_call` ↔ `tool_result` and `confirm` ↔ `confirm_response`
+
 ## Error Handling
 
 - Any request can produce an `error` response instead of the expected response

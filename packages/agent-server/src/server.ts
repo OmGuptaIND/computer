@@ -61,7 +61,23 @@ export class AgentServer {
     const tlsPort = port + 1
 
     // ── Primary: plain WS on config.port (default 9876) ──
-    const plainServer = createHttpServer()
+    const plainServer = createHttpServer((req, res) => {
+      if (req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(
+          JSON.stringify({
+            status: 'ok',
+            agentId: this.config.agentId,
+            version: VERSION,
+            gitHash: GIT_HASH,
+            specVersion: SPEC_VERSION,
+          }),
+        )
+        return
+      }
+      res.writeHead(426, { 'Content-Type': 'text/plain' })
+      res.end('WebSocket connections only')
+    })
     const plainWss = new WebSocketServer({ server: plainServer })
     plainWss.on('connection', (ws) => this.handleConnection(ws))
 
@@ -180,6 +196,10 @@ export class AgentServer {
         break
       }
 
+      case Channel.FILESYNC:
+        await this.handleFilesync(payload)
+        break
+
       default:
         console.log(`Unknown channel: ${channel}`)
     }
@@ -252,6 +272,77 @@ export class AgentServer {
         success: false,
         error: (err as Error).message,
       })
+    }
+  }
+
+  // ── Filesync channel ────────────────────────────────────────────
+
+  private async handleFilesync(payload: Uint8Array) {
+    const msg = parseJsonPayload<{ type: string; path?: string }>(payload)
+
+    switch (msg.type) {
+      case 'fs_list': {
+        const { homedir } = await import('node:os')
+        let dirPath = msg.path || homedir()
+        // Resolve ~ to actual home
+        if (dirPath === '~' || dirPath.startsWith('~/')) {
+          dirPath = dirPath.replace('~', homedir())
+        }
+        try {
+          const { readdirSync, statSync } = await import('node:fs')
+          const { join } = await import('node:path')
+          const entries = readdirSync(dirPath, { withFileTypes: true })
+          const result = entries
+            .filter((e) => !e.name.startsWith('.')) // hide dotfiles by default
+            .map((e) => {
+              try {
+                const fullPath = join(dirPath, e.name)
+                const stat = statSync(fullPath)
+                return {
+                  name: e.name,
+                  type: e.isDirectory() ? 'dir' : e.isSymbolicLink() ? 'link' : 'file',
+                  size: e.isDirectory() ? '' : formatFileSize(stat.size),
+                }
+              } catch {
+                return { name: e.name, type: 'file' as const, size: '' }
+              }
+            })
+          this.sendToClient(Channel.FILESYNC, { type: 'fs_list_response', entries: result })
+        } catch (err: unknown) {
+          this.sendToClient(Channel.FILESYNC, {
+            type: 'fs_list_response',
+            entries: [],
+            error: (err as Error).message,
+          })
+        }
+        break
+      }
+
+      case 'fs_read': {
+        const filePath = msg.path || ''
+        try {
+          const { readFileSync } = await import('node:fs')
+          const content = readFileSync(filePath, 'utf-8')
+          const truncated = content.length > 100_000 ? content.slice(0, 100_000) : content
+          this.sendToClient(Channel.FILESYNC, {
+            type: 'fs_read_response',
+            path: filePath,
+            content: truncated,
+            truncated: content.length > 100_000,
+          })
+        } catch (err: unknown) {
+          this.sendToClient(Channel.FILESYNC, {
+            type: 'fs_read_response',
+            path: filePath,
+            content: '',
+            error: (err as Error).message,
+          })
+        }
+        break
+      }
+
+      default:
+        console.log(`Unknown filesync message type: ${msg.type}`)
     }
   }
 
@@ -623,6 +714,28 @@ export class AgentServer {
       let eventCount = 0
       for await (const event of session.processMessage(msg.content)) {
         eventCount++
+
+        // Emit granular status updates so the client can show step-by-step progress
+        if (event.type === 'tool_call') {
+          this.sendToClient(Channel.EVENTS, {
+            type: 'agent_status',
+            status: 'working',
+            detail: `Running ${event.name}...`,
+          })
+        } else if (event.type === 'thinking') {
+          this.sendToClient(Channel.EVENTS, {
+            type: 'agent_status',
+            status: 'working',
+            detail: 'Thinking...',
+          })
+        } else if (event.type === 'text') {
+          this.sendToClient(Channel.EVENTS, {
+            type: 'agent_status',
+            status: 'working',
+            detail: 'Writing response...',
+          })
+        }
+
         this.sendToClient(Channel.AI, { ...event, sessionId } as Record<string, unknown>)
       }
       console.log(`[${sessionId}] Done (${eventCount} events)`)
@@ -725,6 +838,13 @@ export class AgentServer {
       this.activeClient.send(encodeFrame(channel, message))
     }
   }
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}K`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}M`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}G`
 }
 
 function ensureCerts(certDir: string) {

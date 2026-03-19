@@ -1,8 +1,9 @@
-import { ArrowUp, Loader2, Mic, Plus, Sparkles } from 'lucide-react'
+import { ArrowUp, Mic, Plus, Square } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Skill } from '../../lib/skills.js'
 import { useAgentStatus } from '../../lib/store.js'
+import { ModelSelector } from './ModelSelector.js'
 import { SlashCommandMenu } from './SlashCommandMenu.js'
 
 interface Props {
@@ -30,7 +31,6 @@ export function ChatInput({ onSend, onSkillSelect, variant = 'docked' }: Props) 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
     setInput(val)
-
     if (val.startsWith('/')) {
       setShowSlashMenu(true)
       setSlashFilter(val.slice(1))
@@ -63,80 +63,59 @@ export function ChatInput({ onSend, onSkillSelect, variant = 'docked' }: Props) 
   }
 
   return (
-    <div
-      className={isHero ? 'chat-composer-shell chat-composer-shell--hero' : 'chat-composer-shell'}
-    >
-      <div className="chat-composer-frame">
-        <div className="chat-composer__anchor">
-          <SlashCommandMenu
-            filter={slashFilter}
-            onSelect={handleSkillSelect}
-            onClose={() => setShowSlashMenu(false)}
-            visible={showSlashMenu}
+    <div className={`composer${isHero ? ' composer--hero' : ''}`}>
+      <div className="composer__anchor">
+        <SlashCommandMenu
+          filter={slashFilter}
+          onSelect={handleSkillSelect}
+          onClose={() => setShowSlashMenu(false)}
+          visible={showSlashMenu}
+        />
+
+        <div className="composer__box">
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            placeholder={isHero ? 'What should we work on next?' : 'Ask a follow-up'}
+            rows={1}
+            className="composer__textarea"
           />
-
-          <div className={isHero ? 'chat-composer chat-composer--hero' : 'chat-composer'}>
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={handleChange}
-              onKeyDown={handleKeyDown}
-              placeholder="What should we work on next?"
-              rows={1}
-              className={
-                isHero ? 'chat-composer__input chat-composer__input--hero' : 'chat-composer__input'
-              }
-              style={{ minHeight: isHero ? 84 : 88, maxHeight: 220 }}
-            />
-
-            <div className="chat-composer__footer">
-              <div className="chat-composer__controls">
-                <button type="button" className="chat-composer__iconButton" aria-label="Add">
-                  <Plus className="chat-composer__icon" />
+          <div className="composer__toolbar">
+            <div className="composer__toolbar-left">
+              <button type="button" className="composer__btn" aria-label="Attach">
+                <Plus />
+              </button>
+              <ModelSelector />
+            </div>
+            <div className="composer__toolbar-right">
+              {isHero && (
+                <button type="button" className="composer__btn" aria-label="Voice input">
+                  <Mic />
                 </button>
-                <div className="chat-composer__model">
-                  <Sparkles className="chat-composer__modelIcon" />
-                  Claude Sonnet 4.6
-                </div>
-              </div>
-
-              <div className="chat-composer__actions">
-                <button type="button" className="chat-composer__micButton" aria-label="Voice input">
-                  <Mic className="chat-composer__icon" />
+              )}
+              {agentStatus === 'working' ? (
+                <button
+                  type="button"
+                  className="composer__btn composer__btn--stop"
+                  aria-label="Stop"
+                >
+                  <Square />
                 </button>
+              ) : (
                 <button
                   type="button"
                   onClick={handleSend}
-                  disabled={!input.trim() || agentStatus === 'working'}
-                  className="chat-composer__sendButton"
+                  disabled={!input.trim()}
+                  className="composer__btn composer__btn--send"
                   aria-label="Send"
                 >
-                  {agentStatus === 'working' ? (
-                    <Loader2 className="chat-composer__icon chat-composer__icon--spinning" />
-                  ) : (
-                    <ArrowUp className="chat-composer__icon" />
-                  )}
+                  <ArrowUp />
                 </button>
-              </div>
+              )}
             </div>
           </div>
-        </div>
-
-        <div
-          className={
-            isHero ? 'chat-composer__meta chat-composer__meta--hidden' : 'chat-composer__meta'
-          }
-        >
-          <span className="chat-composer__metaItem">
-            {agentStatus === 'working'
-              ? 'Assistant is working...'
-              : agentStatus === 'error'
-                ? 'Something needs attention'
-                : 'Ready for your next task'}
-          </span>
-          <span className="chat-composer__metaItem">
-            Press Enter to send, Shift+Enter for a new line, or type / for skills.
-          </span>
         </div>
       </div>
     </div>

@@ -1,21 +1,22 @@
 import { motion } from 'framer-motion'
-import { ArrowRight, Lock, Server, ShieldCheck, Unlock, Wifi } from 'lucide-react'
-import type React from 'react'
+import { ArrowRight, Lock, Trash2, Unlock, Wifi } from 'lucide-react'
 import { useState } from 'react'
 import { type ConnectionConfig, connection } from '../lib/connection.js'
 import { type SavedMachine, loadMachines, saveMachines, useConnectionStatus } from '../lib/store.js'
+import { AntonLogo } from './AntonLogo.js'
 
 const PORT_PLAIN = 9876
 const PORT_TLS = 9877
 
 export function Connect({ onConnected }: { onConnected: () => void }) {
   const status = useConnectionStatus()
-  const [machines] = useState(loadMachines)
+  const [machines, setMachines] = useState(loadMachines)
   const [host, setHost] = useState('')
   const [token, setToken] = useState('')
-  const [name, setName] = useState('')
   const [useTLS, setUseTLS] = useState(false)
+  const [remember, setRemember] = useState(true)
   const [error, setError] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   const port = useTLS ? PORT_TLS : PORT_PLAIN
   const isConnecting = status === 'connecting' || status === 'authenticating'
@@ -25,13 +26,14 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
 
     const unsub = connection.onStatusChange((s, detail) => {
       if (s === 'connected') {
-        if (machineName || name) {
+        // Always save machine if remember is checked
+        if (remember || machineName) {
           const existing = loadMachines()
           const id = `${config.host}:${config.port}`
           const updated = existing.filter((m) => m.id !== id)
           updated.push({
             id,
-            name: machineName || name || config.host,
+            name: machineName || config.host,
             host: config.host,
             port: config.port,
             token: config.token,
@@ -67,123 +69,116 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
     )
   }
 
+  const removeSaved = (e: React.MouseEvent, machine: SavedMachine) => {
+    e.stopPropagation()
+    const updated = machines.filter((m) => m.id !== machine.id)
+    saveMachines(updated)
+    setMachines(updated)
+  }
+
   return (
     <div className="connect-screen">
-      <header className="connect-screen__header">
-        <div className="connect-screen__eyebrow">Personal Cloud Computer</div>
-        <div className="connect-screen__brand">
-          <span className="connect-screen__brandDot" />
-          <span className="connect-screen__brandText">anton</span>
-        </div>
-      </header>
+      {/* Top-left branding */}
+      <div className="connect-brand">
+        <AntonLogo size={26} thinking={isConnecting} />
+        <span className="connect-brand__text">anton.computer</span>
+      </div>
 
-      <div className="connect-screen__body">
-        <motion.div
-          initial={{ y: 12, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.24 }}
-          className="connect-panel"
-        >
-          <section className="connect-panel__intro">
-            <div className="connect-panel__introBadge">
-              <Server className="connect-panel__introBadgeIcon" />
+      <motion.div
+        initial={{ y: 16, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.3, ease: 'easeOut' }}
+        className="connect-center"
+      >
+
+        {/* Saved machines — show first if available */}
+        {machines.length > 0 && (
+          <>
+            <h1 className="connect-heading">Welcome back</h1>
+            <p className="connect-subheading">Pick a machine or connect a new one.</p>
+
+            <div className="connect-saved">
+              {machines.map((m) => (
+                <button
+                  type="button"
+                  key={m.id}
+                  onClick={() => connectSaved(m)}
+                  disabled={isConnecting}
+                  className="connect-saved__item"
+                >
+                  <Wifi className="connect-saved__icon" />
+                  <div className="connect-saved__info">
+                    <span className="connect-saved__name">{m.name}</span>
+                    <span className="connect-saved__host">
+                      {m.host}{m.useTLS ? ' (TLS)' : ''}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="connect-saved__remove"
+                    onClick={(e) => removeSaved(e, m)}
+                    aria-label="Remove"
+                  >
+                    <Trash2 />
+                  </button>
+                  <ArrowRight className="connect-saved__arrow" />
+                </button>
+              ))}
             </div>
 
-            <div className="connect-panel__introCopy">
-              <p className="connect-panel__kicker">anton.computer</p>
-              <h1 className="connect-panel__title">Connect your machine once.</h1>
-              <p className="connect-panel__subtitle">
-                Then run real tasks in plain language from a calmer workspace.
-              </p>
+            <div className="connect-divider">
+              <span className="connect-divider__line" />
+              <span className="connect-divider__text">or connect a new machine</span>
+              <span className="connect-divider__line" />
             </div>
+          </>
+        )}
 
-            <div className="connect-panel__bullets">
-              <div className="connect-bullet">
-                <ShieldCheck className="connect-bullet__icon" />
-                <div>
-                  <p className="connect-bullet__title">Secure by default</p>
-                  <p className="connect-bullet__copy">
-                    Use standard or TLS mode depending on how your machine is exposed.
-                  </p>
-                </div>
-              </div>
-              <div className="connect-bullet">
-                <Wifi className="connect-bullet__icon" />
-                <div>
-                  <p className="connect-bullet__title">Reconnect instantly</p>
-                  <p className="connect-bullet__copy">
-                    Saved machines stay available here for one-click access.
-                  </p>
-                </div>
-              </div>
-            </div>
+        {/* No saved machines — first time */}
+        {machines.length === 0 && (
+          <>
+            <h1 className="connect-heading">Connect your machine</h1>
+            <p className="connect-subheading">
+              Enter your server address and token to get started.
+            </p>
+          </>
+        )}
 
-            <div className="connect-panel__install">
-              <span className="connect-panel__installLabel">First time setting up a machine?</span>
-              <code className="connect-panel__installCode">
-                curl -fsSL https://get.anton.computer | bash
-              </code>
-            </div>
-          </section>
+        {/* Form */}
+        <div className="connect-form">
+          <input
+            className="connect-input"
+            placeholder="Server address (e.g. 192.168.1.100)"
+            value={host}
+            onChange={(e) => setHost(e.target.value)}
+          />
 
-          <section className="connect-formCard">
-            {machines.length > 0 && (
-              <div className="connect-formCard__saved">
-                <div className="connect-formCard__sectionHeader">
-                  <p className="connect-formCard__sectionTitle">Recent machines</p>
-                </div>
-                <div className="connect-savedList">
-                  {machines.map((m) => (
-                    <button
-                      type="button"
-                      key={m.id}
-                      onClick={() => connectSaved(m)}
-                      disabled={isConnecting}
-                      className="connect-savedItem"
-                    >
-                      <div className="connect-savedItem__left">
-                        <Wifi className="connect-savedItem__icon" />
-                        <div className="connect-savedItem__copy">
-                          <span className="connect-savedItem__name">{m.name}</span>
-                          <span className="connect-savedItem__host">{m.host}</span>
-                        </div>
-                      </div>
-                      {m.useTLS && <Lock className="connect-savedItem__lock" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+          <input
+            type="password"
+            className="connect-input"
+            placeholder="Access token"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && connectFromForm()}
+          />
 
-            <div className="connect-form">
-              <ConnectLabel>Host address</ConnectLabel>
-              <input
-                className="connect-input connect-input--mono"
-                placeholder="148.113.4.94 or my-vps.com"
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-              />
+          <label className="connect-remember">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              className="connect-remember__checkbox"
+            />
+            <span className="connect-remember__text">Remember this machine</span>
+          </label>
 
-              <ConnectLabel>Token</ConnectLabel>
-              <input
-                type="password"
-                className="connect-input connect-input--mono"
-                placeholder="ak_7f3a2b..."
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && connectFromForm()}
-              />
-
-              <ConnectLabel>
-                Machine name <span className="connect-label__optional">(optional)</span>
-              </ConnectLabel>
-              <input
-                className="connect-input"
-                placeholder="Production server"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-
+          {showAdvanced && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              transition={{ duration: 0.2 }}
+              className="connect-advanced"
+            >
               <label className="connect-toggle">
                 <input
                   type="checkbox"
@@ -198,40 +193,40 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
                     <Unlock className="connect-toggle__icon" />
                   )}
                   <span className="connect-toggle__text">
-                    {useTLS
-                      ? `Secure connection (wss://, port ${PORT_TLS})`
-                      : `Standard connection (ws://, port ${PORT_PLAIN})`}
+                    {useTLS ? 'Secure connection (TLS)' : 'Standard connection'}
                   </span>
                 </span>
               </label>
+            </motion.div>
+          )}
 
-              {error && <div className="connect-error">{error}</div>}
+          {!showAdvanced && (
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(true)}
+              className="connect-advanced-toggle"
+            >
+              Advanced options
+            </button>
+          )}
 
-              <button
-                type="button"
-                onClick={connectFromForm}
-                disabled={!host || !token || isConnecting}
-                className="connect-submit"
-              >
-                <span className="connect-submit__label">
-                  {isConnecting
-                    ? status === 'connecting'
-                      ? 'Connecting...'
-                      : 'Verifying...'
-                    : 'Connect to machine'}
-                </span>
-                <span className="connect-submit__iconWrap">
-                  <ArrowRight className="connect-submit__icon" />
-                </span>
-              </button>
-            </div>
-          </section>
-        </motion.div>
-      </div>
+          {error && <div className="connect-error">{error}</div>}
+
+          <button
+            type="button"
+            onClick={connectFromForm}
+            disabled={!host || !token || isConnecting}
+            className="connect-submit"
+          >
+            {isConnecting
+              ? status === 'connecting'
+                ? 'Connecting...'
+                : 'Verifying...'
+              : 'Connect'}
+            {!isConnecting && <ArrowRight className="connect-submit__icon" />}
+          </button>
+        </div>
+      </motion.div>
     </div>
   )
-}
-
-function ConnectLabel({ children }: { children: React.ReactNode }) {
-  return <span className="connect-label">{children}</span>
 }

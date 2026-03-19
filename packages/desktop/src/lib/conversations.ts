@@ -36,9 +36,79 @@ export function createConversation(title?: string, sessionId?: string): Conversa
   }
 }
 
+/**
+ * Generate a smart, concise title from the first user message.
+ * Extracts the core intent/topic rather than just truncating.
+ */
 export function autoTitle(messages: ChatMessage[]): string {
   const firstUser = messages.find((m) => m.role === 'user')
   if (!firstUser) return 'New conversation'
+
   const text = firstUser.content.trim()
-  return text.length > 50 ? `${text.slice(0, 50)}...` : text
+  if (!text) return 'New conversation'
+
+  return generateTitle(text)
+}
+
+function generateTitle(text: string): string {
+  // Remove common filler/greeting prefixes
+  let cleaned = text
+    .replace(/^(hey|hi|hello|yo|sup|ok|okay|please|can you|could you|i want to|i need to|i'd like to|help me|let's|let me)\b[,!.\s]*/i, '')
+    .trim()
+
+  // If cleaning removed everything, use original
+  if (!cleaned) cleaned = text.trim()
+
+  // Remove trailing punctuation for cleaner titles
+  cleaned = cleaned.replace(/[.!?]+$/, '').trim()
+
+  // If it starts with a verb, capitalize and use as-is (it's already action-oriented)
+  // Common action verbs that make good title starts
+  const actionVerbs = /^(build|create|make|set up|setup|deploy|fix|debug|write|add|remove|delete|update|install|configure|analyze|track|design|implement|refactor|migrate|optimize|test|check|find|search|list|show|explain|generate|convert|merge|split|run|start|stop|monitor|connect|schedule|automate|scrape|fetch|download|upload|compare|review|plan|organize|sort|filter|clean|format|validate|import|export|parse|render|compile|package)/i
+
+  if (actionVerbs.test(cleaned)) {
+    // Already starts with action verb — great title
+    return capitalize(truncateSmart(cleaned, 45))
+  }
+
+  // If it's a question, extract the topic
+  const questionMatch = cleaned.match(/^(?:what|how|why|where|when|which|who|is|are|can|do|does|will|should|would)\s+(.+)/i)
+  if (questionMatch) {
+    const topic = questionMatch[1].replace(/^(?:the|a|an|i|we|you)\s+/i, '').trim()
+    return capitalize(truncateSmart(topic, 45))
+  }
+
+  // For short messages (greetings, simple phrases), use as-is
+  if (cleaned.length <= 30) {
+    return capitalize(cleaned)
+  }
+
+  // For longer messages, try to extract the first meaningful clause
+  // Split on common clause separators
+  const clauses = cleaned.split(/[,;:\-–—]/)
+  const firstClause = clauses[0].trim()
+
+  if (firstClause.length >= 10 && firstClause.length <= 50) {
+    return capitalize(firstClause)
+  }
+
+  // Fallback: smart truncate at word boundary
+  return capitalize(truncateSmart(cleaned, 40))
+}
+
+function truncateSmart(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text
+
+  // Cut at word boundary
+  const truncated = text.slice(0, maxLen)
+  const lastSpace = truncated.lastIndexOf(' ')
+  if (lastSpace > maxLen * 0.6) {
+    return `${truncated.slice(0, lastSpace)}...`
+  }
+  return `${truncated}...`
+}
+
+function capitalize(text: string): string {
+  if (!text) return text
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }

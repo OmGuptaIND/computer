@@ -263,16 +263,26 @@ function migrateLegacyConfig(legacy: LegacyConfig): AgentConfig {
   }
 }
 
+function pickDefaultProvider(): { provider: string; model: string } {
+  // Pick first provider that actually has a key
+  for (const [name, p] of Object.entries(DEFAULT_PROVIDERS)) {
+    const envVar = ENV_KEY_MAP[name]
+    const hasKey = (p.apiKey && p.apiKey.length > 0) || (envVar && process.env[envVar])
+    if (hasKey && p.models.length > 0) {
+      return { provider: name, model: p.models[0] }
+    }
+  }
+  // Fallback — no keys configured at all
+  return { provider: 'anthropic', model: 'claude-sonnet-4-6' }
+}
+
 function createDefaultConfig(): AgentConfig {
   return {
     agentId: `anton-${hostname()}-${randomBytes(4).toString('hex')}`,
     token: `ak_${randomBytes(24).toString('hex')}`,
     port: 9876,
     providers: DEFAULT_PROVIDERS,
-    defaults: {
-      provider: 'anthropic',
-      model: 'claude-sonnet-4-6',
-    },
+    defaults: pickDefaultProvider(),
     security: {
       confirmPatterns: ['rm -rf', 'sudo', 'shutdown', 'reboot', 'mkfs', 'dd if=', ':(){ :|:& };:'],
       forbiddenPaths: ['/etc/shadow', '~/.ssh/id_*', '~/.anton/config.yaml'],
@@ -294,7 +304,9 @@ function createDefaultConfig(): AgentConfig {
 
 export function setProviderKey(config: AgentConfig, provider: string, apiKey: string): void {
   if (!config.providers[provider]) {
-    config.providers[provider] = { apiKey, models: [] }
+    // New provider — seed with default models if known
+    const defaultModels = DEFAULT_PROVIDERS[provider]?.models || []
+    config.providers[provider] = { apiKey, models: defaultModels }
   } else {
     config.providers[provider].apiKey = apiKey
   }
@@ -306,13 +318,38 @@ export function setDefault(config: AgentConfig, provider: string, model: string)
   saveConfig(config)
 }
 
+const ENV_KEY_MAP: Record<string, string> = {
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  google: 'GOOGLE_API_KEY',
+  groq: 'GROQ_API_KEY',
+  together: 'TOGETHER_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  mistral: 'MISTRAL_API_KEY',
+}
+
+/** Check if a provider has a usable API key (config file OR environment variable). */
+export function providerHasKey(provider: string, config: AgentConfig): boolean {
+  const p = config.providers[provider]
+  if (p?.apiKey && p.apiKey.length > 0) return true
+  const envVar = ENV_KEY_MAP[provider]
+  if (envVar && process.env[envVar]) return true
+  return false
+}
+
 export function getProvidersList(config: AgentConfig) {
-  return Object.entries(config.providers).map(([name, p]) => ({
-    name,
-    models: p.models,
-    hasApiKey: !!(p.apiKey && p.apiKey.length > 0),
-    baseUrl: p.baseUrl,
-  }))
+  return Object.entries(config.providers).map(([name, p]) => {
+    // If provider has no models listed, fall back to defaults
+    const defaultModels = DEFAULT_PROVIDERS[name]?.models || []
+    const models = p.models && p.models.length > 0 ? p.models : defaultModels
+
+    return {
+      name,
+      models,
+      hasApiKey: providerHasKey(name, config),
+      baseUrl: p.baseUrl,
+    }
+  })
 }
 
 // ── Session persistence (v2: meta.json + messages.jsonl) ────────────

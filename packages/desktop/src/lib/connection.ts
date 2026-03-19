@@ -163,6 +163,30 @@ export class Connection {
     this.send(Channel.CONTROL, { type: 'config_query', key })
   }
 
+  // ── Filesystem ─────────────────────────────────────────────────
+
+  sendFilesystemList(path: string) {
+    this.send(Channel.FILESYNC, { type: 'fs_list', path })
+  }
+
+  sendFilesystemRead(path: string) {
+    this.send(Channel.FILESYNC, { type: 'fs_read', path })
+  }
+
+  onFilesystemResponse(
+    handler: (entries: { name: string; type: 'file' | 'dir' | 'link'; size: string }[], error?: string) => void,
+  ) {
+    return this.onMessage((channel, msg) => {
+      if (channel === Channel.FILESYNC && msg.type === 'fs_list_response') {
+        if (msg.error) {
+          handler([], msg.error)
+        } else {
+          handler(msg.entries || [])
+        }
+      }
+    })
+  }
+
   private doConnect() {
     if (!this.config) return
     const { host, port, token, useTLS } = this.config

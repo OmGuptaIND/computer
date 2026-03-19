@@ -1,5 +1,4 @@
-import { Bot, Sparkles, TerminalSquare } from 'lucide-react'
-import type React from 'react'
+import { Settings, Share2, Ticket } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { AgentChat } from './components/AgentChat.js'
 import { Connect } from './components/Connect.js'
@@ -14,8 +13,10 @@ export function App() {
   const [connected, setConnected] = useState(false)
   const [activeView, setActiveView] = useState<View>('agent')
   const status = useConnectionStatus()
+  const sessionUsage = useStore((s) => s.sessionUsage)
+  const activeConv = useStore((s) => s.getActiveConversation())
+  const hasMessages = (activeConv?.messages?.length || 0) > 0
 
-  // Fetch sessions and providers when connection is established
   useEffect(() => {
     if (status === 'connected') {
       connection.sendProvidersList()
@@ -23,13 +24,10 @@ export function App() {
     }
   }, [status])
 
-  // Auto-resume the most recent server session when sessions list arrives
   useEffect(() => {
     const unsub = useStore.subscribe((state, prev) => {
-      // When sessions list changes from empty to populated
       if (state.sessions.length > 0 && prev.sessions.length === 0) {
-        const latest = state.sessions[0] // sorted by lastActiveAt desc
-        // Resume the latest session and link to a conversation
+        const latest = state.sessions[0]
         const existing = state.findConversationBySession(latest.id)
         if (existing) {
           useStore.getState().switchConversation(existing.id)
@@ -37,7 +35,6 @@ export function App() {
           useStore.getState().newConversation(latest.title, latest.id)
         }
         connection.sendSessionResume(latest.id)
-        // Fetch history to populate messages
         connection.sendSessionHistory(latest.id)
       }
     })
@@ -69,45 +66,68 @@ export function App() {
     )
   }
 
+  const formatTokens = (n: number): string => {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+    return String(n)
+  }
+
   return (
     <div className="app-shell">
-      <Sidebar onDisconnect={handleDisconnect} />
+      <Sidebar
+        onDisconnect={handleDisconnect}
+        activeView={activeView}
+        onViewChange={setActiveView}
+      />
 
       <div className="workspace-shell">
-        <header className="workspace-header" data-tauri-drag-region>
-          <div className="workspace-header__copy">
-            <p className="workspace-header__eyebrow">Workspace</p>
-            <p className="workspace-header__title">Personal Cloud Computer</p>
-            <p className="workspace-header__subtitle">
-              {activeView === 'agent'
-                ? 'Describe what you need in plain language.'
-                : 'Run and monitor commands in real time.'}
-            </p>
-          </div>
-
-          <div className="workspace-header__actions">
-            {activeView === 'agent' && (
-              <div className="workspace-badge">
-                <Sparkles className="workspace-badge__icon" />
-                <span>Guided mode</span>
-              </div>
-            )}
-            <div className="workspace-tabs">
-              <ViewTab
-                active={activeView === 'agent'}
-                onClick={() => setActiveView('agent')}
-                icon={<Bot className="workspace-tab__icon" />}
-                label="Assistant"
-              />
-              <ViewTab
-                active={activeView === 'terminal'}
-                onClick={() => setActiveView('terminal')}
-                icon={<TerminalSquare className="workspace-tab__icon" />}
-                label="Terminal"
-              />
+        {/* Top bar — only show when in a conversation */}
+        {hasMessages && activeView === 'agent' && (
+          <header className="workspace-topbar" data-tauri-drag-region>
+            <div className="workspace-topbar__title-area">
+              <h2 className="workspace-topbar__title">{activeConv?.title || 'New conversation'}</h2>
             </div>
-          </div>
-        </header>
+
+            <div className="workspace-topbar__actions">
+              <div className="workspace-topbar__connection">
+                <span className="workspace-topbar__connectionDot" />
+                <span className="workspace-topbar__connectionLabel">Connected</span>
+              </div>
+              {sessionUsage && (
+                <div className="workspace-topbar__credits">
+                  <Ticket className="workspace-topbar__creditsIcon" />
+                  <span>{formatTokens(sessionUsage.totalTokens)}</span>
+                </div>
+              )}
+              <button type="button" className="topbar-share-btn">
+                <Share2 className="topbar-share-btn__icon" />
+                <span>Share</span>
+              </button>
+            </div>
+          </header>
+        )}
+
+        {/* Empty state top bar — minimal with just connection status + settings */}
+        {(!hasMessages || activeView === 'terminal') && (
+          <header className="workspace-topbar workspace-topbar--minimal" data-tauri-drag-region>
+            <div className="workspace-topbar__spacer" />
+            <div className="workspace-topbar__actions">
+              <div className="workspace-topbar__connection">
+                <span className="workspace-topbar__connectionDot" />
+                <span className="workspace-topbar__connectionLabel">Connected</span>
+              </div>
+              {sessionUsage && (
+                <div className="workspace-topbar__credits">
+                  <Ticket className="workspace-topbar__creditsIcon" />
+                  <span>{formatTokens(sessionUsage.totalTokens)}</span>
+                </div>
+              )}
+              <button type="button" className="workspace-topbar__settingsBtn" aria-label="Settings">
+                <Settings className="workspace-topbar__settingsIcon" />
+              </button>
+            </div>
+          </header>
+        )}
 
         <div className="workspace-body">
           {activeView === 'agent' && <AgentChat />}
@@ -115,28 +135,5 @@ export function App() {
         </div>
       </div>
     </div>
-  )
-}
-
-function ViewTab({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean
-  onClick: () => void
-  icon: React.ReactNode
-  label: string
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={active ? 'workspace-tab workspace-tab--active' : 'workspace-tab'}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
   )
 }

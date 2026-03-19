@@ -18,7 +18,7 @@ import type {
   AgentTool,
   AgentEvent as PiAgentEvent,
 } from '@mariozechner/pi-agent-core'
-import { getModel } from '@mariozechner/pi-ai'
+import { completeSimple, getModel } from '@mariozechner/pi-ai'
 import type { Api, Model, TextContent } from '@mariozechner/pi-ai'
 import { SYSTEM_PROMPT, buildTools } from './agent.js'
 import {
@@ -38,6 +38,7 @@ export type SessionEvent =
   | { type: 'tool_result'; id: string; output: string; isError?: boolean }
   | { type: 'confirm'; id: string; command: string; reason: string }
   | { type: 'compaction'; compactedMessages: number; totalCompactions: number }
+  | { type: 'title_update'; title: string }
   | { type: 'done'; usage?: TokenUsage; cumulativeUsage?: TokenUsage }
   | { type: 'error'; message: string }
 
@@ -228,8 +229,23 @@ export class Session {
     this.lastEmittedTextLength = 0 // reset delta tracking for new turn
 
     // Auto-generate title from first message
-    if (!this.title) {
-      this.title = userMessage.slice(0, 80).replace(/\n/g, ' ')
+    const isFirstMessage = !this.title
+    if (isFirstMessage) {
+      this.title = generateSmartTitle(userMessage)
+    }
+
+    // Fire off AI title generation in parallel (non-blocking)
+    let aiTitlePromise: Promise<string | null> | null = null
+    if (isFirstMessage) {
+      aiTitlePromise = generateAITitle(
+        userMessage,
+        this.resolvedModel,
+        this.provider,
+        async (provider: string) => this.resolveApiKey(provider, this.clientApiKey, this.config),
+      ).catch((err) => {
+        console.warn('AI title generation failed, keeping regex title:', err.message)
+        return null
+      })
     }
 
     const events: SessionEvent[] = []
@@ -274,6 +290,15 @@ export class Session {
     if (this.pendingCompactionEvent) {
       yield this.pendingCompactionEvent
       this.pendingCompactionEvent = null
+    }
+
+    // Yield AI-generated title if available
+    if (aiTitlePromise) {
+      const aiTitle = await aiTitlePromise
+      if (aiTitle) {
+        this.title = aiTitle
+        yield { type: 'title_update', title: aiTitle }
+      }
     }
 
     // Persist after each turn
@@ -607,4 +632,83 @@ export function resumeSession(id: string, config: AgentConfig): Session | null {
     createdAt: persisted.createdAt,
     compactionState: persisted.compactionState || undefined,
   })
+}
+
+/**
+ * Generate a concise, descriptive title from the first user message.
+ * Strips filler/greetings, extracts the core intent.
+ */
+function generateSmartTitle(text: string): string {
+  let cleaned = text.trim().replace(/\n/g, ' ').replace(/\s+/g, ' ')
+  if (!cleaned) return 'New conversation'
+
+  // Strip greeting prefixes
+  cleaned = cleaned
+    .replace(/^(hey|hi|hello|yo|sup|ok|okay|please|can you|could you|i want to|i need to|i'd like to|help me|let's|let me)\b[,!.\s]*/i, '')
+    .trim()
+
+  if (!cleaned) cleaned = text.trim().replace(/\n/g, ' ')
+
+  // Remove trailing punctuation
+  cleaned = cleaned.replace(/[.!?]+$/, '').trim()
+
+  // Extract question topic
+  const qMatch = cleaned.match(/^(?:what|how|why|where|when|which|who|is|are|can|do|does|will|should|would)\s+(.+)/i)
+  if (qMatch) {
+    const topic = qMatch[1].replace(/^(?:the|a|an|i|we|you)\s+/i, '').trim()
+    return smartCap(smartTruncate(topic, 50))
+  }
+
+  // Capitalize and truncate
+  return smartCap(smartTruncate(cleaned, 50))
+}
+
+function smartTruncate(text: string, max: number): string {
+  if (text.length <= max) return text
+  const cut = text.slice(0, max)
+  const last = cut.lastIndexOf(' ')
+  return last > max * 0.6 ? `${cut.slice(0, last)}...` : `${cut}...`
+}
+
+function smartCap(text: string): string {
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : text
+}
+
+const TITLE_SYSTEM_PROMPT = `You generate short conversation titles. Given a user's first message, output a concise title (3-6 words) that captures their intent. Rules:
+- No quotes, no trailing punctuation
+- Capitalize like a headline
+- If it's just a greeting with no real content, output "New Conversation"
+- Be specific about the topic, not generic`
+
+/**
+ * Use the LLM to generate a meaningful conversation title from the first message.
+ */
+async function generateAITitle(
+  text: string,
+  model: Model<Api>,
+  provider: string,
+  getApiKey: (provider: string) => Promise<string | undefined>,
+): Promise<string> {
+  const apiKey = await getApiKey(provider)
+
+  const result = await completeSimple(
+    model,
+    {
+      systemPrompt: TITLE_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: text, timestamp: Date.now() }],
+    },
+    { apiKey },
+  )
+
+  const title = result.content
+    .filter((b): b is TextContent => b.type === 'text')
+    .map((b) => b.text)
+    .join('')
+    .trim()
+    // Clean up any quotes or trailing punctuation the model might add
+    .replace(/^["']|["']$/g, '')
+    .replace(/[.!?]+$/, '')
+    .trim()
+
+  return title || 'New Conversation'
 }

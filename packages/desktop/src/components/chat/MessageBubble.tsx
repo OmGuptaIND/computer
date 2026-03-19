@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion'
-import { AlertTriangle, Bot, UserRound } from 'lucide-react'
+import { AlertTriangle, UserRound } from 'lucide-react'
 import type { ChatMessage } from '../../lib/store.js'
+import { useAgentStatus } from '../../lib/store.js'
+import { AntonLogo } from '../AntonLogo.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
 import { ToolCallBlock } from './ToolCallBlock.js'
 
@@ -10,7 +12,8 @@ interface Props {
 
 export function MessageBubble({ message }: Props) {
   const isUser = message.role === 'user'
-  const authorLabel = isUser ? 'You' : 'Assistant'
+  const authorLabel = isUser ? 'You' : 'anton'
+  const agentStatus = useAgentStatus()
 
   return (
     <motion.div
@@ -21,19 +24,13 @@ export function MessageBubble({ message }: Props) {
     >
       {(message.role === 'user' || message.role === 'assistant') && (
         <div className="message__meta">
-          <span
-            className={
-              isUser
-                ? 'message__avatar message__avatar--user'
-                : 'message__avatar message__avatar--assistant'
-            }
-          >
-            {isUser ? (
+          {isUser ? (
+            <span className="message__avatar message__avatar--user">
               <UserRound className="message__avatarIcon" />
-            ) : (
-              <Bot className="message__avatarIcon" />
-            )}
-          </span>
+            </span>
+          ) : (
+            <AntonLogo size={24} thinking={agentStatus === 'working'} className="message__anton-logo" />
+          )}
           <span className="message__author">{authorLabel}</span>
         </div>
       )}

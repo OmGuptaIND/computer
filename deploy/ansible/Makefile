@@ -80,6 +80,9 @@ sync: _check-ansible
 				cd $$REMOTE_DIR && \
 				pnpm install --no-frozen-lockfile 2>&1 | tail -3 && \
 				pnpm --filter @anton/protocol build && \
+				pnpm --filter @anton/agent-config build && \
+				pnpm --filter @anton/agent-core build && \
+				pnpm --filter @anton/agent-server build && \
 				pnpm --filter @anton/agent build && \
 				echo $$GIT_HASH build done'"; \
 		echo "  → Writing version.json..."; \
@@ -125,25 +128,22 @@ verify: _check-ansible
 			PORT9876="✗"; PORT9877="✗"; \
 			ss -tlnp 2>/dev/null | grep -q ":9876" && PORT9876="✓"; \
 			ss -tlnp 2>/dev/null | grep -q ":9877" && PORT9877="✓"; \
-			VER="-"; HASH="-"; SPEC="-"; BRANCH="-"; DEPLOYED="-"; VIA="-"; \
-			if [ -f /home/anton/.anton/version.json ]; then \
-				eval $$(python3 -c "import json; d=json.load(open(\"/home/anton/.anton/version.json\")); \
-					print(f\"VER={d.get(\"version\",\"-\")}\"); \
-					print(f\"HASH={d.get(\"gitHash\",\"-\")}\"); \
-					print(f\"SPEC={d.get(\"specVersion\",\"-\")}\"); \
-					print(f\"BRANCH={d.get(\"branch\",\"-\")}\"); \
-					print(f\"DEPLOYED={d.get(\"deployedAt\",\"-\")}\"); \
-					print(f\"VIA={d.get(\"deployedBy\",\"-\")}\")" 2>/dev/null); \
+			VER="-"; HASH="-"; SPEC="-"; AGENTID="-"; \
+			HEALTH=$$(curl -s --connect-timeout 2 http://127.0.0.1:9876/health 2>/dev/null); \
+			if [ -n "$$HEALTH" ]; then \
+				VER=$$(echo "$$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get(\"version\",\"-\"))" 2>/dev/null || echo "-"); \
+				HASH=$$(echo "$$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get(\"gitHash\",\"-\"))" 2>/dev/null || echo "-"); \
+				SPEC=$$(echo "$$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get(\"specVersion\",\"-\"))" 2>/dev/null || echo "-"); \
+				AGENTID=$$(echo "$$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get(\"agentId\",\"-\"))" 2>/dev/null || echo "-"); \
 			fi; \
-			AGENTID="-"; TOKEN="-"; \
+			TOKEN="-"; \
 			if [ -f /home/anton/.anton/config.yaml ]; then \
-				AGENTID=$$(grep "^agentId:" /home/anton/.anton/config.yaml | awk "{print \$$2}"); \
 				TOKEN=$$(grep "^token:" /home/anton/.anton/config.yaml | awk "{print \$$2}"); \
 			fi; \
 			NODE_VER=$$(node --version 2>/dev/null || echo "missing"); \
-			echo "$$STATUS|$$PID|$$MEM|$$UPTIME|$$PORT9876|$$PORT9877|$$VER|$$HASH|$$SPEC|$$BRANCH|$$DEPLOYED|$$VIA|$$AGENTID|$$TOKEN|$$NODE_VER" \
-		' 2>/dev/null) || REMOTE="? UNREACHABLE via SSH|||||||||||||"; \
-		IFS="|" read -r R_STATUS R_PID R_MEM R_UPTIME R_P9876 R_P9877 R_VER R_HASH R_SPEC R_BRANCH R_DEPLOYED R_VIA R_AID R_TOKEN R_NODE <<< "$$REMOTE"; \
+			echo "$$STATUS|$$PID|$$MEM|$$UPTIME|$$PORT9876|$$PORT9877|$$VER|$$HASH|$$SPEC|$$AGENTID|$$TOKEN|$$NODE_VER" \
+		' 2>/dev/null) || REMOTE="? UNREACHABLE via SSH|||||||||||"; \
+		IFS="|" read -r R_STATUS R_PID R_MEM R_UPTIME R_P9876 R_P9877 R_VER R_HASH R_SPEC R_AID R_TOKEN R_NODE <<< "$$REMOTE"; \
 		printf "  │  %-18s %-40s│\n" "Service:" "$$R_STATUS"; \
 		printf "  │  %-18s %-40s│\n" "PID / Memory:" "$$R_PID / $$R_MEM"; \
 		printf "  │  %-18s %-40s│\n" "Uptime:" "$$R_UPTIME"; \
@@ -152,8 +152,6 @@ verify: _check-ansible
 		echo "  │                                                              │"; \
 		printf "  │  %-18s %-40s│\n" "Version:" "$$R_VER ($$R_HASH)"; \
 		printf "  │  %-18s %-40s│\n" "Spec:" "$$R_SPEC"; \
-		printf "  │  %-18s %-40s│\n" "Branch:" "$$R_BRANCH"; \
-		printf "  │  %-18s %-40s│\n" "Deployed:" "$$R_DEPLOYED via $$R_VIA"; \
 		echo "  │                                                              │"; \
 		printf "  │  %-18s %-40s│\n" "Agent ID:" "$$R_AID"; \
 		printf "  │  %-18s %-40s│\n" "Token:" "$$R_TOKEN"; \
