@@ -1,188 +1,291 @@
-# AntonComputer — Architecture
+# anton.computer — Architecture
 
-## Overview
+## One-Liner
 
-AntonComputer is a personal cloud computer system with three components:
+A TypeScript agent daemon on your VPS + a native desktop app on your machine, connected by WebSocket pipes. The agent uses pi SDK (OpenClaw's engine) to think and act.
 
-```
-┌─────────────────────┐                          ┌─────────────────────┐
-│   Desktop App       │    Persistent Pipes       │   Your VPS/VM       │
-│   (Tauri v2)        │◄────────────────────────►│                     │
-│                     │   WebSocket / WireGuard   │   ┌───────────────┐ │
-│  ┌───────────────┐  │                          │   │  Agent Daemon │ │
-│  │ Terminal      │──┼──── PTY pipe ───────────┼──►│  (Go binary)  │ │
-│  │ File Browser  │──┼──── FileSync pipe ──────┼──►│               │ │
-│  │ AI Chat       │──┼──── AI Stream pipe ─────┼──►│  ┌─────────┐  │ │
-│  │ Apps Dashboard│──┼──── Port Forward pipe ──┼──►│  │ AI Exec │  │ │
-│  │ Notifications │◄─┼──── Event pipe ─────────┼───│  │ Engine  │  │ │
-│  └───────────────┘  │                          │   │  └─────────┘  │ │
-└─────────────────────┘                          │   └───────────────┘ │
-                                                 │                     │
-        Optional:                                │   User's files,     │
-┌─────────────────────┐                          │   Docker, apps,     │
-│   Broker Server     │  Agent registers here    │   databases, etc.   │
-│   (for NAT traverse)│◄────────────────────────┤                     │
-└─────────────────────┘                          └─────────────────────┘
-```
-
-## Component Details
-
-### 1. Agent (`agent/`)
-
-Single Go binary that runs on the user's machine (VPS, VM, bare metal).
+## System Diagram
 
 ```
-agent/
-├── cmd/
-│   └── antonagent/         # Entry point
-│       └── main.go
-├── pkg/
-│   ├── pty/                # PTY management
-│   │   └── pty.go          # Spawn shells, multiplex sessions
-│   ├── filesync/           # File synchronization
-│   │   ├── watcher.go      # fsnotify-based file watcher
-│   │   ├── sync.go         # Diff/patch engine
-│   │   └── protocol.go     # Sync wire protocol
-│   ├── portfwd/            # Port forwarding
-│   │   ├── scanner.go      # Detect listening ports
-│   │   └── tunnel.go       # TCP tunnel over WebSocket
-│   ├── events/             # Event bus
-│   │   └── bus.go          # Pubsub for agent → client events
-│   ├── tools/              # Tool registry for AI
-│   │   ├── registry.go     # Tool registration + dispatch
-│   │   ├── shell.go        # Execute shell commands
-│   │   ├── filesystem.go   # Read/write/search files
-│   │   └── browser.go      # Headless browser (rod/chromedp)
-│   └── ai/                 # AI runtime
-│       ├── engine.go       # Interface for AI backends
-│       ├── builtin.go      # Built-in thin executor (v0.1)
-│       ├── openclaw.go     # OpenClaw integration (v0.2)
-│       └── models/
-│           ├── claude.go   # Anthropic API
-│           ├── openai.go   # OpenAI-compatible API
-│           └── ollama.go   # Local Ollama
-└── go.mod
+YOUR DESKTOP                                          YOUR VPS / CLOUD SERVER
+┌────────────────────────┐                             ┌──────────────────────────────┐
+│  Desktop App (Tauri)   │      WebSocket (TLS)        │  Agent Daemon (Node.js)      │
+│                        │◄──────────────────────────►│                              │
+│  ┌──────────────────┐  │   Single multiplexed conn   │  ┌────────────────────────┐  │
+│  │ Terminal (xterm)  │──┼─── PTY channel ──────────►│  │  PTY Manager (node-pty)│  │
+│  │ AI Agent Chat     │──┼─── AI channel ───────────►│  │  pi SDK Agent Loop     │  │
+│  │ File Browser      │──┼─── FileSync channel ────►│  │  Tool Registry          │  │
+│  │ Notifications     │◄─┼─── Event channel ────────┤  │  File Watcher           │  │
+│  └──────────────────┘  │                             │  │  Port Scanner           │  │
+│                        │                             │  └────────────────────────┘  │
+│  Rust: tunnel mgr,     │                             │                              │
+│  tray, local file sync │                             │  Sandbox: bubblewrap (Linux)  │
+└────────────────────────┘                             │  or sandbox-exec (macOS)      │
+                                                       │                              │
+                                                       │  User's files, Docker, apps  │
+                                                       └──────────────────────────────┘
 ```
 
-**Key design decisions:**
-- Single binary, zero runtime dependencies (statically compiled Go)
-- Runs as systemd service or foreground process
-- Config via `~/.antoncomputer/config.yaml` or env vars
-- All pipes multiplex over a single WebSocket connection
-- Agent exposes NO HTTP API — everything flows through the pipe protocol
-
-### 2. Desktop App (`desktop/`)
-
-Tauri v2 — Rust backend for system integration, web frontend for UI.
+## Project Structure
 
 ```
-desktop/
-├── src-tauri/
-│   ├── src/
-│   │   ├── main.rs          # Tauri entry point
-│   │   ├── tunnel.rs        # Connection manager (WS + WireGuard)
-│   │   ├── sync.rs          # Local file watcher for sync
-│   │   ├── tray.rs          # System tray / menubar
-│   │   └── commands.rs      # Tauri commands exposed to frontend
-│   ├── Cargo.toml
-│   └── tauri.conf.json
-├── src/                     # Web frontend (React or Svelte)
-│   ├── App.tsx
-│   ├── terminal/            # xterm.js terminal component
-│   ├── chat/                # AI chat interface
-│   ├── files/               # Remote file browser + sync UI
-│   ├── apps/                # Running services/ports dashboard
-│   └── settings/            # Machine config, preferences
-├── package.json
-└── vite.config.ts
+anton.computer/
+├── package.json              # pnpm workspace root
+├── pnpm-workspace.yaml
+├── SHIPPING.md               # Task tracker
+├── ARCHITECTURE.md           # This file
+│
+├── packages/
+│   ├── agent/                # The daemon (runs on VPS)
+│   │   ├── src/
+│   │   │   ├── index.ts      # Entry point — start WebSocket server
+│   │   │   ├── config.ts     # Load ~/.anton/config.yaml
+│   │   │   ├── server.ts     # WebSocket server + pipe multiplexer
+│   │   │   ├── agent.ts      # pi SDK integration — the AI brain
+│   │   │   ├── pty.ts        # Terminal session manager (node-pty)
+│   │   │   ├── sandbox.ts    # Sandboxed command execution
+│   │   │   ├── events.ts     # Event bus (agent → desktop)
+│   │   │   └── tools/
+│   │   │       ├── shell.ts      # Execute commands
+│   │   │       ├── filesystem.ts # Read/write/search files
+│   │   │       ├── browser.ts    # Headless browsing
+│   │   │       ├── process.ts    # Process management
+│   │   │       └── network.ts    # Port scan, curl, DNS
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   │
+│   ├── protocol/             # Shared types & protocol spec
+│   │   ├── src/
+│   │   │   ├── messages.ts   # All message type definitions
+│   │   │   ├── pipes.ts      # Pipe channel types
+│   │   │   └── codec.ts      # Encode/decode multiplexed frames
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   │
+│   └── desktop/              # Tauri v2 app
+│       ├── src-tauri/        # Rust backend
+│       │   ├── src/
+│       │   │   ├── main.rs
+│       │   │   ├── tunnel.rs     # WebSocket connection manager
+│       │   │   └── tray.rs       # System tray
+│       │   ├── Cargo.toml
+│       │   └── tauri.conf.json
+│       ├── src/              # React frontend
+│       │   ├── App.tsx
+│       │   ├── components/
+│       │   │   ├── Terminal.tsx   # xterm.js terminal
+│       │   │   ├── AgentChat.tsx  # AI agent interface
+│       │   │   ├── FileTree.tsx   # Remote file browser
+│       │   │   └── Connect.tsx    # Connection setup
+│       │   └── lib/
+│       │       ├── ws.ts         # WebSocket client
+│       │       └── protocol.ts   # Import from @anton/protocol
+│       ├── package.json
+│       └── vite.config.ts
+│
+├── deploy/
+│   ├── install.sh            # curl | bash installer
+│   ├── Dockerfile            # Agent Docker image
+│   └── docker-compose.yml
+│
+└── docs/
 ```
 
-### 3. Broker Server (`server/`) — Optional
+## Agent Architecture (The Core)
 
-Lightweight relay for users whose agents are behind NAT/firewalls.
+### How the AI Brain Works
+
+The agent uses **pi SDK** (`@mariozechner/pi-coding-agent`) — the same engine that powers OpenClaw (250k+ GitHub stars). We use pi as the engine, NOT OpenClaw the product. No Gateway, no 50+ integrations we don't need. Just the agentic core.
+
+**What pi gives us (so we don't build it):**
+- Agentic tool-calling loop (message → LLM → tools → execute → repeat until done)
+- Context management (automatic windowing — no blowup on long conversations)
+- Session persistence (save/resume to `~/.anton/sessions/`)
+- Multi-model support (Claude, GPT, Gemini, Ollama, Bedrock — user picks in config)
+- Real-time streaming
+- Parallel tool execution
+- Error recovery and retries
+- AbortSignal for task cancellation
+
+**What we build on top:**
+- Custom tools (shell, filesystem, browser, process, network)
+- Skills system (YAML-based AI workers, 24/7 scheduler)
+- Desktop confirmation flow (dangerous commands need approval)
+- WebSocket pipe to desktop app
+
+```typescript
+import { createAgentSession, SessionManager } from "@mariozechner/pi-coding-agent";
+import { getModel } from "@mariozechner/pi-ai";
+
+// pi-ai handles ALL providers with one call
+const model = getModel(config.ai.provider, config.ai.model, {
+  apiKey: config.ai.apiKey,
+});
+
+const { session } = await createAgentSession({
+  model,
+  sessionManager: SessionManager.open("~/.anton/sessions/default.json"),
+  systemPrompt: SYSTEM_PROMPT,
+  customTools: [shellTool, fsTool, browserTool, processTool, networkTool],
+  abortSignal: controller.signal,
+});
+
+// User sends a message from desktop app
+session.subscribe(event => {
+  // Stream tool calls, outputs, and responses back via WebSocket
+  ws.send(encode({ pipe: "ai", data: event }));
+});
+
+await session.prompt(userMessage);
+```
+
+This gives us:
+- **Tool calling loop** — LLM requests tools, pi executes them, feeds results back
+- **Multi-model support** — Claude, GPT, Gemini, Ollama, any OpenAI-compatible API
+- **Session persistence** — conversations survive reconnects
+- **Streaming** — real-time output as the agent works
+
+### Custom Tools (What Makes It a "Computer")
+
+pi SDK lets us inject custom tools. These are what make the agent DO things:
+
+| Tool | What it does | Why it matters |
+|------|-------------|----------------|
+| `shell` | Execute commands with timeout, streaming stdout/stderr | Deploy code, install packages, run scripts |
+| `filesystem` | Read, write, search, list, watch files | Manage configs, edit code, organize data |
+| `browser` | Headless Chromium via Playwright | Scrape data, test websites, fill forms |
+| `process` | List, kill, monitor running processes | Manage services, debug issues |
+| `network` | Port scan, HTTP requests, DNS lookup | Check connectivity, test APIs |
+
+Each tool runs inside the **sandbox** (see below).
+
+### Sandboxing Model
+
+Inspired by Anthropic's Claude Code sandboxing (they open-sourced it as `@anthropic-ai/sandbox-runtime`):
 
 ```
-server/
-├── cmd/
-│   └── antonbroker/
-│       └── main.go
-├── pkg/
-│   ├── broker/
-│   │   ├── relay.go         # WebSocket relay (desktop ↔ agent)
-│   │   └── registry.go      # Agent registration + discovery
-│   └── auth/
-│       └── token.go         # Token issuance + validation
-└── go.mod
+┌─────────────────────────────────────────────┐
+│  Agent Process (Node.js)                    │
+│                                             │
+│  Tool call: shell("apt install nginx")      │
+│       │                                     │
+│       ▼                                     │
+│  ┌─────────────────────────────────┐        │
+│  │  Sandbox Wrapper                │        │
+│  │                                 │        │
+│  │  Linux: bubblewrap (bwrap)      │        │
+│  │  - Filesystem: deny-then-allow  │        │
+│  │  - Network: namespace removed   │        │
+│  │  - Seccomp: dangerous syscalls  │        │
+│  │    blocked                      │        │
+│  │                                 │        │
+│  │  macOS: sandbox-exec (Seatbelt) │        │
+│  │  - Filesystem: scoped access    │        │
+│  │  - Network: localhost proxy only│        │
+│  │                                 │        │
+│  │  ┌───────────────────────┐      │        │
+│  │  │ Command executes here │      │        │
+│  │  └───────────────────────┘      │        │
+│  └─────────────────────────────────┘        │
+│       │                                     │
+│       ▼                                     │
+│  Network Proxy (allowlist-based)            │
+│  - Default: deny all outbound               │
+│  - Allow: github.com, npmjs.org, pypi.org   │
+│  - User-configurable allowlist              │
+└─────────────────────────────────────────────┘
 ```
 
-For v0.1, the broker is optional. Users connect directly to their VPS IP.
+**Dangerous command flow:**
+1. Agent wants to run `sudo rm -rf /var/log`
+2. Sandbox checks against `confirm_patterns` in config
+3. Match found → emit confirmation request to desktop via event channel
+4. Desktop shows native dialog: "Agent wants to run: sudo rm -rf /var/log. Allow?"
+5. User approves/denies → result sent back to agent
+6. If approved, command runs inside sandbox
 
 ## Pipe Protocol
 
-All communication uses a single WebSocket with multiplexed channels:
+All communication over a single WebSocket with multiplexed channels.
+
+### Frame Format
 
 ```
-┌──────────────────────────────────────────┐
-│ WebSocket Frame                          │
-│ ┌──────────┬───────┬───────────────────┐ │
-│ │ pipe_id  │ type  │ payload           │ │
-│ │ (uint16) │(uint8)│ (variable bytes)  │ │
-│ └──────────┴───────┴───────────────────┘ │
-└──────────────────────────────────────────┘
-
-Types:
-  0x01 = Terminal (PTY data)
-  0x02 = Terminal resize
-  0x03 = FileSync operation
-  0x04 = Port forward data
-  0x05 = AI chat message
-  0x06 = AI tool call
-  0x07 = AI tool result
-  0x08 = Event notification
-  0x09 = Control (ping/pong, auth, pipe open/close)
+┌──────────┬──────────┬──────────────────────────┐
+│ channel  │ type     │ payload                  │
+│ (1 byte) │ (1 byte) │ (variable, msgpack/JSON) │
+└──────────┴──────────┴──────────────────────────┘
 ```
 
-## AI Runtime Architecture
+### Channels
 
+| ID | Channel | Payload format | Description |
+|----|---------|---------------|-------------|
+| `0x00` | Control | JSON | Auth handshake, ping/pong, errors |
+| `0x01` | Terminal | Binary (raw bytes) | PTY stdin/stdout stream |
+| `0x02` | AI | JSON | Chat messages, tool calls, tool results, streaming text |
+| `0x03` | FileSync | Binary + JSON header | File chunks, sync operations |
+| `0x04` | Events | JSON | Agent notifications → desktop |
+
+### Key Messages
+
+```typescript
+// Control channel
+{ type: "auth", token: "abc123" }
+{ type: "auth_ok", agent_id: "xyz", version: "0.1.0" }
+{ type: "ping" } / { type: "pong" }
+
+// Terminal channel
+// Raw bytes — stdin from desktop, stdout from agent PTY
+// Control messages use JSON:
+{ type: "pty_spawn", id: "t1", cols: 120, rows: 40 }
+{ type: "pty_resize", id: "t1", cols: 80, rows: 24 }
+{ type: "pty_close", id: "t1" }
+
+// AI channel
+{ type: "message", content: "Deploy nginx and configure SSL" }
+{ type: "thinking", text: "I'll install nginx, then use certbot..." }
+{ type: "tool_call", id: "tc1", name: "shell", input: { command: "apt install -y nginx" } }
+{ type: "tool_result", id: "tc1", output: "Reading package lists..." }
+{ type: "text", content: "Nginx is installed. Now configuring SSL..." }
+{ type: "confirm", id: "c1", command: "sudo certbot --nginx", reason: "Needs root access" }
+{ type: "confirm_response", id: "c1", approved: true }
+{ type: "done" }
+
+// Event channel
+{ type: "file_changed", path: "/etc/nginx/nginx.conf", change: "modified" }
+{ type: "port_opened", port: 443, process: "nginx" }
+{ type: "task_completed", summary: "SSL configured for example.com" }
 ```
-Desktop Chat ──► Agent AI Engine ──► LLM API (Claude/GPT/Ollama)
-                      │                        │
-                      │◄── tool calls ─────────┘
-                      │
-                      ▼
-                 Tool Registry
-                 ├── shell.exec("ls -la")
-                 ├── fs.read("/etc/nginx/nginx.conf")
-                 ├── fs.write(path, content)
-                 ├── fs.search(pattern)
-                 ├── browser.fetch(url)
-                 └── [user-defined tools via plugins]
-```
-
-The built-in executor is intentionally simple — a tool-calling loop:
-1. User sends message
-2. Engine forwards to LLM with tool definitions
-3. LLM returns tool calls
-4. Engine executes tools locally on the VM
-5. Results sent back to LLM
-6. Repeat until LLM returns a text response
-7. Stream response back to desktop
-
-For users who want the full OpenClaw experience (50+ integrations, memory, workflows), they can switch the engine to OpenClaw mode, which manages an OpenClaw instance as a subprocess.
 
 ## Security Model
 
-- Agent authenticates to desktop via a shared secret (generated on first setup)
-- All WebSocket connections are TLS-encrypted
-- Agent runs as a dedicated user (not root) by default
-- AI tool execution is sandboxed: shell commands run in a restricted shell, fs access is scoped
-- Confirmation flow: dangerous operations (rm -rf, system changes) require desktop approval
-- Audit log: all AI actions logged to ~/.antoncomputer/audit.log
+1. **Auth**: Shared secret token generated on agent install. Desktop must present it on WebSocket handshake.
+2. **TLS**: Agent generates self-signed cert on first run. Desktop pins the cert fingerprint after first connection.
+3. **Sandbox**: All AI-initiated commands run inside bubblewrap/sandbox-exec. Direct terminal sessions are unsandboxed (user is in control).
+4. **Network**: Sandboxed commands have no network by default. Proxy with domain allowlist for approved outbound.
+5. **Confirmation**: Dangerous patterns (`rm -rf`, `sudo`, `systemctl`, `reboot`) require desktop approval.
+6. **Audit**: Every AI action logged with timestamp, tool name, input, output to `~/.anton/audit.log`.
+7. **No root by default**: Agent runs as a dedicated `anton` user. Sudo available but requires confirmation.
 
-## Connection Modes
+## Connection Flow
 
-1. **Direct** (v0.1): Desktop → agent IP:port over WebSocket (user opens port or uses VPN)
-2. **Broker relay**: Desktop → broker → agent (NAT traversal, no port opening needed)
-3. **WireGuard mesh** (future): Tailscale-like, peer-to-peer encrypted tunnel
 ```
+1. User installs agent on VPS:
+   $ curl -fsSL https://get.anton.computer | bash
+   → Installs Node 22, agent package
+   → Generates token: "ak_7f3a2b..."
+   → Starts on port 9876
+   → Prints: "Connect with token: ak_7f3a2b..."
 
+2. User opens desktop app:
+   → Clicks "Add Machine"
+   → Enters: IP = 1.2.3.4, Token = ak_7f3a2b...
+   → Desktop connects: wss://1.2.3.4:9876
+
+3. WebSocket handshake:
+   Desktop → { channel: 0x00, type: "auth", token: "ak_7f3a2b..." }
+   Agent  → { channel: 0x00, type: "auth_ok", agent_id: "xyz" }
+
+4. Ready. Desktop shows terminal + AI chat.
+```

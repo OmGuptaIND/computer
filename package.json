@@ -1,0 +1,29 @@
+{
+  "name": "anton.computer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Your personal cloud computer. Open source. AI-native. Self-hosted.",
+  "scripts": {
+    "agent:dev": "pnpm --filter @anton/agent dev",
+    "agent:build": "pnpm --filter @anton/agent build",
+    "desktop:dev": "pnpm --filter @anton/desktop dev",
+    "desktop:build": "pnpm --filter @anton/desktop build",
+    "protocol:build": "pnpm --filter @anton/protocol build",
+    "build": "pnpm -r build",
+    "clean": "pnpm -r exec rm -rf dist",
+    "lint": "biome lint ./packages",
+    "format": "biome format ./packages",
+    "format:fix": "biome format --write ./packages",
+    "check": "biome check ./packages",
+    "check:fix": "biome check --write ./packages"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0"
+  },
+  "keywords": ["ai", "agent", "cloud", "computer", "self-hosted", "vps"],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anthropics/anton.computer"
+  }
+}
