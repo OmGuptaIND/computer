@@ -9,12 +9,12 @@ interface Props {
   content: string
 }
 
-export function MarkdownRenderer({ content: _content }: Props) {
+export function MarkdownRenderer({ content }: Props) {
   return (
+    <div className="markdown-body">
     <Markdown
       remarkPlugins={[remarkGfm]}
-      // @ts-expect-error className works at runtime but types don't include it
-      className="markdown-body"
+      children={content}
       components={{
         code: CodeBlock,
         a: ({ href, children }) => (
@@ -49,6 +49,7 @@ export function MarkdownRenderer({ content: _content }: Props) {
         hr: () => <hr className="markdown-body__rule" />,
       }}
     />
+    </div>
   )
 }
 
@@ -69,7 +70,7 @@ function CodeBlock({
   return <HighlightedBlock code={code} lang={lang} />
 }
 
-function HighlightedBlock({ code, lang }: { code: string; lang: string }) {
+export function HighlightedBlock({ code, lang }: { code: string; lang: string }) {
   const [html, setHtml] = useState<string>('')
   const [copied, setCopied] = useState(false)
 

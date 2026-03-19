@@ -1,5 +1,6 @@
 import { Channel, type TokenUsage } from '@anton/protocol'
 import { create } from 'zustand'
+import { type Artifact, extractArtifact } from './artifacts.js'
 import { type ConnectionStatus, connection } from './connection.js'
 import {
   type Conversation,
@@ -63,6 +64,21 @@ export type SidebarTab = 'history' | 'skills'
 // ── Saved machines (localStorage) ───────────────────────────────────
 
 const MACHINES_KEY = 'anton.machines'
+const MODEL_KEY = 'anton.selectedModel'
+const ACTIVE_CONV_KEY = 'anton.activeConversationId'
+
+function loadSelectedModel(): { provider: string; model: string } | null {
+  try {
+    const raw = localStorage.getItem(MODEL_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function saveSelectedModel(provider: string, model: string) {
+  localStorage.setItem(MODEL_KEY, JSON.stringify({ provider, model }))
+}
 
 export function loadMachines(): SavedMachine[] {
   try {
@@ -100,6 +116,10 @@ interface AppState {
   sidebarTab: SidebarTab
   searchQuery: string
 
+  // Last response model info (for display only)
+  lastResponseProvider: string | null
+  lastResponseModel: string | null
+
   // Token usage
   turnUsage: TokenUsage | null
   sessionUsage: TokenUsage | null
@@ -110,6 +130,14 @@ interface AppState {
 
   // Session readiness tracking (race condition fix)
   _sessionResolvers: Map<string, () => void>
+
+  // Current assistant message ID (for appending text across tool interruptions)
+  _currentAssistantMsgId: string | null
+
+  // Artifacts
+  artifacts: Artifact[]
+  activeArtifactId: string | null
+  artifactPanelOpen: boolean
 
   // Pending confirmation
   pendingConfirm: { id: string; command: string; reason: string } | null
@@ -136,6 +164,9 @@ interface AppState {
   loadSessionMessages: (sessionId: string, messages: ChatMessage[]) => void
   updateConversationTitle: (sessionId: string, title: string) => void
 
+  // Response model tracking
+  setLastResponseModel: (provider: string, model: string) => void
+
   // Usage actions
   setUsage: (turn: TokenUsage | null, session: TokenUsage | null) => void
 
@@ -149,6 +180,12 @@ interface AppState {
   registerPendingSession: (id: string) => Promise<void>
   resolvePendingSession: (id: string) => void
 
+  // Artifact actions
+  addArtifact: (artifact: Artifact) => void
+  setActiveArtifact: (id: string | null) => void
+  setArtifactPanelOpen: (open: boolean) => void
+  clearArtifacts: () => void
+
   // Confirm actions
   setPendingConfirm: (confirm: { id: string; command: string; reason: string } | null) => void
 }
@@ -156,25 +193,37 @@ interface AppState {
 export const useStore = create<AppState>((set, get) => {
   // Load persisted conversations
   const persisted = loadConversations()
+  const savedModel = loadSelectedModel()
+  const savedActiveConvId = localStorage.getItem(ACTIVE_CONV_KEY)
+  // Only restore if the conversation still exists
+  const restoredActiveId = savedActiveConvId && persisted.some((c) => c.id === savedActiveConvId)
+    ? savedActiveConvId
+    : null
 
   return {
     connectionStatus: 'disconnected',
     agentStatus: 'unknown',
     currentSessionId: null,
-    currentProvider: 'anthropic',
-    currentModel: 'claude-sonnet-4-6',
+    currentProvider: savedModel?.provider ?? 'anthropic',
+    currentModel: savedModel?.model ?? 'claude-sonnet-4-6',
     sessions: [],
     providers: [],
     defaults: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
     conversations: persisted,
-    activeConversationId: null,
+    activeConversationId: restoredActiveId,
     sidebarTab: 'history',
     searchQuery: '',
+    lastResponseProvider: null,
+    lastResponseModel: null,
     turnUsage: null,
     sessionUsage: null,
     agentStatusDetail: null,
     agentSteps: [],
     _sessionResolvers: new Map(),
+    _currentAssistantMsgId: null,
+    artifacts: [],
+    activeArtifactId: null,
+    artifactPanelOpen: false,
     pendingConfirm: null,
 
     setConnectionStatus: (status) => set({ connectionStatus: status }),
@@ -182,30 +231,41 @@ export const useStore = create<AppState>((set, get) => {
     setSidebarTab: (tab) => set({ sidebarTab: tab }),
     setSearchQuery: (query) => set({ searchQuery: query }),
 
-    setCurrentSession: (id, provider, model) =>
-      set({ currentSessionId: id, currentProvider: provider, currentModel: model }),
+    setCurrentSession: (id, provider, model) => {
+      saveSelectedModel(provider, model)
+      set({ currentSessionId: id, currentProvider: provider, currentModel: model })
+    },
 
     setSessions: (sessions) => set({ sessions }),
 
-    setProviders: (providers, defaults) =>
+    setProviders: (providers, defaults) => {
+      const saved = loadSelectedModel()
+      // Only use server defaults if no local selection is persisted
+      const provider = saved?.provider ?? defaults.provider
+      const model = saved?.model ?? defaults.model
       set({
         providers,
         defaults,
-        currentProvider: defaults.provider,
-        currentModel: defaults.model,
-      }),
+        currentProvider: provider,
+        currentModel: model,
+      })
+    },
 
     newConversation: (title, sessionId) => {
       const conv = createConversation(title, sessionId)
       set((state) => {
         const conversations = [conv, ...state.conversations]
         saveConversations(conversations)
+        localStorage.setItem(ACTIVE_CONV_KEY, conv.id)
         return { conversations, activeConversationId: conv.id }
       })
       return conv.id
     },
 
-    switchConversation: (id) => set({ activeConversationId: id }),
+    switchConversation: (id) => {
+      localStorage.setItem(ACTIVE_CONV_KEY, id)
+      set({ activeConversationId: id })
+    },
 
     deleteConversation: (id) => {
       set((state) => {
@@ -215,6 +275,11 @@ export const useStore = create<AppState>((set, get) => {
           state.activeConversationId === id
             ? conversations[0]?.id || null
             : state.activeConversationId
+        if (activeConversationId) {
+          localStorage.setItem(ACTIVE_CONV_KEY, activeConversationId)
+        } else {
+          localStorage.removeItem(ACTIVE_CONV_KEY)
+        }
         return { conversations, activeConversationId }
       })
     },
@@ -242,15 +307,25 @@ export const useStore = create<AppState>((set, get) => {
         const activeId = state.activeConversationId
         if (!activeId) return state
 
+        let newMsgId: string | null = null
+
         const conversations = state.conversations.map((c) => {
           if (c.id !== activeId) return c
           const messages = [...c.messages]
-          const last = messages[messages.length - 1]
-          if (last && last.role === 'assistant') {
-            messages[messages.length - 1] = { ...last, content: last.content + content }
+
+          // Find the tracked assistant message, or the last assistant message
+          const targetId = state._currentAssistantMsgId
+          let idx = targetId ? messages.findIndex((m) => m.id === targetId) : -1
+
+          if (idx >= 0) {
+            // Append to tracked message
+            const target = messages[idx]
+            messages[idx] = { ...target, content: target.content + content }
           } else {
+            // Create new assistant message
+            newMsgId = `msg_${Date.now()}`
             messages.push({
-              id: `msg_${Date.now()}`,
+              id: newMsgId,
               role: 'assistant',
               content,
               timestamp: Date.now(),
@@ -260,7 +335,10 @@ export const useStore = create<AppState>((set, get) => {
         })
 
         saveConversations(conversations)
-        return { conversations }
+        return {
+          conversations,
+          ...(newMsgId ? { _currentAssistantMsgId: newMsgId } : {}),
+        }
       })
     },
 
@@ -295,6 +373,9 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
+    setLastResponseModel: (provider, model) =>
+      set({ lastResponseProvider: provider, lastResponseModel: model }),
+
     setUsage: (turn, session) => set({ turnUsage: turn, sessionUsage: session }),
 
     setAgentStatusDetail: (detail) => set({ agentStatusDetail: detail }),
@@ -325,6 +406,33 @@ export const useStore = create<AppState>((set, get) => {
         resolvers.delete(id)
       }
     },
+
+    addArtifact: (artifact) =>
+      set((state) => {
+        // Deduplicate by filepath (update existing if same file written again)
+        const existing = artifact.filepath
+          ? state.artifacts.findIndex((a) => a.filepath === artifact.filepath)
+          : -1
+        let artifacts: Artifact[]
+        if (existing >= 0) {
+          artifacts = [...state.artifacts]
+          artifacts[existing] = artifact
+        } else {
+          artifacts = [...state.artifacts, artifact]
+        }
+        return {
+          artifacts,
+          activeArtifactId: artifact.id,
+          artifactPanelOpen: true,
+        }
+      }),
+
+    setActiveArtifact: (id) => set({ activeArtifactId: id }),
+
+    setArtifactPanelOpen: (open) => set({ artifactPanelOpen: open }),
+
+    clearArtifacts: () =>
+      set({ artifacts: [], activeArtifactId: null, artifactPanelOpen: false }),
 
     setPendingConfirm: (confirm) => set({ pendingConfirm: confirm }),
   }
@@ -394,18 +502,30 @@ connection.onMessage((channel, msg) => {
       store.setAgentStatus('working')
       break
 
-    case 'tool_result':
-      store.addMessage({
+    case 'tool_result': {
+      const resultMsg: ChatMessage = {
         id: `tr_${msg.id}`,
         role: 'tool',
         content: msg.output,
         isError: msg.isError,
         timestamp: Date.now(),
-      })
+      }
+      store.addMessage(resultMsg)
       store.updateAgentStep(msg.id, {
         status: msg.isError ? 'error' : 'complete',
       })
+
+      // Extract artifact from tool call + result pair
+      if (!msg.isError) {
+        const conv = store.getActiveConversation()
+        const toolCallMsg = conv?.messages.find((m) => m.id === `tc_${msg.id}`)
+        if (toolCallMsg) {
+          const artifact = extractArtifact(toolCallMsg, resultMsg)
+          if (artifact) store.addArtifact(artifact)
+        }
+      }
       break
+    }
 
     case 'confirm':
       store.setPendingConfirm({
@@ -463,8 +583,15 @@ connection.onMessage((channel, msg) => {
       store.setAgentStatus('idle')
       store.clearAgentSteps()
       store.setAgentStatusDetail(null)
+      useStore.setState({ _currentAssistantMsgId: null })
       if (msg.usage) {
         store.setUsage(msg.usage, msg.cumulativeUsage || null)
+      }
+      // Track the actual model used for this turn (display only)
+      if (msg.provider && msg.model) {
+        try {
+          useStore.setState({ lastResponseProvider: msg.provider, lastResponseModel: msg.model })
+        } catch { /* ignore during HMR transitions */ }
       }
       break
     }

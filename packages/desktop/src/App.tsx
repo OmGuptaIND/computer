@@ -1,6 +1,8 @@
-import { Settings, Share2, Ticket } from 'lucide-react'
+import { AnimatePresence } from 'framer-motion'
+import { PanelRight, Settings, Share2, Ticket } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { AgentChat } from './components/AgentChat.js'
+import { ArtifactPanel } from './components/artifacts/ArtifactPanel.js'
 import { Connect } from './components/Connect.js'
 import { Sidebar } from './components/Sidebar.js'
 import { Terminal } from './components/Terminal.js'
@@ -16,6 +18,22 @@ export function App() {
   const sessionUsage = useStore((s) => s.sessionUsage)
   const activeConv = useStore((s) => s.getActiveConversation())
   const hasMessages = (activeConv?.messages?.length || 0) > 0
+  const artifactPanelOpen = useStore((s) => s.artifactPanelOpen)
+  const artifacts = useStore((s) => s.artifacts)
+  const setArtifactPanelOpen = useStore((s) => s.setArtifactPanelOpen)
+
+  // Dynamic page title
+  useEffect(() => {
+    if (!connected) {
+      document.title = 'anton'
+    } else if (activeView === 'terminal') {
+      document.title = 'Terminal — anton'
+    } else if (activeConv?.title && activeConv.title !== 'New conversation') {
+      document.title = `${activeConv.title} — anton`
+    } else {
+      document.title = 'anton'
+    }
+  }, [connected, activeView, activeConv?.title])
 
   useEffect(() => {
     if (status === 'connected') {
@@ -99,6 +117,16 @@ export function App() {
                   <span>{formatTokens(sessionUsage.totalTokens)}</span>
                 </div>
               )}
+              {artifacts.length > 0 && (
+                <button
+                  type="button"
+                  className={`workspace-topbar__panelToggle ${artifactPanelOpen ? 'workspace-topbar__panelToggle--active' : ''}`}
+                  onClick={() => setArtifactPanelOpen(!artifactPanelOpen)}
+                  aria-label="Toggle artifact panel"
+                >
+                  <PanelRight size={16} />
+                </button>
+              )}
               <button type="button" className="topbar-share-btn">
                 <Share2 className="topbar-share-btn__icon" />
                 <span>Share</span>
@@ -132,6 +160,9 @@ export function App() {
         <div className="workspace-body">
           {activeView === 'agent' && <AgentChat />}
           {activeView === 'terminal' && <Terminal />}
+          <AnimatePresence>
+            {activeView === 'agent' && artifactPanelOpen && <ArtifactPanel />}
+          </AnimatePresence>
         </div>
       </div>
     </div>

@@ -1,12 +1,13 @@
 import { motion } from 'framer-motion'
 import { BriefcaseBusiness, Code2, ListChecks, Sparkles } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Skill } from '../../lib/skills.js'
+import { useStore } from '../../lib/store.js'
+import { generateSuggestions } from '../../lib/suggestions.js'
 import { AntonLogo } from '../AntonLogo.js'
 import { ChatInput } from './ChatInput.js'
 
 interface Props {
-  onSelectExample: (text: string) => void
   onSend: (text: string) => void
   onSkillSelect: (skill: Skill) => void
 }
@@ -20,14 +21,7 @@ const categories: { id: Category; label: string; Icon?: typeof Sparkles }[] = [
   { id: 'organize', label: 'Organize my life', Icon: ListChecks },
 ]
 
-const suggestions: Record<Category, string[]> = {
-  'for-you': [
-    'Build a 2026 founder operating system with lender-ready financials and B Corp analysis',
-    'Track GitHub, Coolify, and Vercel deployment failures daily',
-    'Analyze YC W26 batch with interactive market-map filtering site',
-    'Create an evidence-based rehab planner for ACL, stroke, rotator cuff, and back injuries',
-    'Analyze March 2026 K-drama slate with breakout predictions and mood-based recommendation quiz',
-  ],
+const staticSuggestions: Record<Exclude<Category, 'for-you'>, string[]> = {
   business: [
     'Build a 2026 founder operating system with lender-ready financials and B Corp analysis',
     'Create a competitive analysis dashboard for my market',
@@ -45,10 +39,20 @@ const suggestions: Record<Category, string[]> = {
   ],
 }
 
-export function EmptyState({ onSelectExample, onSend, onSkillSelect }: Props) {
+export function EmptyState({ onSend, onSkillSelect }: Props) {
   const [activeCategory, setActiveCategory] = useState<Category>('for-you')
+  const [draft, setDraft] = useState('')
+  const conversations = useStore((s) => s.conversations)
 
+  // Generate personalized "For you" suggestions from conversation history
+  const forYouSuggestions = useMemo(() => {
+    const personalized = generateSuggestions(conversations)
+    return personalized.map((s) => s.text)
+  }, [conversations])
 
+  const activeSuggestions = activeCategory === 'for-you'
+    ? forYouSuggestions
+    : staticSuggestions[activeCategory]
 
   return (
     <div className="empty-state">
@@ -64,7 +68,7 @@ export function EmptyState({ onSelectExample, onSend, onSkillSelect }: Props) {
         </h1>
 
         <div className="empty-state__input-wrap">
-          <ChatInput onSend={onSend} onSkillSelect={onSkillSelect} variant="hero" />
+          <ChatInput onSend={onSend} onSkillSelect={onSkillSelect} variant="hero" initialValue={draft} />
         </div>
 
         <div className="empty-state__tabs">
@@ -82,11 +86,11 @@ export function EmptyState({ onSelectExample, onSend, onSkillSelect }: Props) {
         </div>
 
         <div className="empty-state__suggestions">
-          {suggestions[activeCategory].map((text) => (
+          {activeSuggestions.map((text) => (
             <button
               type="button"
               key={text}
-              onClick={() => onSelectExample(text)}
+              onClick={() => setDraft(text)}
               className="empty-state__suggestion"
             >
               {text}

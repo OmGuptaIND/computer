@@ -1,0 +1,14 @@
+<svg width="32" height="32" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Monitor body -->
+  <rect x="4" y="4" width="32" height="24" rx="3" stroke="white" stroke-width="2" fill="rgba(255,255,255,0.06)"/>
+  <!-- Screen inner -->
+  <rect x="7" y="7" width="26" height="18" rx="1.5" fill="rgba(255,255,255,0.08)"/>
+  <!-- Left eye -->
+  <line x1="14" y1="12.5" x2="14" y2="19.5" stroke="white" stroke-width="3" stroke-linecap="round"/>
+  <!-- Right eye -->
+  <line x1="26" y1="12.5" x2="26" y2="19.5" stroke="white" stroke-width="3" stroke-linecap="round"/>
+  <!-- Stand -->
+  <line x1="20" y1="28" x2="20" y2="33" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  <!-- Base -->
+  <line x1="13" y1="33" x2="27" y2="33" stroke="white" stroke-width="2" stroke-linecap="round"/>
+</svg>
