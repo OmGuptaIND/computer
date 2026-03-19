@@ -1,0 +1,62 @@
+packages/desktop/src/components/chat/MessageBubble.tsx
+  a779eb46d9c04b36 23,25
+packages/agent-server/src/server.ts
+  a779eb46d9c04b36 27,390-393,618-635
+packages/desktop/src/lib/connection.ts
+  a779eb46d9c04b36 96-97,99-100,160-163,224,246-247,254-255
+packages/desktop/src/lib/store.ts
+  a779eb46d9c04b36 27,342-344,346,355-356,358,363,435-437,439-462,470,530-533
+API.md
+  a779eb46d9c04b36 3,23,591-592,603,653-753
+packages/desktop/src/components/skills/SkillDialog.tsx
+  a779eb46d9c04b36 41-43,46-47,52,54-55,57,63,78,86-87,91,94-95
+packages/desktop/src/components/ui/Modal.tsx
+  a779eb46d9c04b36 17,23-24,28,35-36,40,42,46
+SPEC.md
+  a779eb46d9c04b36 3,52,237-238,242,245-247,257-272,364-373,430-433,443
+packages/desktop/src/index.css
+  a779eb46d9c04b36 924,981-1029,2216,2222-2226,2230,2233-2236,2238-2271,2274-2499,2502-2589,2636-2685,2699-2719
+packages/agent-config/src/config.ts
+  c488025999ce15d2 372
+  a779eb46d9c04b36 306,311-312,316-323,328-337,367-371,373-381,386,388
+packages/desktop/src/components/chat/ModelSelector.tsx
+  c488025999ce15d2 200
+  a779eb46d9c04b36 5,68,111-122,176,179-180,182,184-199,214-219
+packages/desktop/src/components/chat/ProviderSettingsModal.tsx
+  a779eb46d9c04b36 1-220
+packages/agent-core/src/session.ts
+  a779eb46d9c04b36 148-154,260-261,264,267-268,315-319
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "ed6a85f45fda96208ec17d32cfff5584f4d4a752",
+  "prompts": {
+    "a779eb46d9c04b36": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "68971b3e-4582-4be0-83b5-4a5f8ba58fab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 840,
+      "total_deletions": 287,
+      "accepted_lines": 1081,
+      "overriden_lines": 0
+    },
+    "c488025999ce15d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4edd72c8-9a9d-4d23-be38-db743878c4b3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}
