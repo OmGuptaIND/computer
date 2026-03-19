@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync, copyFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync, copyFileSync, appendFileSync, rmdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir, hostname } from "node:os";
 import { randomBytes } from "node:crypto";
@@ -17,11 +17,45 @@ export type ProvidersMap = Record<string, ProviderConfig>;
 
 // ── Session persistence ─────────────────────────────────────────────
 
+/** Session metadata — stored in meta.json, no messages */
+export interface SessionMeta {
+  id: string;
+  title: string;
+  provider: string;
+  model: string;
+  createdAt: number;
+  lastActiveAt: number;
+  messageCount: number;
+  archived: boolean;
+  tags: string[];
+  parentSessionId?: string;
+}
+
+/** A single message line in messages.jsonl */
+export interface SessionMessage {
+  seq: number;
+  role: "user" | "assistant" | "tool_call" | "tool_result" | "system";
+  content?: string;
+  name?: string;          // tool name
+  input?: unknown;        // tool input
+  id?: string;            // tool call ID
+  output?: string;        // tool result output
+  isError?: boolean;
+  ts: number;
+}
+
+/** Session index — lightweight listing of all sessions */
+interface SessionIndex {
+  version: number;
+  sessions: SessionMeta[];
+}
+
+/** Full session data for backward compat and session.ts */
 export interface PersistedSession {
   id: string;
   provider: string;
   model: string;
-  messages: unknown[];  // pi SDK message format
+  messages: unknown[];    // pi SDK message format
   createdAt: number;
   lastActiveAt: number;
   title: string;
@@ -267,48 +301,289 @@ export function getProvidersList(config: AgentConfig) {
   }));
 }
 
-// ── Session persistence ─────────────────────────────────────────────
+// ── Session persistence (v2: meta.json + messages.jsonl) ────────────
 
+const SESSIONS_DATA_DIR = join(SESSIONS_DIR, "data");
+const INDEX_PATH = join(SESSIONS_DIR, "index.json");
+
+function sessionDir(id: string): string {
+  return join(SESSIONS_DATA_DIR, id);
+}
+
+function metaPath(id: string): string {
+  return join(sessionDir(id), "meta.json");
+}
+
+function messagesPath(id: string): string {
+  return join(sessionDir(id), "messages.jsonl");
+}
+
+/** Save session — writes meta.json and full messages.jsonl, updates index */
 export function saveSession(session: PersistedSession): void {
-  mkdirSync(SESSIONS_DIR, { recursive: true });
-  const path = join(SESSIONS_DIR, `${session.id}.json`);
-  writeFileSync(path, JSON.stringify(session, null, 2), "utf-8");
+  const dir = sessionDir(session.id);
+  mkdirSync(dir, { recursive: true });
+
+  // Write meta
+  const meta: SessionMeta = {
+    id: session.id,
+    title: session.title,
+    provider: session.provider,
+    model: session.model,
+    createdAt: session.createdAt,
+    lastActiveAt: session.lastActiveAt,
+    messageCount: session.messages.length,
+    archived: false,
+    tags: [],
+  };
+  writeFileSync(metaPath(session.id), JSON.stringify(meta, null, 2), "utf-8");
+
+  // Write messages as JSONL (full rewrite from pi SDK format)
+  const lines = session.messages.map((msg: any, i: number) => {
+    const line: SessionMessage = {
+      seq: i + 1,
+      role: msg.role || "system",
+      ts: session.lastActiveAt,
+    };
+    // Extract content from pi SDK message format
+    if (msg.content) {
+      if (typeof msg.content === "string") {
+        line.content = msg.content;
+      } else if (Array.isArray(msg.content)) {
+        const textParts = msg.content.filter((c: any) => c.type === "text");
+        if (textParts.length > 0) {
+          line.content = textParts.map((c: any) => c.text).join("");
+        }
+      }
+    }
+    return JSON.stringify(line);
+  });
+  writeFileSync(messagesPath(session.id), lines.join("\n") + "\n", "utf-8");
+
+  // Update index
+  updateIndex(meta);
 }
 
+/** Append a single message to an existing session's JSONL */
+export function appendSessionMessage(id: string, msg: SessionMessage): void {
+  const path = messagesPath(id);
+  if (!existsSync(path)) return;
+  appendFileSync(path, JSON.stringify(msg) + "\n");
+
+  // Update meta counts
+  const meta = loadSessionMeta(id);
+  if (meta) {
+    meta.messageCount++;
+    meta.lastActiveAt = msg.ts;
+    writeFileSync(metaPath(id), JSON.stringify(meta, null, 2), "utf-8");
+    updateIndex(meta);
+  }
+}
+
+/** Load session with full messages (for pi SDK resume) */
 export function loadSession(id: string): PersistedSession | null {
-  const path = join(SESSIONS_DIR, `${id}.json`);
+  // Try v2 format first
+  const meta = loadSessionMeta(id);
+  if (meta) {
+    const messages = loadSessionMessages(id);
+    return {
+      id: meta.id,
+      provider: meta.provider,
+      model: meta.model,
+      messages, // raw JSONL messages — session.ts converts back to pi format
+      createdAt: meta.createdAt,
+      lastActiveAt: meta.lastActiveAt,
+      title: meta.title,
+    };
+  }
+
+  // Fall back to v1 format (flat .json file)
+  const v1Path = join(SESSIONS_DIR, `${id}.json`);
+  if (existsSync(v1Path)) {
+    const raw = readFileSync(v1Path, "utf-8");
+    const v1 = JSON.parse(raw) as PersistedSession;
+    // Migrate to v2 on read
+    saveSession(v1);
+    unlinkSync(v1Path);
+    return v1;
+  }
+
+  return null;
+}
+
+/** Load just the metadata (no messages) */
+export function loadSessionMeta(id: string): SessionMeta | null {
+  const path = metaPath(id);
   if (!existsSync(path)) return null;
-  const raw = readFileSync(path, "utf-8");
-  return JSON.parse(raw) as PersistedSession;
+  return JSON.parse(readFileSync(path, "utf-8")) as SessionMeta;
 }
 
+/** Load messages from JSONL */
+function loadSessionMessages(id: string): unknown[] {
+  const path = messagesPath(id);
+  if (!existsSync(path)) return [];
+  const raw = readFileSync(path, "utf-8").trim();
+  if (!raw) return [];
+  return raw.split("\n").map(line => JSON.parse(line));
+}
+
+/** List all sessions (from index, fast) */
 export function listSessions(): PersistedSession[] {
-  mkdirSync(SESSIONS_DIR, { recursive: true });
-  const files = readdirSync(SESSIONS_DIR).filter(f => f.endsWith(".json"));
-  return files.map(f => {
-    const raw = readFileSync(join(SESSIONS_DIR, f), "utf-8");
-    return JSON.parse(raw) as PersistedSession;
-  }).sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+  const index = loadIndex();
+  return index.sessions
+    .filter(s => !s.archived)
+    .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
+    .map(meta => ({
+      id: meta.id,
+      provider: meta.provider,
+      model: meta.model,
+      messages: [], // don't load messages for listing
+      createdAt: meta.createdAt,
+      lastActiveAt: meta.lastActiveAt,
+      title: meta.title,
+    }));
 }
 
+/** List session metadata only (no messages) */
+export function listSessionMetas(): SessionMeta[] {
+  const index = loadIndex();
+  return index.sessions
+    .filter(s => !s.archived)
+    .sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+}
+
+/** Delete session (hard delete) */
 export function deleteSession(id: string): boolean {
-  const path = join(SESSIONS_DIR, `${id}.json`);
-  if (!existsSync(path)) return false;
-  unlinkSync(path);
+  const dir = sessionDir(id);
+  if (existsSync(dir)) {
+    // Remove all files in the session directory
+    for (const file of readdirSync(dir)) {
+      unlinkSync(join(dir, file));
+    }
+    rmdirSync(dir);
+  }
+
+  // Also remove v1 format if exists
+  const v1Path = join(SESSIONS_DIR, `${id}.json`);
+  if (existsSync(v1Path)) {
+    unlinkSync(v1Path);
+  }
+
+  removeFromIndex(id);
   return true;
 }
 
-export function cleanExpiredSessions(ttlDays: number = 7): number {
-  const cutoff = Date.now() - (ttlDays * 24 * 60 * 60 * 1000);
-  const sessions = listSessions();
+/** Archive session (soft delete) */
+export function archiveSession(id: string): boolean {
+  const meta = loadSessionMeta(id);
+  if (!meta) return false;
+  meta.archived = true;
+  writeFileSync(metaPath(id), JSON.stringify(meta, null, 2), "utf-8");
+  updateIndex(meta);
+  return true;
+}
+
+/** Clean expired sessions */
+export function cleanExpiredSessions(ttlDays: number = 30): number {
+  const archiveCutoff = Date.now() - (ttlDays * 24 * 60 * 60 * 1000);
+  const deleteCutoff = Date.now() - ((ttlDays + 7) * 24 * 60 * 60 * 1000);
+
+  const index = loadIndex();
   let cleaned = 0;
-  for (const session of sessions) {
-    if (session.lastActiveAt < cutoff) {
-      deleteSession(session.id);
+
+  for (const meta of index.sessions) {
+    if (meta.archived && meta.lastActiveAt < deleteCutoff) {
+      // Hard delete sessions archived for > 7 days past TTL
+      deleteSession(meta.id);
       cleaned++;
+    } else if (!meta.archived && meta.lastActiveAt < archiveCutoff) {
+      // Archive sessions older than TTL
+      archiveSession(meta.id);
     }
   }
+
   return cleaned;
+}
+
+// ── Index management ────────────────────────────────────────────────
+
+function loadIndex(): SessionIndex {
+  mkdirSync(SESSIONS_DIR, { recursive: true });
+  if (existsSync(INDEX_PATH)) {
+    try {
+      return JSON.parse(readFileSync(INDEX_PATH, "utf-8")) as SessionIndex;
+    } catch {
+      // Corrupt index — rebuild
+    }
+  }
+  return rebuildIndex();
+}
+
+function saveIndex(index: SessionIndex): void {
+  writeFileSync(INDEX_PATH, JSON.stringify(index, null, 2), "utf-8");
+}
+
+function updateIndex(meta: SessionMeta): void {
+  const index = loadIndex();
+  const existing = index.sessions.findIndex(s => s.id === meta.id);
+  if (existing >= 0) {
+    index.sessions[existing] = meta;
+  } else {
+    index.sessions.push(meta);
+  }
+  saveIndex(index);
+}
+
+function removeFromIndex(id: string): void {
+  const index = loadIndex();
+  index.sessions = index.sessions.filter(s => s.id !== id);
+  saveIndex(index);
+}
+
+/** Rebuild index by scanning all session data directories */
+function rebuildIndex(): SessionIndex {
+  mkdirSync(SESSIONS_DATA_DIR, { recursive: true });
+  const sessions: SessionMeta[] = [];
+
+  if (existsSync(SESSIONS_DATA_DIR)) {
+    for (const dir of readdirSync(SESSIONS_DATA_DIR)) {
+      const meta = metaPath(dir);
+      if (existsSync(meta)) {
+        try {
+          sessions.push(JSON.parse(readFileSync(meta, "utf-8")));
+        } catch {}
+      }
+    }
+  }
+
+  // Also migrate any v1 flat .json files
+  if (existsSync(SESSIONS_DIR)) {
+    for (const file of readdirSync(SESSIONS_DIR)) {
+      if (file.endsWith(".json") && file !== "index.json") {
+        const id = file.replace(".json", "");
+        if (!sessions.some(s => s.id === id)) {
+          // Will be migrated on next loadSession call
+          try {
+            const raw = JSON.parse(readFileSync(join(SESSIONS_DIR, file), "utf-8"));
+            sessions.push({
+              id: raw.id,
+              title: raw.title || raw.id,
+              provider: raw.provider || "anthropic",
+              model: raw.model || "claude-sonnet-4-6",
+              createdAt: raw.createdAt || Date.now(),
+              lastActiveAt: raw.lastActiveAt || Date.now(),
+              messageCount: raw.messages?.length || 0,
+              archived: false,
+              tags: [],
+            });
+          } catch {}
+        }
+      }
+    }
+  }
+
+  const index: SessionIndex = { version: 1, sessions };
+  saveIndex(index);
+  return index;
 }
 
 // ── Exports ─────────────────────────────────────────────────────────

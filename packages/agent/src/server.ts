@@ -22,7 +22,7 @@ import {
   setProviderKey,
   setDefault,
   getProvidersList,
-  listSessions as listPersistedSessions,
+  listSessionMetas,
   deleteSession as deletePersistedSession,
   cleanExpiredSessions,
 } from "./config.js";
@@ -371,23 +371,22 @@ export class AgentServer {
   }
 
   private handleSessionsList() {
-    // Combine in-memory sessions with persisted ones
-    const persisted = listPersistedSessions();
-    const memoryIds = new Set(this.sessions.keys());
+    // Fast listing from index.json (no message loading)
+    const metas = listSessionMetas();
 
-    const sessions = persisted.map((p) => ({
-      id: p.id,
-      title: p.title,
-      provider: p.provider,
-      model: p.model,
-      messageCount: p.messages.length,
-      createdAt: p.createdAt,
-      lastActiveAt: p.lastActiveAt,
+    const sessions = metas.map((m) => ({
+      id: m.id,
+      title: m.title,
+      provider: m.provider,
+      model: m.model,
+      messageCount: m.messageCount,
+      createdAt: m.createdAt,
+      lastActiveAt: m.lastActiveAt,
     }));
 
     // Add in-memory sessions that aren't persisted yet
     for (const [id, session] of this.sessions) {
-      if (!persisted.some((p) => p.id === id)) {
+      if (!metas.some((m) => m.id === id)) {
         const info = session.getInfo();
         sessions.push({
           id: info.id,
@@ -401,7 +400,6 @@ export class AgentServer {
       }
     }
 
-    // Sort by last active
     sessions.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
 
     this.sendToClient(Channel.AI, {
