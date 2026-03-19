@@ -15,7 +15,7 @@
     state: present
     update_cache: true
     cache_valid_time: 3600
-  when: ansible_os_family == "Debian"
+  when: ansible_facts["os_family"] == "Debian"
 
 - name: Install system packages (RHEL/Fedora)
   dnf:
@@ -29,7 +29,7 @@
       - python3
       - firewalld
     state: present
-  when: ansible_os_family == "RedHat"
+  when: ansible_facts["os_family"] == "RedHat"
 
 # ── Node.js 22 ───────────────────────────────────────────────────
 
@@ -49,26 +49,26 @@
   shell: curl -fsSL https://deb.nodesource.com/setup_{{ node_major_version }}.x | bash -
   args:
     creates: /etc/apt/sources.list.d/nodesource.list
-  when: node_needs_install and ansible_os_family == "Debian"
+  when: node_needs_install and ansible_facts["os_family"] == "Debian"
 
 - name: Install Node.js (Debian/Ubuntu)
   apt:
     name: nodejs
     state: present
     update_cache: true
-  when: node_needs_install and ansible_os_family == "Debian"
+  when: node_needs_install and ansible_facts["os_family"] == "Debian"
 
 - name: Add NodeSource repo (RHEL/Fedora)
   shell: curl -fsSL https://rpm.nodesource.com/setup_{{ node_major_version }}.x | bash -
   args:
     creates: /etc/yum.repos.d/nodesource-el9.repo
-  when: node_needs_install and ansible_os_family == "RedHat"
+  when: node_needs_install and ansible_facts["os_family"] == "RedHat"
 
 - name: Install Node.js (RHEL/Fedora)
   dnf:
     name: nodejs
     state: present
-  when: node_needs_install and ansible_os_family == "RedHat"
+  when: node_needs_install and ansible_facts["os_family"] == "RedHat"
 
 # ── pnpm ─────────────────────────────────────────────────────────
 
@@ -104,6 +104,17 @@
     group: "{{ anton_user }}"
     mode: "0755"
 
+- name: Check if repo dir is a git repo
+  stat:
+    path: "{{ anton_repo_dir }}/.git"
+  register: repo_git_dir
+
+- name: Remove non-git repo dir (left by rsync)
+  file:
+    path: "{{ anton_repo_dir }}"
+    state: absent
+  when: not repo_git_dir.stat.exists
+
 - name: Clone or update anton.computer repo
   git:
     repo: "{{ anton_repo_url }}"
@@ -111,30 +122,28 @@
     version: "{{ anton_branch }}"
     depth: 1
     force: true
-  become_user: "{{ anton_user }}"
   notify: restart anton-agent
+
+- name: Set repo ownership
+  file:
+    path: "{{ anton_repo_dir }}"
+    owner: "{{ anton_user }}"
+    group: "{{ anton_user }}"
+    recurse: true
 
 # ── Build ────────────────────────────────────────────────────────
 
-- name: Install Node.js dependencies
-  command: pnpm install --no-frozen-lockfile
-  args:
-    chdir: "{{ anton_repo_dir }}"
+- name: Install dependencies and build all packages
+  shell: |
+    cd {{ anton_repo_dir }} && \
+    pnpm install --no-frozen-lockfile && \
+    pnpm --filter @anton/protocol build && \
+    pnpm --filter @anton/agent-config build && \
+    pnpm --filter @anton/agent-core build && \
+    pnpm --filter @anton/agent-server build && \
+    pnpm --filter @anton/agent build
   become_user: "{{ anton_user }}"
-  changed_when: true
-
-- name: Build protocol package
-  command: pnpm --filter @anton/protocol build
-  args:
-    chdir: "{{ anton_repo_dir }}"
-  become_user: "{{ anton_user }}"
-  changed_when: true
-
-- name: Build agent package
-  command: pnpm --filter @anton/agent build
-  args:
-    chdir: "{{ anton_repo_dir }}"
-  become_user: "{{ anton_user }}"
+  become_method: su
   changed_when: true
   notify: restart anton-agent
 
@@ -144,23 +153,20 @@
   command: git rev-parse --short HEAD
   args:
     chdir: "{{ anton_repo_dir }}"
-  become_user: "{{ anton_user }}"
   register: git_hash
   changed_when: false
 
 - name: Get package version
-  shell: "node -e \"console.log(JSON.parse(require('fs').readFileSync('packages/agent/package.json','utf8')).version)\""
+  shell: "node -e \"console.log(JSON.parse(require('fs').readFileSync('packages/agent-config/package.json','utf8')).version)\""
   args:
     chdir: "{{ anton_repo_dir }}"
-  become_user: "{{ anton_user }}"
   register: pkg_version
   changed_when: false
 
 - name: Get spec version
-  shell: "grep 'Spec Version:' SPEC.md | head -1 | sed 's/.*Spec Version: //;s/\\*\\*.*//' | tr -d ' '"
+  shell: "grep \"SPEC_VERSION\" packages/agent-config/src/version.ts | head -1 | sed \"s/.*= '//;s/'.*//\""
   args:
     chdir: "{{ anton_repo_dir }}"
-  become_user: "{{ anton_user }}"
   register: spec_version
   changed_when: false
 
@@ -223,7 +229,7 @@
     rule: allow
     port: "{{ anton_port }}"
     proto: tcp
-  when: anton_configure_firewall and ansible_os_family == "Debian"
+  when: anton_configure_firewall and ansible_facts["os_family"] == "Debian"
   ignore_errors: true
 
 - name: Open agent plain WS fallback port (UFW)
@@ -231,7 +237,7 @@
     rule: allow
     port: "{{ anton_port + 1 }}"
     proto: tcp
-  when: anton_configure_firewall and ansible_os_family == "Debian"
+  when: anton_configure_firewall and ansible_facts["os_family"] == "Debian"
   ignore_errors: true
 
 - name: Open agent port (firewalld)
@@ -240,14 +246,13 @@
     permanent: true
     immediate: true
     state: enabled
-  when: anton_configure_firewall and ansible_os_family == "RedHat"
+  when: anton_configure_firewall and ansible_facts["os_family"] == "RedHat"
   ignore_errors: true
 
 # ── Print connection info ────────────────────────────────────────
 
 - name: Get agent token from config
   shell: "grep '^token:' {{ anton_install_dir }}/config.yaml 2>/dev/null | awk '{print $2}' || echo 'not-yet-generated'"
-  become_user: "{{ anton_user }}"
   register: anton_token
   changed_when: false
   ignore_errors: true

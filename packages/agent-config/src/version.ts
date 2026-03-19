@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const SPEC_VERSION = '0.2.0'
+export const SPEC_VERSION = '0.4.0'
 
 function getPackageVersion(): string {
   try {

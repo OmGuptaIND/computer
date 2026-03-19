@@ -47,8 +47,8 @@ sync: _check-ansible
 	@echo "  Source: $(REPO_ROOT)"
 	@echo ""
 	@GIT_HASH=$$(cd "$(REPO_ROOT)" && git rev-parse --short HEAD 2>/dev/null || echo "dev"); \
-	PKG_VERSION=$$(node -e "console.log(JSON.parse(require('fs').readFileSync('$(REPO_ROOT)/packages/agent/package.json','utf8')).version)" 2>/dev/null || echo "0.1.0"); \
-	SPEC_VERSION=$$(grep 'Spec Version:' "$(REPO_ROOT)/SPEC.md" 2>/dev/null | head -1 | sed 's/.*Spec Version: //;s/\*\*.*//' | tr -d ' ' || echo "0.1.0"); \
+	PKG_VERSION=$$(node -e "console.log(JSON.parse(require('fs').readFileSync('$(REPO_ROOT)/packages/agent-config/package.json','utf8')).version)" 2>/dev/null || echo "0.1.0"); \
+	SPEC_VERSION=$$(grep "SPEC_VERSION" "$(REPO_ROOT)/packages/agent-config/src/version.ts" 2>/dev/null | head -1 | sed "s/.*= '//;s/'.*//" || echo "0.1.0"); \
 	ansible all -i $(INVENTORY) $(LIMIT) --list-hosts 2>/dev/null | tail -n +2 | sed 's/^ *//' | while read host; do \
 		IP=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_host','$$host'))" 2>/dev/null || echo "$$host"); \
 		USER=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_user','anton'))" 2>/dev/null || echo "anton"); \
