@@ -28,7 +28,7 @@ export function Modal({ open, onClose, title, children }: Props) {
 
           {/* Content */}
           <motion.div
-            className="relative bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden"
+            className="relative bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden"
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.95, opacity: 0 }}

@@ -14,24 +14,18 @@ export function ToolCallBlock({ message }: Props) {
 
   if (isResult) {
     return (
-      <div
-        className={`rounded-lg border overflow-hidden ${
-          isError
-            ? "border-red-900/50 bg-red-950/30"
-            : "border-zinc-800 bg-zinc-950"
-        }`}
-      >
+      <div className={isError ? "tool-result tool-result--error" : "tool-result"}>
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-2 w-full px-3 py-2 text-left hover:bg-zinc-800/30 transition-colors"
+          className="tool-result__summary"
         >
-          {isError && <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />}
-          <span className={`text-xs font-mono truncate ${isError ? "text-red-400" : "text-zinc-500"}`}>
+          {isError && <AlertTriangle className="tool-result__alert" />}
+          <span className={isError ? "tool-result__preview tool-result__preview--error" : "tool-result__preview"}>
             {message.content.slice(0, 80)}
             {message.content.length > 80 ? "..." : ""}
           </span>
-          <span className="ml-auto shrink-0 text-zinc-600">
-            {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          <span className="tool-result__chevron">
+            {expanded ? <ChevronUp className="tool-result__chevronIcon" /> : <ChevronDown className="tool-result__chevronIcon" />}
           </span>
         </button>
         <AnimatePresence>
@@ -41,9 +35,9 @@ export function ToolCallBlock({ message }: Props) {
               animate={{ height: "auto" }}
               exit={{ height: 0 }}
               transition={{ duration: 0.15 }}
-              className="overflow-hidden"
+              className="tool-result__body"
             >
-              <pre className="px-3 pb-3 text-xs font-mono text-zinc-400 whitespace-pre-wrap max-h-64 overflow-auto">
+              <pre className="tool-result__content">
                 {message.content}
               </pre>
             </motion.div>
@@ -54,11 +48,11 @@ export function ToolCallBlock({ message }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800">
-      <Wrench className="w-3 h-3 text-yellow-500 shrink-0" />
-      <span className="text-xs font-semibold text-yellow-500">{message.toolName}</span>
+    <div className="tool-call">
+      <Wrench className="tool-call__icon" />
+      <span className="tool-call__name">{message.toolName}</span>
       {message.toolInput && (
-        <span className="text-xs font-mono text-zinc-500 truncate">
+        <span className="tool-call__input">
           {message.toolName === "shell"
             ? (message.toolInput as any).command
             : JSON.stringify(message.toolInput).slice(0, 80)}

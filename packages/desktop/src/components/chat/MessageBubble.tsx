@@ -1,6 +1,6 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Bot, UserRound } from "lucide-react";
 import type { ChatMessage } from "../../lib/store.js";
 import { MarkdownRenderer } from "./MarkdownRenderer.js";
 import { ToolCallBlock } from "./ToolCallBlock.js";
@@ -10,6 +10,9 @@ interface Props {
 }
 
 export function MessageBubble({ message }: Props) {
+  const isUser = message.role === "user";
+  const authorLabel = isUser ? "You" : "Assistant";
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -17,12 +20,25 @@ export function MessageBubble({ message }: Props) {
       transition={{ duration: 0.2 }}
       className={getContainerClass(message)}
     >
+      {(message.role === "user" || message.role === "assistant") && (
+        <div className="message__meta">
+          <span className={isUser ? "message__avatar message__avatar--user" : "message__avatar message__avatar--assistant"}>
+            {isUser ? <UserRound className="message__avatarIcon" /> : <Bot className="message__avatarIcon" />}
+          </span>
+          <span className="message__author">
+            {authorLabel}
+          </span>
+        </div>
+      )}
+
       {message.role === "user" && (
-        <div className="text-sm text-blue-200 whitespace-pre-wrap">{message.content}</div>
+        <div className="message__surface message__surface--user">
+          <div className="message__text">{message.content}</div>
+        </div>
       )}
 
       {message.role === "assistant" && (
-        <div className="text-sm text-zinc-300 leading-relaxed">
+        <div className="message__surface message__surface--assistant">
           <MarkdownRenderer content={message.content} />
         </div>
       )}
@@ -30,11 +46,9 @@ export function MessageBubble({ message }: Props) {
       {message.role === "tool" && <ToolCallBlock message={message} />}
 
       {message.role === "system" && (
-        <div className="flex items-start gap-1.5 text-xs">
-          {message.isError && <AlertTriangle className="w-3 h-3 text-red-400 shrink-0 mt-0.5" />}
-          <span
-            className={`italic ${message.isError ? "text-red-400" : "text-zinc-500"}`}
-          >
+        <div className={message.isError ? "system-message system-message--error" : "system-message"}>
+          {message.isError && <AlertTriangle className="system-message__icon" />}
+          <span className="system-message__text">
             {message.content}
           </span>
         </div>
@@ -44,17 +58,17 @@ export function MessageBubble({ message }: Props) {
 }
 
 function getContainerClass(msg: ChatMessage): string {
-  const base = "max-w-full";
+  const base = "message";
 
   switch (msg.role) {
     case "user":
-      return `${base} self-end bg-blue-950/60 border border-blue-900/30 px-4 py-2.5 rounded-2xl rounded-br-md`;
+      return `${base} message--user`;
     case "assistant":
-      return `${base} px-1`;
+      return `${base} message--assistant`;
     case "tool":
-      return `${base}`;
+      return `${base} message--tool`;
     case "system":
-      return `${base} px-2 py-1`;
+      return `${base} message--system`;
     default:
       return base;
   }

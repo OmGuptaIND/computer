@@ -26,18 +26,25 @@ export function SkillCard({ skill, onClick }: Props) {
   return (
     <button
       onClick={onClick}
-      className="group flex items-start gap-3 w-full p-3 rounded-lg text-left hover:bg-zinc-800/60 transition-colors"
+      className="w-full rounded-2xl border border-white/7 bg-white/[0.03] p-3.5 text-left transition-colors hover:bg-white/[0.05]"
     >
-      <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0 group-hover:border-zinc-600 transition-colors">
-        <Icon className="w-4 h-4 text-zinc-400" />
-      </div>
-      <div className="min-w-0 pt-0.5">
-        <p className="text-xs font-medium text-zinc-200 group-hover:text-zinc-100 transition-colors">
-          {skill.name}
-        </p>
-        <p className="text-[11px] text-zinc-500 truncate mt-0.5">
-          {skill.description}
-        </p>
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/8 bg-[#171615]">
+          <Icon className="h-4.5 w-4.5 text-zinc-300" />
+        </div>
+        <div className="min-w-0 flex-1 pt-0.5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="truncate text-[13px] font-semibold tracking-[-0.01em] text-zinc-100">
+              {skill.name}
+            </p>
+            <span className="shrink-0 rounded-full border border-white/8 bg-[#171615] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+              {skill.category}
+            </span>
+          </div>
+          <p className="mt-1.5 text-[12px] leading-5 text-zinc-400">
+            {skill.description}
+          </p>
+        </div>
       </div>
     </button>
   );

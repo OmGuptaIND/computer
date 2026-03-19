@@ -8,32 +8,46 @@ interface StatusBarProps {
   agentStatus: "idle" | "working" | "error";
   machineName?: string;
   agentId?: string;
+  provider?: string;
+  model?: string;
+  sessionId?: string;
 }
 
-export function StatusBar({ connectionStatus, agentStatus, machineName, agentId }: StatusBarProps) {
+export function StatusBar({
+  connectionStatus,
+  agentStatus,
+  machineName,
+  provider,
+  model,
+  sessionId,
+}: StatusBarProps) {
   const connIcon =
     connectionStatus === "connected" ? ICONS.connected :
     connectionStatus === "connecting" || connectionStatus === "authenticating" ? ICONS.connecting :
     ICONS.disconnected;
 
-  const agentStatusText =
-    agentStatus === "working" ? "working..." :
-    agentStatus === "error" ? "error" :
-    "idle";
-
   return (
     <Box paddingX={1} justifyContent="space-between">
+      {/* Left: connection + model info */}
       <Text>
         {connIcon}{" "}
         <Text dimColor>{machineName ?? "not connected"}</Text>
-        {agentId && <Text dimColor> ({agentId})</Text>}
-      </Text>
-      <Text dimColor>
-        {agentStatus === "working" ? (
-          <Text color="yellow">● {agentStatusText}</Text>
-        ) : (
-          agentStatusText
+        {provider && model && (
+          <Text dimColor> · {provider}/{model}</Text>
         )}
+        {sessionId && sessionId !== "default" && (
+          <Text dimColor> · {sessionId}</Text>
+        )}
+      </Text>
+
+      {/* Right: status + keybinding hints */}
+      <Text>
+        {agentStatus === "working" ? (
+          <Text color="yellow">● working  </Text>
+        ) : (
+          <Text dimColor>idle  </Text>
+        )}
+        <Text dimColor>^P providers · ^M model · ^S sessions · ^Q quit</Text>
       </Text>
     </Box>
   );

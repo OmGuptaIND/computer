@@ -34,30 +34,36 @@ export function SkillsPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-3 pt-1 pb-2">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search skills..." />
+      <div className="px-5 pt-1 pb-3">
+        <SearchInput value={search} onChange={setSearch} placeholder="Find a skill" />
       </div>
 
-      <div className="flex-1 overflow-y-auto px-1">
+      <div className="flex-1 overflow-y-auto px-5 pb-5">
         {skills.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Zap className="w-8 h-8 text-zinc-700 mb-3" />
-            <p className="text-xs text-zinc-500">No skills found</p>
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-white/6 bg-white/[0.02] py-14 text-center">
+            <Zap className="mb-4 h-9 w-9 text-zinc-700" />
+            <p className="text-sm font-medium text-zinc-200">No matching skills</p>
+            <p className="mt-1 text-xs text-zinc-500">Try a command name, category, or capability.</p>
           </div>
         )}
 
         {Array.from(categories.entries()).map(([cat, catSkills]) => (
-          <div key={cat} className="mb-3">
-            <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider px-3 mb-1">
-              {cat}
-            </p>
-            {catSkills.map((skill) => (
+          <div key={cat} className="mb-5">
+            <div className="mb-2 flex items-center gap-3 px-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-zinc-500">
+                {cat}
+              </p>
+              <div className="h-px flex-1 bg-white/6" />
+            </div>
+            <div className="space-y-2">
+              {catSkills.map((skill) => (
               <SkillCard
                 key={skill.id}
                 skill={skill}
                 onClick={() => setSelectedSkill(skill)}
               />
-            ))}
+              ))}
+            </div>
           </div>
         ))}
       </div>

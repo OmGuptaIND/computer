@@ -14,28 +14,26 @@ export function StatusIndicator({ type, status, label = true }: Props) {
     : agentConfig[status as AgentStatus] || agentConfig.unknown;
 
   return (
-    <div className="flex items-center gap-1.5">
-      <span
-        className={`w-1.5 h-1.5 rounded-full ${config.color} ${config.animate ? "animate-pulse" : ""}`}
-      />
+    <div className="status-indicator">
+      <span className={`status-indicator__dot ${config.className} ${config.animate ? "status-indicator__dot--pulse" : ""}`} />
       {label && (
-        <span className="text-[11px] text-zinc-500">{config.label}</span>
+        <span className="status-indicator__label">{config.label}</span>
       )}
     </div>
   );
 }
 
-const connectionConfig: Record<ConnectionStatus, { color: string; label: string; animate: boolean }> = {
-  connected: { color: "bg-green-500", label: "Connected", animate: false },
-  connecting: { color: "bg-yellow-500", label: "Connecting...", animate: true },
-  authenticating: { color: "bg-yellow-500", label: "Authenticating...", animate: true },
-  disconnected: { color: "bg-zinc-600", label: "Disconnected", animate: false },
-  error: { color: "bg-red-500", label: "Error", animate: false },
+const connectionConfig: Record<ConnectionStatus, { className: string; label: string; animate: boolean }> = {
+  connected: { className: "status-indicator__dot--success", label: "Connected", animate: false },
+  connecting: { className: "status-indicator__dot--warning", label: "Connecting...", animate: true },
+  authenticating: { className: "status-indicator__dot--warning", label: "Authenticating...", animate: true },
+  disconnected: { className: "status-indicator__dot--muted", label: "Disconnected", animate: false },
+  error: { className: "status-indicator__dot--danger", label: "Error", animate: false },
 };
 
-const agentConfig: Record<AgentStatus, { color: string; label: string; animate: boolean }> = {
-  idle: { color: "bg-green-500", label: "Ready", animate: false },
-  working: { color: "bg-yellow-500", label: "Working...", animate: true },
-  error: { color: "bg-red-500", label: "Error", animate: false },
-  unknown: { color: "bg-zinc-600", label: "Unknown", animate: false },
+const agentConfig: Record<AgentStatus, { className: string; label: string; animate: boolean }> = {
+  idle: { className: "status-indicator__dot--success", label: "Ready", animate: false },
+  working: { className: "status-indicator__dot--warning", label: "Working...", animate: true },
+  error: { className: "status-indicator__dot--danger", label: "Error", animate: false },
+  unknown: { className: "status-indicator__dot--muted", label: "Unknown", animate: false },
 };

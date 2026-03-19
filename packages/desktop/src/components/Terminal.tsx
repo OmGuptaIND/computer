@@ -94,8 +94,14 @@ export function Terminal() {
   }, []);
 
   return (
-    <div className="h-full bg-[#09090b] p-1">
-      <div ref={containerRef} className="h-full w-full" />
+    <div className="h-full bg-transparent p-6">
+      <div className="h-full overflow-hidden rounded-[28px] border border-white/8 bg-[#171615]">
+        <div className="flex items-center justify-between border-b border-white/8 bg-[#1f1d1c] px-4 py-3">
+          <span className="text-xs text-zinc-300 font-medium">Live Terminal</span>
+          <span className="text-[11px] text-zinc-500 font-mono">Session {TERMINAL_ID}</span>
+        </div>
+        <div ref={containerRef} className="h-[calc(100%-37px)] w-full" />
+      </div>
     </div>
   );
 }

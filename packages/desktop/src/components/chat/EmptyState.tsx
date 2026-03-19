@@ -1,50 +1,71 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { Server, ArrowRight } from "lucide-react";
+import {
+  BriefcaseBusiness, Code2, ListChecks, HeartPulse,
+} from "lucide-react";
+import { ChatInput } from "./ChatInput.js";
+import type { Skill } from "../../lib/skills.js";
 
 interface Props {
   onSelectExample: (text: string) => void;
+  onSend: (text: string) => void;
+  onSkillSelect: (skill: Skill) => void;
 }
 
 const examples = [
-  { text: "Check disk usage and clean up if needed", icon: "💾" },
-  { text: "Install nginx and set up a reverse proxy", icon: "🌐" },
-  { text: "Find all log files larger than 100MB", icon: "📋" },
-  { text: "Deploy the app from a git repo", icon: "🚀" },
+  {
+    title: "Build a business",
+    prompt: "Build a 2026 founder operating system with lender-ready financials and B Corp analysis",
+    icon: BriefcaseBusiness,
+  },
+  {
+    title: "Create a prototype",
+    prompt: "Create an interactive market-map filtering site for the YC W26 batch",
+    icon: Code2,
+  },
+  {
+    title: "Organize my life",
+    prompt: "Build a weekly operating plan that balances work, health, and admin",
+    icon: ListChecks,
+  },
+  {
+    title: "Plan recovery",
+    prompt: "Create an evidence-based rehab planner for ACL, stroke, rotator cuff, and back injuries",
+    icon: HeartPulse,
+  },
 ];
 
-export function EmptyState({ onSelectExample }: Props) {
+export function EmptyState({ onSelectExample, onSend, onSkillSelect }: Props) {
   return (
-    <div className="flex flex-col items-center justify-center h-full px-8 pb-16">
+    <div className="empty-state">
       <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
+        initial={{ scale: 0.98, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.3 }}
-        className="flex flex-col items-center"
+        transition={{ duration: 0.28, ease: "easeOut" }}
+        className="empty-state__inner"
       >
-        <div className="w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-5">
-          <Server className="w-7 h-7 text-green-500" />
+        <div className="empty-state__status">
+          <span className="empty-state__statusDot" />
+          <span>Connected to computer</span>
         </div>
 
-        <h2 className="text-lg font-semibold text-zinc-100 mb-2">
-          Your cloud computer is ready
+        <h2 className="empty-state__title">
+          What can I do for you?
         </h2>
-        <p className="text-sm text-zinc-500 text-center max-w-sm mb-8">
-          Tell it what to do. It will execute commands, manage files, and
-          complete tasks on your server.
-        </p>
 
-        <div className="grid grid-cols-2 gap-2.5 w-full max-w-md">
+        <div className="empty-state__composer">
+          <ChatInput onSend={onSend} onSkillSelect={onSkillSelect} variant="hero" />
+        </div>
+
+        <div className="empty-state__chips">
           {examples.map((example) => (
             <button
-              key={example.text}
-              onClick={() => onSelectExample(example.text)}
-              className="group flex items-start gap-2.5 p-3.5 bg-zinc-900/50 border border-zinc-800 rounded-xl text-left hover:bg-zinc-800/60 hover:border-zinc-700 transition-all"
+              key={example.title}
+              onClick={() => onSelectExample(example.prompt)}
+              className="empty-chip"
             >
-              <span className="text-base mt-0.5 shrink-0">{example.icon}</span>
-              <span className="text-xs text-zinc-400 group-hover:text-zinc-300 transition-colors leading-relaxed">
-                {example.text}
-              </span>
+              <example.icon className="empty-chip__icon" />
+              <span className="empty-chip__label">{example.title}</span>
             </button>
           ))}
         </div>

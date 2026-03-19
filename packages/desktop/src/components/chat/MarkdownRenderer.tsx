@@ -13,7 +13,7 @@ export function MarkdownRenderer({ content }: Props) {
     <Markdown
       remarkPlugins={[remarkGfm]}
       // @ts-expect-error className works at runtime but types don't include it
-      className="prose-anton"
+      className="markdown-body"
       components={{
         code: CodeBlock,
         a: ({ href, children }) => (
@@ -21,40 +21,36 @@ export function MarkdownRenderer({ content }: Props) {
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-green-400 hover:text-green-300 underline underline-offset-2 transition-colors"
+            className="markdown-body__link"
           >
             {children}
           </a>
         ),
-        ul: ({ children }) => (
-          <ul className="list-disc list-inside space-y-1 my-2 text-zinc-300">{children}</ul>
-        ),
-        ol: ({ children }) => (
-          <ol className="list-decimal list-inside space-y-1 my-2 text-zinc-300">{children}</ol>
-        ),
+        ul: ({ children }) => <ul className="markdown-body__list">{children}</ul>,
+        ol: ({ children }) => <ol className="markdown-body__list markdown-body__list--ordered">{children}</ol>,
         blockquote: ({ children }) => (
-          <blockquote className="border-l-2 border-zinc-700 pl-3 my-2 text-zinc-400 italic">
+          <blockquote className="markdown-body__quote">
             {children}
           </blockquote>
         ),
         table: ({ children }) => (
-          <div className="overflow-x-auto my-3">
-            <table className="w-full text-xs border-collapse">{children}</table>
+          <div className="markdown-body__tableWrap">
+            <table className="markdown-body__table">{children}</table>
           </div>
         ),
         th: ({ children }) => (
-          <th className="border border-zinc-700 px-3 py-1.5 bg-zinc-800/50 text-left text-zinc-300 font-medium">
+          <th className="markdown-body__th">
             {children}
           </th>
         ),
         td: ({ children }) => (
-          <td className="border border-zinc-800 px-3 py-1.5 text-zinc-400">{children}</td>
+          <td className="markdown-body__td">{children}</td>
         ),
-        h1: ({ children }) => <h1 className="text-lg font-semibold text-zinc-100 mt-4 mb-2">{children}</h1>,
-        h2: ({ children }) => <h2 className="text-base font-semibold text-zinc-100 mt-3 mb-2">{children}</h2>,
-        h3: ({ children }) => <h3 className="text-sm font-semibold text-zinc-200 mt-3 mb-1">{children}</h3>,
-        p: ({ children }) => <p className="my-1.5 leading-relaxed">{children}</p>,
-        hr: () => <hr className="border-zinc-800 my-4" />,
+        h1: ({ children }) => <h1 className="markdown-body__heading markdown-body__heading--h1">{children}</h1>,
+        h2: ({ children }) => <h2 className="markdown-body__heading markdown-body__heading--h2">{children}</h2>,
+        h3: ({ children }) => <h3 className="markdown-body__heading markdown-body__heading--h3">{children}</h3>,
+        p: ({ children }) => <p className="markdown-body__paragraph">{children}</p>,
+        hr: () => <hr className="markdown-body__rule" />,
       }}
     />
   );
@@ -72,7 +68,7 @@ function CodeBlock({
 
   if (isInline) {
     return (
-      <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-[13px] font-mono text-zinc-200">
+      <code className="markdown-body__inlineCode">
         {children}
       </code>
     );
@@ -96,37 +92,35 @@ function HighlightedBlock({ code, lang }: { code: string; lang: string }) {
   }, [code]);
 
   return (
-    <div className="group relative my-3 rounded-lg overflow-hidden border border-zinc-800 bg-[#121212]">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-900/80 border-b border-zinc-800">
-        <span className="text-[11px] text-zinc-500 font-mono">{lang || "text"}</span>
+    <div className="code-block">
+      <div className="code-block__header">
+        <span className="code-block__language">{lang || "text"}</span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+          className="code-block__copy"
         >
           {copied ? (
             <>
-              <Check className="w-3 h-3" />
+              <Check className="code-block__copyIcon" />
               Copied
             </>
           ) : (
             <>
-              <Copy className="w-3 h-3" />
+              <Copy className="code-block__copyIcon" />
               Copy
             </>
           )}
         </button>
       </div>
 
-      {/* Code */}
       {html ? (
         <div
-          className="overflow-x-auto p-3 text-[13px] leading-relaxed [&_pre]:!bg-transparent [&_pre]:!m-0 [&_pre]:!p-0 [&_code]:!bg-transparent"
+          className="code-block__content code-block__content--highlighted"
           dangerouslySetInnerHTML={{ __html: html }}
         />
       ) : (
-        <pre className="overflow-x-auto p-3 text-[13px] leading-relaxed">
-          <code className="text-zinc-300 font-mono">{code}</code>
+        <pre className="code-block__content">
+          <code className="code-block__fallback">{code}</code>
         </pre>
       )}
     </div>

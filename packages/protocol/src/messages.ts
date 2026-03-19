@@ -26,12 +26,39 @@ export interface PongMessage {
   type: "pong";
 }
 
+export interface ConfigQueryMessage {
+  type: "config_query";
+  key: "providers" | "defaults" | "security";
+}
+
+export interface ConfigQueryResponse {
+  type: "config_query_response";
+  key: string;
+  value: unknown;
+}
+
+export interface ConfigUpdateMessage {
+  type: "config_update";
+  key: string;
+  value: unknown;
+}
+
+export interface ConfigUpdateResponse {
+  type: "config_update_response";
+  success: boolean;
+  error?: string;
+}
+
 export type ControlMessage =
   | AuthMessage
   | AuthOkMessage
   | AuthErrorMessage
   | PingMessage
-  | PongMessage;
+  | PongMessage
+  | ConfigQueryMessage
+  | ConfigQueryResponse
+  | ConfigUpdateMessage
+  | ConfigUpdateResponse;
 
 // ── Terminal Channel (0x01) ─────────────────────────────────────────
 
@@ -69,19 +96,121 @@ export type TerminalMessage =
 
 // ── AI Channel (0x02) ───────────────────────────────────────────────
 
+// Session management
+export interface SessionCreateMessage {
+  type: "session_create";
+  id: string;
+  provider?: string;
+  model?: string;
+  apiKey?: string;      // client-provided key override (not persisted)
+}
+
+export interface SessionCreatedMessage {
+  type: "session_created";
+  id: string;
+  provider: string;
+  model: string;
+}
+
+export interface SessionResumeMessage {
+  type: "session_resume";
+  id: string;
+}
+
+export interface SessionResumedMessage {
+  type: "session_resumed";
+  id: string;
+  provider: string;
+  model: string;
+  messageCount: number;
+  title: string;
+}
+
+export interface SessionsListMessage {
+  type: "sessions_list";
+}
+
+export interface SessionsListResponse {
+  type: "sessions_list_response";
+  sessions: {
+    id: string;
+    title: string;
+    provider: string;
+    model: string;
+    messageCount: number;
+    createdAt: number;
+    lastActiveAt: number;
+  }[];
+}
+
+export interface SessionDestroyMessage {
+  type: "session_destroy";
+  id: string;
+}
+
+export interface SessionDestroyedMessage {
+  type: "session_destroyed";
+  id: string;
+}
+
+// Provider management
+export interface ProvidersListMessage {
+  type: "providers_list";
+}
+
+export interface ProvidersListResponse {
+  type: "providers_list_response";
+  providers: {
+    name: string;
+    models: string[];
+    hasApiKey: boolean;
+    baseUrl?: string;
+  }[];
+  defaults: { provider: string; model: string };
+}
+
+export interface ProviderSetKeyMessage {
+  type: "provider_set_key";
+  provider: string;
+  apiKey: string;
+}
+
+export interface ProviderSetKeyResponse {
+  type: "provider_set_key_response";
+  success: boolean;
+  provider: string;
+}
+
+export interface ProviderSetDefaultMessage {
+  type: "provider_set_default";
+  provider: string;
+  model: string;
+}
+
+export interface ProviderSetDefaultResponse {
+  type: "provider_set_default_response";
+  success: boolean;
+  provider: string;
+  model: string;
+}
+
+// Chat messages
 export interface AiUserMessage {
   type: "message";
   content: string;
+  sessionId?: string;   // target session (defaults to "default")
 }
 
 export interface AiThinkingMessage {
   type: "thinking";
   text: string;
+  sessionId?: string;
 }
 
 export interface AiTextMessage {
   type: "text";
   content: string;
+  sessionId?: string;
 }
 
 export interface AiToolCallMessage {
@@ -89,6 +218,7 @@ export interface AiToolCallMessage {
   id: string;
   name: string;
   input: Record<string, unknown>;
+  sessionId?: string;
 }
 
 export interface AiToolResultMessage {
@@ -96,6 +226,7 @@ export interface AiToolResultMessage {
   id: string;
   output: string;
   isError?: boolean;
+  sessionId?: string;
 }
 
 export interface AiConfirmMessage {
@@ -103,6 +234,7 @@ export interface AiConfirmMessage {
   id: string;
   command: string;
   reason: string;
+  sessionId?: string;
 }
 
 export interface AiConfirmResponseMessage {
@@ -113,14 +245,33 @@ export interface AiConfirmResponseMessage {
 
 export interface AiDoneMessage {
   type: "done";
+  sessionId?: string;
 }
 
 export interface AiErrorMessage {
   type: "error";
   message: string;
+  sessionId?: string;
 }
 
 export type AiMessage =
+  // Session management
+  | SessionCreateMessage
+  | SessionCreatedMessage
+  | SessionResumeMessage
+  | SessionResumedMessage
+  | SessionsListMessage
+  | SessionsListResponse
+  | SessionDestroyMessage
+  | SessionDestroyedMessage
+  // Provider management
+  | ProvidersListMessage
+  | ProvidersListResponse
+  | ProviderSetKeyMessage
+  | ProviderSetKeyResponse
+  | ProviderSetDefaultMessage
+  | ProviderSetDefaultResponse
+  // Chat
   | AiUserMessage
   | AiThinkingMessage
   | AiTextMessage

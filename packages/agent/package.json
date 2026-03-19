@@ -5,6 +5,10 @@
   "bin": {
     "anton-agent": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "prompts"
+  ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",

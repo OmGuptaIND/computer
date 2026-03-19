@@ -14,32 +14,30 @@ export function ConfirmDialog({ command, reason, onApprove, onDeny }: Props) {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="max-w-3xl mx-auto mb-3"
+      className="confirm-dialog"
     >
-      <div className="bg-amber-950/30 border border-amber-800/40 rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <ShieldAlert className="w-4 h-4 text-amber-400" />
-          <span className="text-sm font-semibold text-amber-300">
-            Agent needs approval
-          </span>
+      <div className="confirm-dialog__surface">
+        <div className="confirm-dialog__header">
+          <ShieldAlert className="confirm-dialog__icon" />
+          <span className="confirm-dialog__title">Approval required</span>
         </div>
 
-        <p className="text-xs text-zinc-400 mb-3">{reason}</p>
+        <p className="confirm-dialog__reason">{reason}</p>
 
-        <code className="block px-3 py-2 bg-zinc-950 rounded-lg text-[13px] font-mono text-zinc-100 mb-4 overflow-x-auto">
+        <code className="confirm-dialog__command">
           {command}
         </code>
 
-        <div className="flex gap-2 justify-end">
+        <div className="confirm-dialog__actions">
           <button
             onClick={onDeny}
-            className="px-4 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-zinc-300 hover:bg-zinc-700 transition-colors"
+            className="button button--secondary"
           >
-            Deny
+            Cancel
           </button>
           <button
             onClick={onApprove}
-            className="px-4 py-1.5 bg-green-600 rounded-lg text-xs font-semibold text-white hover:bg-green-500 transition-colors"
+            className="button button--primary"
           >
             Approve
           </button>

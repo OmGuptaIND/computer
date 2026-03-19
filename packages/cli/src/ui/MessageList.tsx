@@ -30,7 +30,7 @@ function MessageItem({ message }: { message: ChatMessage }) {
   switch (message.role) {
     case "user":
       return (
-        <Box marginY={0}>
+        <Box marginTop={1} marginBottom={0}>
           <Text>
             <Text color="cyan" bold>{ICONS.prompt} </Text>
             <Text>{message.content}</Text>
@@ -41,7 +41,10 @@ function MessageItem({ message }: { message: ChatMessage }) {
     case "agent":
       return (
         <Box marginY={0} flexDirection="column">
-          <Text>{message.content}</Text>
+          <Text color="#FF6B35" bold>{ICONS.arrow} anton</Text>
+          <Box paddingLeft={2}>
+            <Text wrap="wrap">{message.content}</Text>
+          </Box>
         </Box>
       );
 

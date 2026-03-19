@@ -148,6 +148,52 @@ export class Connection {
     this.send(Channel.CONTROL, { type: "ping" });
   }
 
+  // ── Session management ──────────────────────────────────────────
+
+  sendSessionCreate(id: string, opts?: { provider?: string; model?: string; apiKey?: string }) {
+    this.send(Channel.AI, {
+      type: "session_create",
+      id,
+      ...opts,
+    });
+  }
+
+  sendSessionResume(id: string) {
+    this.send(Channel.AI, { type: "session_resume", id });
+  }
+
+  sendSessionsList() {
+    this.send(Channel.AI, { type: "sessions_list" });
+  }
+
+  sendSessionDestroy(id: string) {
+    this.send(Channel.AI, { type: "session_destroy", id });
+  }
+
+  sendAiMessageToSession(content: string, sessionId: string) {
+    this.send(Channel.AI, { type: "message", content, sessionId });
+  }
+
+  // ── Provider management ─────────────────────────────────────────
+
+  sendProvidersList() {
+    this.send(Channel.AI, { type: "providers_list" });
+  }
+
+  sendProviderSetKey(provider: string, apiKey: string) {
+    this.send(Channel.AI, { type: "provider_set_key", provider, apiKey });
+  }
+
+  sendProviderSetDefault(provider: string, model: string) {
+    this.send(Channel.AI, { type: "provider_set_default", provider, model });
+  }
+
+  // ── Config management ───────────────────────────────────────────
+
+  sendConfigQuery(key: "providers" | "defaults" | "security") {
+    this.send(Channel.CONTROL, { type: "config_query", key });
+  }
+
   private setStatus(status: ConnectionStatus, detail?: string) {
     this._status = status;
     for (const listener of this.statusListeners) {

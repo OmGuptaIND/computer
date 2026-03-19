@@ -3,7 +3,7 @@
 /**
  * anton.computer agent — your personal cloud computer daemon.
  *
- * Install on any VPS, connect from the desktop app.
+ * Install on any VPS, connect from the desktop app or CLI.
  * The agent DOES things — deploys code, manages files, monitors servers.
  *
  * Usage:
@@ -14,7 +14,6 @@
 import { loadConfig } from "./config.js";
 import { loadSkills } from "./skills.js";
 import { AgentServer } from "./server.js";
-import { Agent } from "./agent.js";
 import { Scheduler } from "./scheduler.js";
 import { VERSION, GIT_HASH, SPEC_VERSION } from "./version.js";
 
@@ -28,7 +27,7 @@ async function main() {
    └─────────────────────────────────────┘
   `);
 
-  // Load config (creates default on first run)
+  // Load config (creates default on first run, migrates legacy format)
   const config = loadConfig();
 
   // Load skills from ~/.anton/skills/
@@ -42,13 +41,18 @@ async function main() {
     }
   }
 
-  // Start the WebSocket server (handles desktop connections)
+  // Show provider status
+  const providers = Object.entries(config.providers);
+  const configured = providers.filter(([, p]) => p.apiKey && p.apiKey.length > 0);
+  console.log(`  Providers: ${configured.length}/${providers.length} configured`);
+  console.log(`  Default:   ${config.defaults.provider}/${config.defaults.model}`);
+
+  // Start the WebSocket server (handles client connections + sessions)
   const server = new AgentServer(config);
   await server.start();
 
   // Start the scheduler for 24/7 autonomous skills
-  const agent = new Agent(config);
-  const scheduler = new Scheduler(agent);
+  const scheduler = new Scheduler(config);
   scheduler.addSkills(skills);
   scheduler.start();
 

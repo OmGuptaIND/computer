@@ -59,9 +59,11 @@ export function AgentChat() {
   const messages = activeConv?.messages || [];
 
   return (
-    <div className="flex flex-col h-full bg-zinc-950">
+    <div className="chat-shell">
       {messages.length === 0 ? (
         <EmptyState
+          onSend={handleSend}
+          onSkillSelect={setSelectedSkill}
           onSelectExample={(text) => {
             handleSend(text);
           }}
@@ -71,7 +73,7 @@ export function AgentChat() {
       )}
 
       {pendingConfirm && (
-        <div className="px-4">
+        <div className="chat-shell__confirm">
           <ConfirmDialog
             command={pendingConfirm.command}
             reason={pendingConfirm.reason}
@@ -81,7 +83,9 @@ export function AgentChat() {
         </div>
       )}
 
-      <ChatInput onSend={handleSend} onSkillSelect={setSelectedSkill} />
+      {messages.length > 0 && (
+        <ChatInput onSend={handleSend} onSkillSelect={setSelectedSkill} />
+      )}
 
       <SkillDialog
         skill={selectedSkill}

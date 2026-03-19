@@ -1,16 +1,34 @@
+/**
+ * Main TUI — full interactive experience.
+ *
+ * Keybindings:
+ *   Ctrl+P  Provider panel (manage API keys)
+ *   Ctrl+M  Model picker (switch model for current session)
+ *   Ctrl+S  Session list (view/switch/create sessions)
+ *   Ctrl+Q  Quit
+ *   Ctrl+C  Quit
+ */
+
 import React, { useState, useEffect, useCallback } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import { Connection } from "../lib/connection.js";
 import type { ConnectionStatus } from "../lib/connection.js";
 import type { SavedMachine } from "../lib/machines.js";
 import { Channel } from "@anton/protocol";
-import type { AiMessage, EventMessage } from "@anton/protocol";
+import type { AiMessage, EventMessage, ControlMessage } from "@anton/protocol";
 import { Welcome } from "./Welcome.js";
 import { MessageList } from "./MessageList.js";
 import type { ChatMessage } from "./MessageList.js";
 import { ChatInput } from "./ChatInput.js";
 import { ConfirmPrompt } from "./ConfirmPrompt.js";
 import { StatusBar } from "./StatusBar.js";
+import { ProviderPanel } from "./ProviderPanel.js";
+import type { ProviderInfo } from "./ProviderPanel.js";
+import { ModelPicker } from "./ModelPicker.js";
+import { SessionList } from "./SessionList.js";
+import type { SessionInfo } from "./SessionList.js";
+
+type Overlay = "none" | "providers" | "models" | "sessions";
 
 interface AppProps {
   machine: SavedMachine;
@@ -25,12 +43,29 @@ export function App({ machine }: AppProps) {
   const [pendingConfirm, setPendingConfirm] = useState<{ id: string; command: string; reason: string } | null>(null);
   const [agentId, setAgentId] = useState("");
 
+  // Session state
+  const [currentSessionId, setCurrentSessionId] = useState("default");
+  const [currentProvider, setCurrentProvider] = useState("anthropic");
+  const [currentModel, setCurrentModel] = useState("claude-sonnet-4-6");
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [hasAutoResumed, setHasAutoResumed] = useState(false);
+
+  // Provider state
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [defaults, setDefaults] = useState({ provider: "anthropic", model: "claude-sonnet-4-6" });
+
+  // Overlay state
+  const [overlay, setOverlay] = useState<Overlay>("none");
+
   // Connect on mount
   useEffect(() => {
-    conn.onStatusChange((status, detail) => {
+    conn.onStatusChange((status) => {
       setConnStatus(status);
       if (status === "connected") {
         setAgentId(conn.agentId);
+        // Fetch providers and sessions after connecting
+        conn.sendProvidersList();
+        conn.sendSessionsList();
       }
     });
 
@@ -39,6 +74,8 @@ export function App({ machine }: AppProps) {
         handleAiMessage(payload as AiMessage);
       } else if (channel === Channel.EVENTS) {
         handleEvent(payload as EventMessage);
+      } else if (channel === Channel.CONTROL) {
+        handleControl(payload as ControlMessage);
       }
     });
 
@@ -61,21 +98,20 @@ export function App({ machine }: AppProps) {
     ]);
   }, []);
 
-  // Track the current streaming text buffer
   const appendAgentText = useCallback((content: string) => {
     setMessages((prev) => {
       const last = prev[prev.length - 1];
       if (last && last.role === "agent") {
-        // Append to existing agent message
         return [...prev.slice(0, -1), { ...last, content: last.content + content }];
       }
-      // Start new agent message
       return [
         ...prev,
         { role: "agent", content, id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, timestamp: Date.now() },
       ];
     });
   }, []);
+
+  // ── Message handlers ────────────────────────────────────────────
 
   const handleAiMessage = useCallback((msg: AiMessage) => {
     switch (msg.type) {
@@ -108,16 +144,72 @@ export function App({ machine }: AppProps) {
         addMessage({ role: "error", content: msg.message });
         break;
       case "done":
-        // Agent finished — just let status update handle it
+        break;
+
+      // Session responses
+      case "session_created":
+        setCurrentSessionId(msg.id);
+        setCurrentProvider(msg.provider);
+        setCurrentModel(msg.model);
+        addMessage({ role: "agent", content: `Session started: ${msg.provider}/${msg.model}` });
+        setOverlay("none");
+        break;
+      case "session_resumed":
+        setCurrentSessionId(msg.id);
+        setCurrentProvider(msg.provider);
+        setCurrentModel(msg.model);
+        addMessage({ role: "agent", content: `Session resumed: "${msg.title}" (${msg.messageCount} messages)` });
+        setOverlay("none");
+        break;
+      case "sessions_list_response":
+        setSessions(msg.sessions);
+        // Auto-resume the most recent session on first connect
+        if (!hasAutoResumed && msg.sessions.length > 0) {
+          setHasAutoResumed(true);
+          const latest = msg.sessions[0]; // already sorted by lastActiveAt desc
+          conn.sendSessionResume(latest.id);
+        }
+        break;
+      case "session_destroyed":
+        setSessions((prev) => prev.filter((s) => s.id !== msg.id));
+        break;
+
+      // Provider responses
+      case "providers_list_response":
+        setProviders(msg.providers);
+        setDefaults(msg.defaults);
+        // Only set current provider/model from defaults if no session is active yet
+        if (currentSessionId === "default") {
+          setCurrentProvider(msg.defaults.provider);
+          setCurrentModel(msg.defaults.model);
+        }
+        break;
+      case "provider_set_key_response":
+        if (msg.success) {
+          conn.sendProvidersList(); // refresh
+        }
+        break;
+      case "provider_set_default_response":
+        if (msg.success) {
+          setCurrentProvider(msg.provider);
+          setCurrentModel(msg.model);
+          setDefaults({ provider: msg.provider, model: msg.model });
+        }
         break;
     }
-  }, [addMessage, appendAgentText]);
+  }, [addMessage, appendAgentText, conn, hasAutoResumed, currentSessionId]);
 
   const handleEvent = useCallback((event: EventMessage) => {
     if (event.type === "agent_status") {
       setAgentStatus(event.status);
     }
   }, []);
+
+  const handleControl = useCallback((msg: ControlMessage) => {
+    // Handle config responses if needed
+  }, []);
+
+  // ── Actions ─────────────────────────────────────────────────────
 
   const handleSend = useCallback((content: string) => {
     if (content === "/quit" || content === "/exit") {
@@ -127,8 +219,8 @@ export function App({ machine }: AppProps) {
     }
 
     addMessage({ role: "user", content });
-    conn.sendAiMessage(content);
-  }, [conn, addMessage, exit]);
+    conn.sendAiMessageToSession(content, currentSessionId);
+  }, [conn, addMessage, exit, currentSessionId]);
 
   const handleConfirmResponse = useCallback((id: string, approved: boolean) => {
     conn.sendConfirmResponse(id, approved);
@@ -140,11 +232,61 @@ export function App({ machine }: AppProps) {
     });
   }, [conn, addMessage]);
 
-  // Ctrl+C to exit
+  const handleModelSelect = useCallback((provider: string, model: string) => {
+    // Create a new session with the selected model
+    const newId = `sess_${Date.now().toString(36)}`;
+    conn.sendSessionCreate(newId, { provider, model });
+    setMessages([]); // clear chat for new session
+    setOverlay("none");
+  }, [conn]);
+
+  const handleSessionSelect = useCallback((id: string) => {
+    conn.sendSessionResume(id);
+    setMessages([]);
+    setOverlay("none");
+  }, [conn]);
+
+  const handleNewSession = useCallback(() => {
+    setOverlay("models"); // pick a model for the new session
+  }, []);
+
+  const handleSessionDelete = useCallback((id: string) => {
+    conn.sendSessionDestroy(id);
+  }, [conn]);
+
+  const handleProviderSetKey = useCallback((provider: string, apiKey: string) => {
+    conn.sendProviderSetKey(provider, apiKey);
+  }, [conn]);
+
+  // ── Keybindings ─────────────────────────────────────────────────
+
   useInput((input, key) => {
+    // Global quit
     if (key.ctrl && input === "c") {
       conn.disconnect();
       exit();
+      return;
+    }
+    if (key.ctrl && input === "q") {
+      conn.disconnect();
+      exit();
+      return;
+    }
+
+    // Don't intercept when overlay is handling its own input
+    if (overlay !== "none") return;
+    // Don't intercept when editing or confirming
+    if (pendingConfirm) return;
+
+    if (key.ctrl && input === "p") {
+      conn.sendProvidersList();
+      setOverlay("providers");
+    } else if (key.ctrl && input === "m") {
+      conn.sendProvidersList();
+      setOverlay("models");
+    } else if (key.ctrl && input === "s") {
+      conn.sendSessionsList();
+      setOverlay("sessions");
     }
   });
 
@@ -153,16 +295,49 @@ export function App({ machine }: AppProps) {
   return (
     <Box flexDirection="column" height="100%">
       <Welcome
-        version="0.1.0"
+        version="0.2.0"
         machineName={machine.name}
         agentId={agentId}
         status={connStatus}
       />
 
+      {/* Chat area */}
       <Box flexDirection="column" flexGrow={1} paddingX={0}>
         <MessageList messages={messages} />
       </Box>
 
+      {/* Overlays */}
+      {overlay === "providers" && (
+        <ProviderPanel
+          providers={providers}
+          defaults={defaults}
+          onSetKey={handleProviderSetKey}
+          onClose={() => setOverlay("none")}
+        />
+      )}
+
+      {overlay === "models" && (
+        <ModelPicker
+          providers={providers}
+          currentProvider={currentProvider}
+          currentModel={currentModel}
+          onSelect={handleModelSelect}
+          onClose={() => setOverlay("none")}
+        />
+      )}
+
+      {overlay === "sessions" && (
+        <SessionList
+          sessions={sessions}
+          currentSessionId={currentSessionId}
+          onSelect={handleSessionSelect}
+          onNew={handleNewSession}
+          onDelete={handleSessionDelete}
+          onClose={() => setOverlay("none")}
+        />
+      )}
+
+      {/* Confirm dialog */}
       {pendingConfirm && (
         <ConfirmPrompt
           id={pendingConfirm.id}
@@ -172,15 +347,20 @@ export function App({ machine }: AppProps) {
         />
       )}
 
+      {/* Input */}
       <Box borderStyle="single" borderColor="gray" borderTop borderBottom={false} borderLeft={false} borderRight={false}>
-        <ChatInput onSubmit={handleSend} disabled={isWorking || !!pendingConfirm} />
+        <ChatInput onSubmit={handleSend} disabled={isWorking || !!pendingConfirm || overlay !== "none"} />
       </Box>
 
+      {/* Status bar with model info + keybindings */}
       <StatusBar
         connectionStatus={connStatus}
         agentStatus={agentStatus}
         machineName={machine.name}
         agentId={agentId}
+        provider={currentProvider}
+        model={currentModel}
+        sessionId={currentSessionId}
       />
     </Box>
   );

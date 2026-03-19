@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Rocket, Activity, Globe, Box, FileText, Shield, Database, Clock,
 } from "lucide-react";
@@ -66,10 +66,10 @@ export function SlashCommandMenu({ filter, onSelect, onClose, visible }: Props) 
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 4 }}
       transition={{ duration: 0.1 }}
-      className="absolute bottom-full left-0 right-0 mb-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden max-h-64 overflow-y-auto"
+      className="slash-menu"
     >
-      <div className="px-3 py-2 border-b border-zinc-800">
-        <span className="text-[11px] text-zinc-500 font-medium uppercase tracking-wider">Skills</span>
+      <div className="slash-menu__header">
+        <span className="slash-menu__headerLabel">Skills</span>
       </div>
       {skills.map((skill, i) => {
         const Icon = iconMap[skill.icon] || Activity;
@@ -77,19 +77,15 @@ export function SlashCommandMenu({ filter, onSelect, onClose, visible }: Props) 
           <button
             key={skill.id}
             onClick={() => onSelect(skill)}
-            className={`flex items-center gap-3 w-full px-3 py-2.5 text-left transition-colors ${
-              i === selectedIndex
-                ? "bg-zinc-800 text-zinc-100"
-                : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200"
-            }`}
+            className={i === selectedIndex ? "slash-menu__item slash-menu__item--active" : "slash-menu__item"}
           >
-            <Icon className="w-4 h-4 shrink-0 text-zinc-500" />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">{skill.name}</span>
-                <span className="text-[11px] text-zinc-600 font-mono">{skill.command}</span>
+            <Icon className="slash-menu__itemIcon" />
+            <div className="slash-menu__itemCopy">
+              <div className="slash-menu__itemRow">
+                <span className="slash-menu__itemName">{skill.name}</span>
+                <span className="slash-menu__itemCommand">{skill.command}</span>
               </div>
-              <p className="text-[11px] text-zinc-500 truncate">{skill.description}</p>
+              <p className="slash-menu__itemDescription">{skill.description}</p>
             </div>
           </button>
         );

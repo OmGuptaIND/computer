@@ -1,34 +1,36 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { ArrowUp, Loader2 } from "lucide-react";
-import { useStore, useAgentStatus } from "../../lib/store.js";
+import {
+  ArrowUp, Loader2, Plus, Mic, Sparkles,
+} from "lucide-react";
+import { useAgentStatus } from "../../lib/store.js";
 import { SlashCommandMenu } from "./SlashCommandMenu.js";
 import { type Skill } from "../../lib/skills.js";
 
 interface Props {
   onSend: (text: string) => void;
   onSkillSelect: (skill: Skill) => void;
+  variant?: "docked" | "hero";
 }
 
-export function ChatInput({ onSend, onSkillSelect }: Props) {
+export function ChatInput({ onSend, onSkillSelect, variant = "docked" }: Props) {
   const [input, setInput] = useState("");
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashFilter, setSlashFilter] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const agentStatus = useAgentStatus();
+  const isHero = variant === "hero";
 
-  // Auto-resize textarea
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
     ta.style.height = "auto";
-    ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`;
+    ta.style.height = `${Math.min(ta.scrollHeight, 220)}px`;
   }, [input]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setInput(val);
 
-    // Slash command detection
     if (val.startsWith("/")) {
       setShowSlashMenu(true);
       setSlashFilter(val.slice(1));
@@ -47,7 +49,7 @@ export function ChatInput({ onSend, onSkillSelect }: Props) {
   }, [input, agentStatus, onSend]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (showSlashMenu) return; // Let slash menu handle keys
+    if (showSlashMenu) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -61,30 +63,9 @@ export function ChatInput({ onSend, onSkillSelect }: Props) {
   };
 
   return (
-    <div className="border-t border-zinc-800 bg-zinc-950/80 backdrop-blur-sm px-4 pb-4 pt-3">
-      <div className="max-w-3xl mx-auto">
-        {/* Status pill */}
-        <div className="flex items-center gap-1.5 mb-2 px-1">
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              agentStatus === "working"
-                ? "bg-yellow-500 animate-pulse"
-                : agentStatus === "error"
-                  ? "bg-red-500"
-                  : "bg-green-500"
-            }`}
-          />
-          <span className="text-[11px] text-zinc-500">
-            {agentStatus === "working"
-              ? "Agent working..."
-              : agentStatus === "error"
-                ? "Error"
-                : "Ready"}
-          </span>
-        </div>
-
-        {/* Input row */}
-        <div className="relative flex items-end gap-2">
+    <div className={isHero ? "chat-composer-shell chat-composer-shell--hero" : "chat-composer-shell"}>
+      <div className="chat-composer-frame">
+        <div className="chat-composer__anchor">
           <SlashCommandMenu
             filter={slashFilter}
             onSelect={handleSkillSelect}
@@ -92,35 +73,66 @@ export function ChatInput({ onSend, onSkillSelect }: Props) {
             visible={showSlashMenu}
           />
 
-          <div className="flex-1 relative bg-zinc-900 border border-zinc-800 rounded-xl focus-within:border-zinc-600 transition-colors">
+          <div className={isHero ? "chat-composer chat-composer--hero" : "chat-composer"}>
             <textarea
               ref={textareaRef}
               value={input}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
-              placeholder="Message your agent..."
+              placeholder="What should we work on next?"
               rows={1}
-              className="w-full px-4 py-3 bg-transparent text-sm text-zinc-100 placeholder-zinc-600 outline-none resize-none font-sans"
-              style={{ minHeight: 44, maxHeight: 160 }}
+              className={isHero ? "chat-composer__input chat-composer__input--hero" : "chat-composer__input"}
+              style={{ minHeight: isHero ? 84 : 88, maxHeight: 220 }}
             />
-          </div>
 
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || agentStatus === "working"}
-            className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-green-600 text-white hover:bg-green-500 disabled:bg-zinc-800 disabled:text-zinc-600 transition-colors"
-          >
-            {agentStatus === "working" ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <ArrowUp className="w-4 h-4" />
-            )}
-          </button>
+            <div className="chat-composer__footer">
+              <div className="chat-composer__controls">
+                <button
+                  className="chat-composer__iconButton"
+                  aria-label="Add"
+                >
+                  <Plus className="chat-composer__icon" />
+                </button>
+                <div className="chat-composer__model">
+                  <Sparkles className="chat-composer__modelIcon" />
+                  Claude Sonnet 4.6
+                </div>
+              </div>
+
+              <div className="chat-composer__actions">
+                <button
+                  className="chat-composer__micButton"
+                  aria-label="Voice input"
+                >
+                  <Mic className="chat-composer__icon" />
+                </button>
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim() || agentStatus === "working"}
+                  className="chat-composer__sendButton"
+                  aria-label="Send"
+                >
+                  {agentStatus === "working" ? (
+                    <Loader2 className="chat-composer__icon chat-composer__icon--spinning" />
+                  ) : (
+                    <ArrowUp className="chat-composer__icon" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <p className="text-[10px] text-zinc-600 mt-1.5 px-1">
-          Enter to send · Shift+Enter for newline · Type / for skills
-        </p>
+        <div className={isHero ? "chat-composer__meta chat-composer__meta--hidden" : "chat-composer__meta"}>
+          <span className="chat-composer__metaItem">
+            {agentStatus === "working"
+              ? "Assistant is working..."
+              : agentStatus === "error"
+                ? "Something needs attention"
+                : "Ready for your next task"}
+          </span>
+          <span className="chat-composer__metaItem">Press Enter to send, Shift+Enter for a new line, or type / for skills.</span>
+        </div>
       </div>
     </div>
   );

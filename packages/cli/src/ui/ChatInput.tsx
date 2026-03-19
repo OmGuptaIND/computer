@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { ICONS } from "../lib/theme.js";
+import { Spinner } from "./Spinner.js";
 
 interface ChatInputProps {
   onSubmit: (message: string) => void;
@@ -20,16 +21,18 @@ export function ChatInput({ onSubmit, disabled }: ChatInputProps) {
 
   return (
     <Box paddingX={1}>
-      <Text color="#FF6B35">{ICONS.prompt} </Text>
       {disabled ? (
-        <Text dimColor>Waiting for agent...</Text>
+        <Spinner label="Thinking" />
       ) : (
-        <TextInput
-          value={value}
-          onChange={setValue}
-          onSubmit={handleSubmit}
-          placeholder="Type a message..."
-        />
+        <>
+          <Text color="#FF6B35">{ICONS.prompt} </Text>
+          <TextInput
+            value={value}
+            onChange={setValue}
+            onSubmit={handleSubmit}
+            placeholder="Type a message..."
+          />
+        </>
       )}
     </Box>
   );

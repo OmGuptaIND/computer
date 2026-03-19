@@ -46,8 +46,8 @@ export function MessageList({ messages }: Props) {
   }, []);
 
   return (
-    <div ref={containerRef} className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
-      <div className="max-w-3xl mx-auto flex flex-col gap-2">
+    <div ref={containerRef} className="message-list">
+      <div className="message-list__inner">
         <AnimatePresence mode="popLayout">
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
@@ -60,9 +60,9 @@ export function MessageList({ messages }: Props) {
       {showScrollBtn && (
         <button
           onClick={scrollToBottom}
-          className="fixed bottom-28 left-1/2 -translate-x-1/2 bg-zinc-800 border border-zinc-700 rounded-full p-2 shadow-lg hover:bg-zinc-700 transition-colors z-10"
+          className="message-list__scrollButton"
         >
-          <ArrowDown className="w-4 h-4 text-zinc-300" />
+          <ArrowDown className="message-list__scrollIcon" />
         </button>
       )}
     </div>

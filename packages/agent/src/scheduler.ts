@@ -1,10 +1,14 @@
 /**
  * Skill scheduler — runs skills on cron schedules.
  * This is what makes the agent a 24/7 worker, not just an on-demand chatbot.
+ *
+ * Each skill gets its own Session (pi SDK agent instance) so skills
+ * don't pollute each other's context.
  */
 
-import type { SkillConfig } from "./config.js";
-import { Agent } from "./agent.js";
+import type { AgentConfig, SkillConfig } from "./config.js";
+import { createSession, resumeSession } from "./session.js";
+import type { Session } from "./session.js";
 import { buildSkillPrompt } from "./skills.js";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
@@ -14,16 +18,18 @@ interface ScheduledJob {
   skill: SkillConfig;
   nextRun: Date;
   intervalMs: number;
+  sessionId: string;
 }
 
 export class Scheduler {
   private jobs: ScheduledJob[] = [];
-  private agent: Agent;
+  private config: AgentConfig;
+  private sessions: Map<string, Session> = new Map();
   private running = false;
   private timer: NodeJS.Timeout | null = null;
 
-  constructor(agent: Agent) {
-    this.agent = agent;
+  constructor(config: AgentConfig) {
+    this.config = config;
   }
 
   /**
@@ -39,10 +45,13 @@ export class Scheduler {
         continue;
       }
 
+      const sessionId = `skill-${skill.name.toLowerCase().replace(/\s+/g, "-")}`;
+
       this.jobs.push({
         skill,
         nextRun: new Date(Date.now() + intervalMs),
         intervalMs,
+        sessionId,
       });
 
       console.log(
@@ -52,9 +61,6 @@ export class Scheduler {
     }
   }
 
-  /**
-   * Start the scheduler loop.
-   */
   start() {
     if (this.jobs.length === 0) return;
 
@@ -83,8 +89,21 @@ export class Scheduler {
       }
     }
 
-    // Check every 30 seconds
     this.timer = setTimeout(() => this.tick(), 30_000);
+  }
+
+  private getOrCreateSession(job: ScheduledJob): Session {
+    let session = this.sessions.get(job.sessionId);
+    if (session) return session;
+
+    // Try to resume from disk
+    session = resumeSession(job.sessionId, this.config) ?? undefined;
+    if (!session) {
+      session = createSession(job.sessionId, this.config);
+    }
+
+    this.sessions.set(job.sessionId, session);
+    return session;
   }
 
   private async runJob(job: ScheduledJob) {
@@ -94,12 +113,10 @@ export class Scheduler {
     appendFileSync(logFile, `\n[${timestamp}] Running skill: ${job.skill.name}\n`);
     console.log(`[Scheduler] Running: ${job.skill.name}`);
 
+    const session = this.getOrCreateSession(job);
     const prompt = buildSkillPrompt(job.skill);
-    // Each skill gets its own session — pi SDK persists these to disk
-    const sessionId = `skill-${job.skill.name.toLowerCase().replace(/\s+/g, "-")}`;
 
-    for await (const event of this.agent.processMessage(prompt, sessionId)) {
-      // Log events
+    for await (const event of session.processMessage(prompt)) {
       if (event.type === "text") {
         appendFileSync(logFile, `  ${event.content}\n`);
       } else if (event.type === "tool_call") {
@@ -113,35 +130,26 @@ export class Scheduler {
   }
 }
 
-/**
- * Parse simple cron expressions to milliseconds.
- * Supports hourly, every-N-hours, every-N-minutes, and daily cron expressions.
- * For v0.1, we use a simplified parser. Full cron in v0.2.
- */
 function parseCronToMs(cron: string): number {
   const parts = cron.trim().split(/\s+/);
   if (parts.length !== 5) return 0;
 
   const [min, hour] = parts;
 
-  // Every N hours
   const hourMatch = hour.match(/^\*\/(\d+)$/);
   if (hourMatch) {
     return parseInt(hourMatch[1]) * 60 * 60 * 1000;
   }
 
-  // Every N minutes
   const minMatch = min.match(/^\*\/(\d+)$/);
   if (minMatch) {
     return parseInt(minMatch[1]) * 60 * 1000;
   }
 
-  // Every hour (0 * * * *)
   if (min !== "*" && hour === "*") {
     return 60 * 60 * 1000;
   }
 
-  // Daily (specific hour)
   if (min !== "*" && hour !== "*" && !hour.includes("/")) {
     return 24 * 60 * 60 * 1000;
   }

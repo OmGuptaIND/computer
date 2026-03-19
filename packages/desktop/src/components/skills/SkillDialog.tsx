@@ -46,8 +46,8 @@ export function SkillDialog({ skill, onClose }: Props) {
           <Icon className="w-5 h-5 text-zinc-400" />
         </div>
         <div>
-          <p className="text-sm text-zinc-300">{skill.description}</p>
-          <p className="text-[11px] text-zinc-600 font-mono mt-0.5">{skill.command}</p>
+          <p className="text-sm text-zinc-300 leading-relaxed">{skill.description}</p>
+          <p className="text-[11px] text-zinc-500 font-mono mt-1">{skill.command}</p>
         </div>
       </div>
 
@@ -65,7 +65,7 @@ export function SkillDialog({ skill, onClose }: Props) {
                   onChange={(e) =>
                     setParams((p) => ({ ...p, [param.name]: e.target.value }))
                   }
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-200 outline-none focus:border-zinc-600 transition-colors"
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-200 outline-none focus:border-zinc-600 transition-colors"
                 >
                   <option value="">Select...</option>
                   {param.options?.map((opt) => (
@@ -82,7 +82,7 @@ export function SkillDialog({ skill, onClose }: Props) {
                     setParams((p) => ({ ...p, [param.name]: e.target.value }))
                   }
                   placeholder={param.placeholder}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-200 font-mono placeholder-zinc-600 outline-none focus:border-zinc-600 transition-colors"
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-200 font-mono placeholder-zinc-600 outline-none focus:border-zinc-600 transition-colors"
                 />
               )}
             </div>
@@ -93,9 +93,9 @@ export function SkillDialog({ skill, onClose }: Props) {
       <button
         onClick={handleRun}
         disabled={!canRun}
-        className="w-full py-2.5 bg-green-600 rounded-lg text-sm font-semibold text-white hover:bg-green-500 disabled:bg-zinc-800 disabled:text-zinc-600 transition-colors"
+        className="w-full py-2.5 bg-zinc-100 rounded-xl text-sm font-semibold text-zinc-900 hover:bg-white disabled:bg-zinc-800 disabled:text-zinc-600 transition-colors"
       >
-        Run Skill
+        Run skill
       </button>
     </Modal>
   );
