@@ -1,30 +1,29 @@
-import React from "react";
-import {
-  Rocket, Activity, Globe, Box, FileText, Shield, Database, Clock,
-} from "lucide-react";
-import type { Skill } from "../../lib/skills.js";
+import { Activity, Box, Clock, Database, FileText, Globe, Rocket, Shield } from 'lucide-react'
+import type React from 'react'
+import type { Skill } from '../../lib/skills.js'
 
 const iconMap: Record<string, React.ElementType> = {
   rocket: Rocket,
   activity: Activity,
   globe: Globe,
   box: Box,
-  "file-text": FileText,
+  'file-text': FileText,
   shield: Shield,
   database: Database,
   clock: Clock,
-};
+}
 
 interface Props {
-  skill: Skill;
-  onClick: () => void;
+  skill: Skill
+  onClick: () => void
 }
 
 export function SkillCard({ skill, onClick }: Props) {
-  const Icon = iconMap[skill.icon] || Activity;
+  const Icon = iconMap[skill.icon] || Activity
 
   return (
     <button
+      type="button"
       onClick={onClick}
       className="w-full rounded-2xl border border-white/7 bg-white/[0.03] p-3.5 text-left transition-colors hover:bg-white/[0.05]"
     >
@@ -41,11 +40,9 @@ export function SkillCard({ skill, onClick }: Props) {
               {skill.category}
             </span>
           </div>
-          <p className="mt-1.5 text-[12px] leading-5 text-zinc-400">
-            {skill.description}
-          </p>
+          <p className="mt-1.5 text-[12px] leading-5 text-zinc-400">{skill.description}</p>
         </div>
       </div>
     </button>
-  );
+  )
 }

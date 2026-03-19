@@ -18,6 +18,12 @@
     "format:fix": "biome format --write ./packages",
     "check": "biome check ./packages",
     "check:fix": "biome check --write ./packages",
+    "typecheck": "pnpm -r typecheck",
+    "typecheck:agent": "pnpm --filter @anton/agent typecheck",
+    "typecheck:cli": "pnpm --filter @anton/cli typecheck",
+    "typecheck:desktop": "pnpm --filter @anton/desktop typecheck",
+    "typecheck:protocol": "pnpm --filter @anton/protocol typecheck",
+    "verify": "pnpm typecheck && pnpm check",
     "deploy": "./deploy/sync.sh",
     "dev": "pnpm protocol:build && concurrently \"pnpm agent:dev\" \"pnpm desktop:dev\"",
     "dev:local": "ANTON_LOCAL=1 pnpm dev"
@@ -25,10 +31,17 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.0"
   },
-  "keywords": ["ai", "agent", "cloud", "computer", "self-hosted", "vps"],
+  "keywords": [
+    "ai",
+    "agent",
+    "cloud",
+    "computer",
+    "self-hosted",
+    "vps"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/anthropics/anton.computer"
+    "url": "https://github.com/OmGuptaIND/anton.computer"
   }
 }

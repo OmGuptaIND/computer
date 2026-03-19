@@ -1,17 +1,16 @@
-import React from "react";
-import { motion } from "framer-motion";
-import { AlertTriangle, Bot, UserRound } from "lucide-react";
-import type { ChatMessage } from "../../lib/store.js";
-import { MarkdownRenderer } from "./MarkdownRenderer.js";
-import { ToolCallBlock } from "./ToolCallBlock.js";
+import { motion } from 'framer-motion'
+import { AlertTriangle, Bot, UserRound } from 'lucide-react'
+import type { ChatMessage } from '../../lib/store.js'
+import { MarkdownRenderer } from './MarkdownRenderer.js'
+import { ToolCallBlock } from './ToolCallBlock.js'
 
 interface Props {
-  message: ChatMessage;
+  message: ChatMessage
 }
 
 export function MessageBubble({ message }: Props) {
-  const isUser = message.role === "user";
-  const authorLabel = isUser ? "You" : "Assistant";
+  const isUser = message.role === 'user'
+  const authorLabel = isUser ? 'You' : 'Assistant'
 
   return (
     <motion.div
@@ -20,56 +19,64 @@ export function MessageBubble({ message }: Props) {
       transition={{ duration: 0.2 }}
       className={getContainerClass(message)}
     >
-      {(message.role === "user" || message.role === "assistant") && (
+      {(message.role === 'user' || message.role === 'assistant') && (
         <div className="message__meta">
-          <span className={isUser ? "message__avatar message__avatar--user" : "message__avatar message__avatar--assistant"}>
-            {isUser ? <UserRound className="message__avatarIcon" /> : <Bot className="message__avatarIcon" />}
+          <span
+            className={
+              isUser
+                ? 'message__avatar message__avatar--user'
+                : 'message__avatar message__avatar--assistant'
+            }
+          >
+            {isUser ? (
+              <UserRound className="message__avatarIcon" />
+            ) : (
+              <Bot className="message__avatarIcon" />
+            )}
           </span>
-          <span className="message__author">
-            {authorLabel}
-          </span>
+          <span className="message__author">{authorLabel}</span>
         </div>
       )}
 
-      {message.role === "user" && (
+      {message.role === 'user' && (
         <div className="message__surface message__surface--user">
           <div className="message__text">{message.content}</div>
         </div>
       )}
 
-      {message.role === "assistant" && (
+      {message.role === 'assistant' && (
         <div className="message__surface message__surface--assistant">
           <MarkdownRenderer content={message.content} />
         </div>
       )}
 
-      {message.role === "tool" && <ToolCallBlock message={message} />}
+      {message.role === 'tool' && <ToolCallBlock message={message} />}
 
-      {message.role === "system" && (
-        <div className={message.isError ? "system-message system-message--error" : "system-message"}>
+      {message.role === 'system' && (
+        <div
+          className={message.isError ? 'system-message system-message--error' : 'system-message'}
+        >
           {message.isError && <AlertTriangle className="system-message__icon" />}
-          <span className="system-message__text">
-            {message.content}
-          </span>
+          <span className="system-message__text">{message.content}</span>
         </div>
       )}
     </motion.div>
-  );
+  )
 }
 
 function getContainerClass(msg: ChatMessage): string {
-  const base = "message";
+  const base = 'message'
 
   switch (msg.role) {
-    case "user":
-      return `${base} message--user`;
-    case "assistant":
-      return `${base} message--assistant`;
-    case "tool":
-      return `${base} message--tool`;
-    case "system":
-      return `${base} message--system`;
+    case 'user':
+      return `${base} message--user`
+    case 'assistant':
+      return `${base} message--assistant`
+    case 'tool':
+      return `${base} message--tool`
+    case 'system':
+      return `${base} message--system`
     default:
-      return base;
+      return base
   }
 }

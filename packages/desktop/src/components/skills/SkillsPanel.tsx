@@ -1,36 +1,36 @@
-import React, { useState, useMemo } from "react";
-import { Zap } from "lucide-react";
-import { SearchInput } from "../ui/SearchInput.js";
-import { SkillCard } from "./SkillCard.js";
-import { SkillDialog } from "./SkillDialog.js";
-import { getSkills, type Skill } from "../../lib/skills.js";
+import { Zap } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { type Skill, getSkills } from '../../lib/skills.js'
+import { SearchInput } from '../ui/SearchInput.js'
+import { SkillCard } from './SkillCard.js'
+import { SkillDialog } from './SkillDialog.js'
 
 export function SkillsPanel() {
-  const [search, setSearch] = useState("");
-  const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
+  const [search, setSearch] = useState('')
+  const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null)
 
   const skills = useMemo(() => {
-    const all = getSkills();
-    if (!search) return all;
-    const q = search.toLowerCase();
+    const all = getSkills()
+    if (!search) return all
+    const q = search.toLowerCase()
     return all.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
         s.description.toLowerCase().includes(q) ||
         s.command.toLowerCase().includes(q) ||
-        s.category.toLowerCase().includes(q)
-    );
-  }, [search]);
+        s.category.toLowerCase().includes(q),
+    )
+  }, [search])
 
   const categories = useMemo(() => {
-    const cats = new Map<string, Skill[]>();
+    const cats = new Map<string, Skill[]>()
     for (const skill of skills) {
-      const list = cats.get(skill.category) || [];
-      list.push(skill);
-      cats.set(skill.category, list);
+      const list = cats.get(skill.category) || []
+      list.push(skill)
+      cats.set(skill.category, list)
     }
-    return cats;
-  }, [skills]);
+    return cats
+  }, [skills])
 
   return (
     <div className="flex flex-col h-full">
@@ -43,7 +43,9 @@ export function SkillsPanel() {
           <div className="flex flex-col items-center justify-center rounded-2xl border border-white/6 bg-white/[0.02] py-14 text-center">
             <Zap className="mb-4 h-9 w-9 text-zinc-700" />
             <p className="text-sm font-medium text-zinc-200">No matching skills</p>
-            <p className="mt-1 text-xs text-zinc-500">Try a command name, category, or capability.</p>
+            <p className="mt-1 text-xs text-zinc-500">
+              Try a command name, category, or capability.
+            </p>
           </div>
         )}
 
@@ -57,21 +59,14 @@ export function SkillsPanel() {
             </div>
             <div className="space-y-2">
               {catSkills.map((skill) => (
-              <SkillCard
-                key={skill.id}
-                skill={skill}
-                onClick={() => setSelectedSkill(skill)}
-              />
+                <SkillCard key={skill.id} skill={skill} onClick={() => setSelectedSkill(skill)} />
               ))}
             </div>
           </div>
         ))}
       </div>
 
-      <SkillDialog
-        skill={selectedSkill}
-        onClose={() => setSelectedSkill(null)}
-      />
+      <SkillDialog skill={selectedSkill} onClose={() => setSelectedSkill(null)} />
     </div>
-  );
+  )
 }

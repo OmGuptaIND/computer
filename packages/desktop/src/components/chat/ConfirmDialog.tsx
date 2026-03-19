@@ -1,12 +1,11 @@
-import React from "react";
-import { motion } from "framer-motion";
-import { ShieldAlert } from "lucide-react";
+import { motion } from 'framer-motion'
+import { ShieldAlert } from 'lucide-react'
 
 interface Props {
-  command: string;
-  reason: string;
-  onApprove: () => void;
-  onDeny: () => void;
+  command: string
+  reason: string
+  onApprove: () => void
+  onDeny: () => void
 }
 
 export function ConfirmDialog({ command, reason, onApprove, onDeny }: Props) {
@@ -24,25 +23,17 @@ export function ConfirmDialog({ command, reason, onApprove, onDeny }: Props) {
 
         <p className="confirm-dialog__reason">{reason}</p>
 
-        <code className="confirm-dialog__command">
-          {command}
-        </code>
+        <code className="confirm-dialog__command">{command}</code>
 
         <div className="confirm-dialog__actions">
-          <button
-            onClick={onDeny}
-            className="button button--secondary"
-          >
+          <button type="button" onClick={onDeny} className="button button--secondary">
             Cancel
           </button>
-          <button
-            onClick={onApprove}
-            className="button button--primary"
-          >
+          <button type="button" onClick={onApprove} className="button button--primary">
             Approve
           </button>
         </div>
       </div>
     </motion.div>
-  );
+  )
 }

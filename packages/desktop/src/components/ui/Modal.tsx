@@ -1,12 +1,12 @@
-import React from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { X } from "lucide-react";
+import { AnimatePresence, motion } from 'framer-motion'
+import { X } from 'lucide-react'
+import type React from 'react'
 
 interface Props {
-  open: boolean;
-  onClose: () => void;
-  title?: string;
-  children: React.ReactNode;
+  open: boolean
+  onClose: () => void
+  title?: string
+  children: React.ReactNode
 }
 
 export function Modal({ open, onClose, title, children }: Props) {
@@ -21,10 +21,7 @@ export function Modal({ open, onClose, title, children }: Props) {
           transition={{ duration: 0.15 }}
         >
           {/* Backdrop */}
-          <motion.div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={onClose}
-          />
+          <motion.div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
           {/* Content */}
           <motion.div
@@ -38,6 +35,7 @@ export function Modal({ open, onClose, title, children }: Props) {
               <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
                 <h2 className="text-sm font-semibold text-zinc-100">{title}</h2>
                 <button
+                  type="button"
                   onClick={onClose}
                   className="text-zinc-500 hover:text-zinc-300 transition-colors"
                 >
@@ -50,5 +48,5 @@ export function Modal({ open, onClose, title, children }: Props) {
         </motion.div>
       )}
     </AnimatePresence>
-  );
+  )
 }

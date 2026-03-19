@@ -5,6 +5,6 @@ export const Channel = {
   AI: 0x02,
   FILESYNC: 0x03,
   EVENTS: 0x04,
-} as const;
+} as const
 
-export type ChannelId = (typeof Channel)[keyof typeof Channel];
+export type ChannelId = (typeof Channel)[keyof typeof Channel]

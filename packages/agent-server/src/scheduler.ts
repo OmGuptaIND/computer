@@ -1,0 +1,258 @@
+/**
+ * Skill scheduler — runs skills on cron schedules.
+ * This is what makes the agent a 24/7 worker, not just an on-demand chatbot.
+ *
+ * Each skill gets its own Session (pi SDK agent instance) so skills
+ * don't pollute each other's context.
+ */
+
+import { appendFileSync } from 'node:fs'
+import { join } from 'node:path'
+import type { AgentConfig, SkillConfig } from '@anton/agent-config'
+import { getAntonDir } from '@anton/agent-config'
+import { buildSkillPrompt } from '@anton/agent-config'
+import { type Session, createSession, resumeSession } from '@anton/agent-core'
+
+/**
+ * Parse a 5-field cron expression and return the next Date it fires.
+ * Fields: minute hour day-of-month month day-of-week
+ * Supports: *, *\/N, N, N-M, N,M,O
+ */
+function getNextCronTime(cron: string, after: Date = new Date()): Date | null {
+  const parts = cron.trim().split(/\s+/)
+  if (parts.length !== 5) return null
+
+  const [minSpec, hourSpec, domSpec, monSpec, dowSpec] = parts
+
+  function parseField(spec: string, min: number, max: number): number[] {
+    const values: number[] = []
+    for (const part of spec.split(',')) {
+      if (part === '*') {
+        for (let i = min; i <= max; i++) values.push(i)
+      } else if (part.startsWith('*/')) {
+        const step = Number.parseInt(part.slice(2))
+        for (let i = min; i <= max; i += step) values.push(i)
+      } else if (part.includes('-')) {
+        const [a, b] = part.split('-').map(Number)
+        for (let i = a; i <= b; i++) values.push(i)
+      } else {
+        values.push(Number.parseInt(part))
+      }
+    }
+    return values.sort((a, b) => a - b)
+  }
+
+  const minutes = parseField(minSpec, 0, 59)
+  const hours = parseField(hourSpec, 0, 23)
+  const doms = parseField(domSpec, 1, 31)
+  const months = parseField(monSpec, 1, 12)
+  const dows = parseField(dowSpec, 0, 6) // 0 = Sunday
+
+  // Search forward from `after` for up to 366 days
+  const candidate = new Date(after.getTime() + 60_000) // start 1 minute after
+  candidate.setSeconds(0, 0)
+
+  for (let i = 0; i < 366 * 24 * 60; i++) {
+    const m = candidate.getMinutes()
+    const h = candidate.getHours()
+    const dom = candidate.getDate()
+    const mon = candidate.getMonth() + 1
+    const dow = candidate.getDay()
+
+    if (
+      minutes.includes(m) &&
+      hours.includes(h) &&
+      doms.includes(dom) &&
+      months.includes(mon) &&
+      dows.includes(dow)
+    ) {
+      return candidate
+    }
+
+    candidate.setMinutes(candidate.getMinutes() + 1)
+  }
+
+  return null
+}
+
+export interface SchedulerJobInfo {
+  name: string
+  description: string
+  schedule: string
+  nextRun: number // timestamp
+  lastRun: number | null // timestamp
+  enabled: boolean
+}
+
+interface ScheduledJob {
+  skill: SkillConfig
+  cron: string
+  nextRun: Date
+  lastRun: Date | null
+  sessionId: string
+  enabled: boolean
+}
+
+export type SchedulerEventCallback = (
+  skillName: string,
+  event: 'started' | 'completed' | 'error',
+  detail?: string,
+) => void
+
+export class Scheduler {
+  private jobs: ScheduledJob[] = []
+  private config: AgentConfig
+  private sessions: Map<string, Session> = new Map()
+  private running = false
+  private timer: NodeJS.Timeout | null = null
+  private onEvent: SchedulerEventCallback | null = null
+
+  constructor(config: AgentConfig) {
+    this.config = config
+  }
+
+  /** Set a callback to receive skill run events. */
+  setEventCallback(cb: SchedulerEventCallback) {
+    this.onEvent = cb
+  }
+
+  /**
+   * Register skills that have cron schedules.
+   */
+  addSkills(skills: SkillConfig[]) {
+    for (const skill of skills) {
+      if (!skill.schedule) continue
+
+      const nextRun = getNextCronTime(skill.schedule)
+      if (!nextRun) {
+        console.warn(`Invalid schedule for skill "${skill.name}": ${skill.schedule}`)
+        continue
+      }
+
+      const sessionId = `skill-${skill.name.toLowerCase().replace(/\s+/g, '-')}`
+
+      this.jobs.push({
+        skill,
+        cron: skill.schedule,
+        nextRun,
+        lastRun: null,
+        sessionId,
+        enabled: true,
+      })
+
+      console.log(
+        `  Scheduled: ${skill.name} (cron: ${skill.schedule}, ` +
+          `next: ${nextRun.toLocaleString()})`,
+      )
+    }
+  }
+
+  /** Return info about all registered jobs. */
+  listJobs(): SchedulerJobInfo[] {
+    return this.jobs.map((job) => ({
+      name: job.skill.name,
+      description: job.skill.description ?? '',
+      schedule: job.cron,
+      nextRun: job.nextRun.getTime(),
+      lastRun: job.lastRun ? job.lastRun.getTime() : null,
+      enabled: job.enabled,
+    }))
+  }
+
+  /** Remove a job by skill name. Returns true if found and removed. */
+  removeJob(name: string): boolean {
+    const idx = this.jobs.findIndex((j) => j.skill.name === name)
+    if (idx === -1) return false
+    this.jobs.splice(idx, 1)
+    return true
+  }
+
+  /** Find a job by skill name. */
+  findJob(name: string): ScheduledJob | undefined {
+    return this.jobs.find((j) => j.skill.name === name)
+  }
+
+  start() {
+    if (this.jobs.length === 0) return
+
+    this.running = true
+    console.log(`\n  Scheduler started with ${this.jobs.length} job(s)`)
+
+    this.tick()
+  }
+
+  stop() {
+    this.running = false
+    if (this.timer) clearTimeout(this.timer)
+  }
+
+  private tick() {
+    if (!this.running) return
+
+    const now = Date.now()
+
+    for (const job of this.jobs) {
+      if (!job.enabled) continue
+
+      if (now >= job.nextRun.getTime()) {
+        this.runJob(job).catch((err) => {
+          console.error(`Scheduler error for "${job.skill.name}":`, err)
+          this.onEvent?.(job.skill.name, 'error', (err as Error).message)
+        })
+
+        // Compute next run from now
+        const next = getNextCronTime(job.cron, new Date())
+        if (next) {
+          job.nextRun = next
+        } else {
+          // Could not find next run — disable
+          job.enabled = false
+          console.warn(`No future run found for "${job.skill.name}", disabling.`)
+        }
+      }
+    }
+
+    this.timer = setTimeout(() => this.tick(), 30_000)
+  }
+
+  private getOrCreateSession(job: ScheduledJob): Session {
+    let session = this.sessions.get(job.sessionId)
+    if (session) return session
+
+    // Try to resume from disk
+    session = resumeSession(job.sessionId, this.config) ?? undefined
+    if (!session) {
+      session = createSession(job.sessionId, this.config)
+    }
+
+    this.sessions.set(job.sessionId, session)
+    return session
+  }
+
+  async runJob(job: ScheduledJob) {
+    const logFile = join(getAntonDir(), 'scheduler.log')
+    const timestamp = new Date().toISOString()
+
+    appendFileSync(logFile, `\n[${timestamp}] Running skill: ${job.skill.name}\n`)
+    console.log(`[Scheduler] Running: ${job.skill.name}`)
+
+    this.onEvent?.(job.skill.name, 'started')
+    job.lastRun = new Date()
+
+    const session = this.getOrCreateSession(job)
+    const prompt = buildSkillPrompt(job.skill)
+
+    for await (const event of session.processMessage(prompt)) {
+      if (event.type === 'text') {
+        appendFileSync(logFile, `  ${event.content}\n`)
+      } else if (event.type === 'tool_call') {
+        appendFileSync(logFile, `  [tool] ${event.name}: ${JSON.stringify(event.input)}\n`)
+      } else if (event.type === 'error') {
+        appendFileSync(logFile, `  [ERROR] ${event.message}\n`)
+      }
+    }
+
+    appendFileSync(logFile, `[${new Date().toISOString()}] Completed: ${job.skill.name}\n`)
+    this.onEvent?.(job.skill.name, 'completed')
+  }
+}

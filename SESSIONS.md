@@ -1,32 +1,40 @@
-# Anton — Session Persistence Spec
+# Anton — Session Persistence & Compaction Spec
 
-> How anton stores conversations, manages history, and handles session lifecycle on the agent VM.
-> Inspired by Claude Code's project-scoped sessions and ChatGPT's conversation model.
+> How anton stores conversations, manages history, compacts context, and handles session lifecycle on the agent VM.
+> Sessions are the source of truth — they live on the server, not on the client.
+
+## Design Principles
+
+1. **Server-first** — All session data lives on the agent VM (`~/.anton/sessions/`). Clients are thin views that fetch history on demand.
+2. **Append-only messaging** — New messages are appended to the pi SDK state; no read-modify-write cycles.
+3. **Fast listing** — Session metadata is indexed separately from message content for instant UI rendering.
+4. **Automatic compaction** — Long conversations are compressed transparently so users never hit context limits.
 
 ## Storage Layout
 
 ```
 ~/.anton/
+├── config.yaml                          # agent configuration
 ├── sessions/
-│   ├── index.json                    # lightweight index of all sessions
+│   ├── index.json                       # lightweight index of all sessions
 │   └── data/
 │       ├── sess_abc123/
-│       │   ├── meta.json             # session metadata (no messages)
-│       │   ├── messages.jsonl        # append-only message log
-│       │   └── summary.md           # auto-generated conversation summary
+│       │   ├── meta.json                # session metadata (no messages)
+│       │   ├── messages.jsonl           # append-only message log
+│       │   └── compaction.json          # compaction state (summary, counts)
 │       ├── sess_def456/
 │       │   ├── meta.json
 │       │   ├── messages.jsonl
-│       │   └── summary.md
+│       │   └── compaction.json
 │       └── ...
 ```
 
 ### Why this structure
 
-- **index.json** — Fast listing without reading every session. Contains only metadata (id, title, provider, model, timestamps, message count). The TUI and desktop app read this to show session history instantly.
-- **meta.json** — Per-session metadata. Separated from messages so metadata updates (title, lastActiveAt) don't rewrite the entire message log.
-- **messages.jsonl** — Append-only (one JSON object per line). New messages are appended, never rewritten. This scales to long conversations without read-modify-write cycles. JSONL is standard and streamable.
-- **summary.md** — Auto-generated summary of the conversation. Used for session search, context injection, and the session list UI. Updated periodically (every N turns or on session close).
+- **index.json** — Fast listing without reading every session. The TUI and desktop app read this to show session history instantly (~1ms).
+- **meta.json** — Per-session metadata. Separated from messages so metadata updates don't rewrite the message log.
+- **messages.jsonl** — Append-only log. Each line is a self-contained JSON object. Scales to long conversations.
+- **compaction.json** — Tracks compaction state: current summary, compacted message count, timestamps. Separated from messages because compaction rewrites the summary.
 
 ## index.json
 
@@ -39,8 +47,8 @@ Lightweight index for fast listing. Rebuilt from `data/*/meta.json` if corrupted
     {
       "id": "sess_abc123",
       "title": "Deploy nginx with SSL",
-      "provider": "openrouter",
-      "model": "minimax/minimax-m2.5",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
       "messageCount": 24,
       "createdAt": 1711036800000,
       "lastActiveAt": 1711038600000,
@@ -50,6 +58,8 @@ Lightweight index for fast listing. Rebuilt from `data/*/meta.json` if corrupted
 }
 ```
 
+Sessions are sorted by `lastActiveAt` descending (most recent first).
+
 ## meta.json
 
 Full session metadata. Source of truth for session state.
@@ -58,165 +68,316 @@ Full session metadata. Source of truth for session state.
 {
   "id": "sess_abc123",
   "title": "Deploy nginx with SSL",
-  "provider": "openrouter",
-  "model": "minimax/minimax-m2.5",
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-6",
   "createdAt": 1711036800000,
   "lastActiveAt": 1711038600000,
   "messageCount": 24,
-  "tokenUsage": {
-    "input": 12450,
-    "output": 8320,
-    "total": 20770
-  },
   "archived": false,
   "tags": [],
-  "parentSessionId": null
+  "parentSessionId": null,
+  "compactionCount": 2,
+  "lastCompactedAt": 1711038000000
 }
 ```
-
-### Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
 | id | string | Unique ID, format: `sess_<base36_timestamp>` |
 | title | string | Auto-generated from first user message, can be renamed |
-| provider | string | AI provider used (e.g., "openrouter", "anthropic") |
-| model | string | Model ID (e.g., "minimax/minimax-m2.5") |
+| provider | string | AI provider (e.g., "anthropic", "openai") |
+| model | string | Model ID (e.g., "claude-sonnet-4-6") |
 | createdAt | number | Unix timestamp (ms) |
 | lastActiveAt | number | Updated on every message |
 | messageCount | number | Total messages (user + assistant + tool) |
-| tokenUsage | object | Cumulative token usage (if tracked by provider) |
 | archived | boolean | Soft-delete: hidden from default list, still on disk |
 | tags | string[] | User-applied tags for organization |
 | parentSessionId | string? | If branched from another session |
+| compactionCount | number? | How many times this session has been compacted |
+| lastCompactedAt | number? | When the last compaction occurred |
 
-## messages.jsonl
+## Session ↔ pi SDK
 
-Append-only message log. Each line is a self-contained JSON object.
+Each session wraps a **pi SDK Agent** instance (`@mariozechner/pi-agent-core`). The pi agent manages:
 
-```jsonl
-{"seq":1,"role":"user","content":"deploy nginx with ssl on this server","ts":1711036800000}
-{"seq":2,"role":"assistant","content":"I'll set up nginx with Let's Encrypt SSL. Let me start by checking the OS and installing nginx.","ts":1711036802000}
-{"seq":3,"role":"tool_call","name":"shell","input":{"command":"cat /etc/os-release"},"id":"tc_1","ts":1711036802500}
-{"seq":4,"role":"tool_result","id":"tc_1","output":"NAME=\"Ubuntu\"\nVERSION=\"22.04.3 LTS\"","ts":1711036803000}
-{"seq":5,"role":"tool_call","name":"shell","input":{"command":"apt-get install -y nginx certbot python3-certbot-nginx"},"id":"tc_2","ts":1711036803500}
-{"seq":6,"role":"tool_result","id":"tc_2","output":"Reading package lists... Done\n...","ts":1711036815000}
-{"seq":7,"role":"assistant","content":"Nginx is installed and running. Now let me set up SSL with certbot.","ts":1711036816000}
+- The LLM message array (user, assistant, tool messages in provider format)
+- The tool-calling loop (message → LLM → tools → execute → repeat)
+- Streaming events (text deltas, tool calls, tool results)
+
+The session adds on top:
+
+- Persistence (save/load to disk after each turn)
+- Compaction (two-layer context management)
+- Confirmation flow (dangerous commands need approval)
+- API key resolution (client > config > env)
+
+### In-Memory State
+
+```typescript
+class Session {
+  id: string
+  provider: string
+  model: string
+  title: string
+  createdAt: number
+  lastActiveAt: number
+  piAgent: PiAgent           // the actual LLM agent instance
+  compactionState: CompactionState
+  compactionConfig: CompactionConfig
+  confirmHandler?: (command, reason) => Promise<boolean>
+  clientApiKey?: string      // per-session override, never persisted
+}
 ```
 
-### Message format
+### Persistence Format
 
-| Field | Type | Description |
-|-------|------|-------------|
-| seq | number | Monotonically increasing sequence number |
-| role | string | "user", "assistant", "tool_call", "tool_result", "system" |
-| content | string | Message text |
-| name | string? | Tool name (for tool_call) |
-| input | object? | Tool input (for tool_call) |
-| id | string? | Tool call ID (links tool_call to tool_result) |
-| output | string? | Tool output (for tool_result) |
-| isError | boolean? | Whether tool result is an error |
-| ts | number | Unix timestamp (ms) |
-| usage | object? | Token usage for this specific LLM call |
+The `PersistedSession` written to disk contains the pi SDK message array directly:
 
-### Why JSONL
-
-- **Append-only**: New messages = `appendFileSync`. No read-modify-write.
-- **Streamable**: Can read line-by-line without loading full file into memory.
-- **Recoverable**: Corrupt last line? Skip it. Rest of history is fine.
-- **Standard**: Works with `jq`, `grep`, any JSON tooling.
-- **No serialization overhead**: Each line is independent. No array brackets to manage.
-
-## summary.md
-
-Auto-generated plain-text summary of the conversation. Updated every 10 turns or on explicit request.
-
-```markdown
-# Deploy nginx with SSL
-
-## What was done
-- Installed nginx on Ubuntu 22.04
-- Configured Let's Encrypt SSL via certbot
-- Set up auto-renewal cron job
-- Tested HTTPS endpoint
-
-## Key decisions
-- Used certbot nginx plugin (not standalone)
-- Configured HTTP→HTTPS redirect
-
-## Current state
-- Nginx running on ports 80/443
-- SSL cert valid until 2026-06-17
-- Auto-renewal scheduled
+```typescript
+interface PersistedSession {
+  id: string
+  provider: string
+  model: string
+  messages: unknown[]          // pi SDK internal message format
+  createdAt: number
+  lastActiveAt: number
+  title: string
+  compactionState?: CompactionState
+}
 ```
 
-### How summaries are generated
+Messages are in the standard LLM format:
 
-1. After every 10 message turns, the agent generates a summary using the LLM
-2. Summary is stored as plain markdown — human-readable and searchable
-3. Used for:
-   - Session list previews in TUI
-   - Context injection when resuming old sessions (avoids replaying full history)
-   - Search across sessions (`grep` over `summary.md` files)
+```json
+[
+  { "role": "user", "content": [{ "type": "text", "text": "deploy nginx" }] },
+  { "role": "assistant", "content": [{ "type": "text", "text": "I'll set up nginx..." }, { "type": "tool_use", "id": "tc_1", "name": "shell", "input": { "command": "apt install nginx" } }] },
+  { "role": "tool", "tool_use_id": "tc_1", "content": [{ "type": "text", "text": "Reading package lists..." }] }
+]
+```
+
+## Context Compaction
+
+Long-running sessions accumulate messages that eventually exceed the model's context window. Compaction keeps sessions usable without losing important context.
+
+### Two-Layer Strategy
+
+**Layer 1: Tool Output Trimming** (runs on every LLM call via `transformContext` hook)
+
+- Scans all messages except the most recent `preserveRecentCount` (default: 20)
+- If any tool result exceeds `toolOutputMaxTokens` (default: 4000 tokens), truncates it
+- Appends `[... output truncated, was ~X tokens ...]` to the truncated output
+- Never mutates original messages — creates clones
+- This runs silently on every turn as a preprocessing step
+
+**Layer 2: LLM-Based Summarization** (triggered when approaching context limit)
+
+- Triggers when estimated tokens exceed `threshold × maxContextTokens` (default: 80% of context window)
+- Splits messages into two groups: **older** (to summarize) and **recent** (to preserve)
+- Sends older messages to the LLM with a summarization prompt
+- Replaces older messages with a single `[CONVERSATION SUMMARY]` system message
+- Returns: `[summaryMessage, ...recentMessages]`
+
+### Compaction Flow
+
+```
+Every LLM call:
+  1. Apply Layer 1 (trim tool outputs) → trimmedMessages
+  2. Estimate token count of trimmedMessages
+  3. If tokens > threshold (80% of context window):
+     a. Split: olderMessages | recentMessages (last 20)
+     b. Serialize olderMessages to text
+     c. Call LLM with summarization prompt
+     d. Create summary message: "[CONVERSATION SUMMARY]\n{summary}"
+     e. Return [summaryMessage, ...recentMessages]
+  4. If tokens < threshold:
+     Return trimmedMessages as-is
+```
+
+### Compaction Config
+
+```yaml
+# ~/.anton/config.yaml
+compaction:
+  enabled: true              # can be disabled entirely
+  threshold: 0.80            # compact at 80% of context window
+  preserveRecentCount: 20    # always keep last 20 messages verbatim
+  toolOutputMaxTokens: 4000  # trim tool outputs longer than this (in tokens)
+```
+
+### Context Window Sizes
+
+The compaction system infers `maxContextTokens` from the model ID:
+
+| Model Pattern | Context Window |
+|--------------|----------------|
+| claude-opus-4* | 200,000 |
+| claude-sonnet-4* | 200,000 |
+| claude-haiku-4* | 200,000 |
+| gpt-4o | 128,000 |
+| gpt-4o-mini | 128,000 |
+| o3, o4-mini | 200,000 |
+| gemini-2.5-pro | 1,048,576 |
+| gemini-2.5-flash | 1,048,576 |
+| llama3* | 128,000 |
+| Default | 128,000 |
+
+### Compaction State
+
+Tracked per-session and persisted to disk:
+
+```typescript
+interface CompactionState {
+  summary: string | null          // current LLM-generated summary
+  compactedMessageCount: number   // cumulative messages that have been summarized
+  lastCompactedAt: number | null  // timestamp of last compaction
+  compactionCount: number         // total number of compactions performed
+}
+```
+
+### Manual Compaction
+
+Users can force-compact at any time by sending `/compact` as a message:
+
+```
+/compact
+/compact Focus on the deployment steps and ignore the debugging
+```
+
+Manual compaction bypasses the threshold check and always runs Layer 2. Custom instructions after `/compact` are included in the summarization prompt.
+
+### Summarization Prompt
+
+The LLM receives these instructions when summarizing:
+
+- Preserve ALL file paths, function names, variable names, URLs, command outputs
+- Preserve sequence of actions and their outcomes
+- Note errors encountered and their resolutions
+- Note current work state (what's done vs. what remains)
+- Preserve user preferences and stated decisions
+- Aim for < 20% of original length
+- Use bullet points and structured formatting
+
+### Token Estimation
+
+Uses a ~4 characters per token heuristic (provider-agnostic):
+
+```
+tokens ≈ (characters / 4) + 4  // +4 per message for role/metadata overhead
+```
+
+This is deliberately rough — the goal is to trigger compaction early enough, not to be precise. Over-compacting is better than hitting the context limit.
 
 ## Session Lifecycle
 
 ### Create
+
 ```
-1. Generate ID: sess_<Date.now().toString(36)>
-2. Create directory: ~/.anton/sessions/data/<id>/
-3. Write meta.json with initial metadata
-4. Create empty messages.jsonl
-5. Update index.json
+1. Client sends: { type: "session_create", id: "sess_<base36>", provider?, model? }
+2. Server creates pi SDK Agent instance with model + tools
+3. Server persists initial meta.json
+4. Server updates index.json
+5. Server responds: { type: "session_created", id, provider, model }
 ```
 
 ### Message
+
 ```
-1. Append message line to messages.jsonl
-2. Update meta.json (lastActiveAt, messageCount)
-3. Update index.json entry
-4. Every 10 turns: regenerate summary.md
+1. Client sends: { type: "message", content: "...", sessionId: "sess_..." }
+2. Server routes to the correct Session instance
+3. Session calls piAgent.processMessage(content)
+4. Session streams events back: thinking → text → tool_call → tool_result → done
+5. After turn completes: persist session (messages + meta + compaction state)
 ```
 
 ### Resume
+
 ```
-1. Read meta.json for provider/model info
-2. Read messages.jsonl to restore pi SDK message history
-3. Optionally: if messages > 100, use summary.md + last 50 messages
-   instead of full history (context window management)
+1. Client sends: { type: "session_resume", id: "sess_..." }
+2. Server checks in-memory sessions map
+3. If not in memory: load from disk (meta.json + messages from PersistedSession)
+4. Reconstruct pi SDK Agent with existing messages
+5. Wire confirmation handler
+6. Respond: { type: "session_resumed", id, provider, model, messageCount, title }
 ```
 
-### Archive (soft delete)
+### Fetch History
+
 ```
-1. Set archived: true in meta.json
-2. Update index.json
-3. Session data stays on disk (can be unarchived)
+1. Client sends: { type: "session_history", id: "sess_..." }
+2. Server reads the pi SDK message array
+3. Translates each message to client-friendly format (seq, role, content, toolName, etc.)
+4. Responds: { type: "session_history_response", id, messages: [...] }
 ```
 
-### Delete (hard delete)
+### Destroy
+
 ```
-1. Remove directory: ~/.anton/sessions/data/<id>/
-2. Remove from index.json
+1. Client sends: { type: "session_destroy", id: "sess_..." }
+2. Server removes from in-memory map
+3. Server deletes session directory from disk
+4. Server removes from index.json
+5. Responds: { type: "session_destroyed", id }
 ```
 
 ### Auto-cleanup
+
 ```
 On agent startup:
 1. Read index.json
-2. Archive sessions older than sessions.ttlDays (default: 30)
+2. Archive sessions older than sessions.ttlDays (default: 7)
 3. Delete sessions archived for > 7 days
 4. Rebuild index.json from data/*/meta.json if index is stale
 ```
 
-## Context Window Management
+## Client Architecture
 
-When resuming a session with many messages, loading the full history may exceed the model's context window. Strategy:
+### Server-First Design
 
-1. **< 50 messages**: Load all messages into pi SDK
-2. **50-200 messages**: Load summary.md as a system message + last 50 messages
-3. **> 200 messages**: Load summary.md + last 30 messages + use `transformContext` hook to prune further
+Sessions are the source of truth on the agent VM. Clients behave as follows:
 
-This mirrors how Claude Code handles long sessions — it compacts early history into a summary and keeps recent context intact.
+**On connect:**
+1. Fetch `sessions_list` → populate sidebar with session titles/metadata
+2. Fetch `providers_list` → populate model selector
+3. Auto-resume the most recent session
+4. Fetch `session_history` for the resumed session → render past messages
+
+**On new conversation:**
+1. Generate session ID client-side: `sess_<Date.now().toString(36)>`
+2. Send `session_create` to server
+3. Create local conversation linked to `sessionId`
+4. Start chatting
+
+**On switch conversation:**
+1. Send `session_resume` to server
+2. Send `session_history` to server
+3. Replace displayed messages with history response
+
+**Local state (thin cache):**
+- Conversations are cached in localStorage with a `sessionId` field linking to the server session
+- Messages are fetched from the server — local copies are for display only
+- If local and server diverge, server wins
+
+### Desktop App (Tauri)
+
+The desktop app uses Zustand for state management:
+
+```
+AppState:
+  connectionStatus    ← from connection.onStatusChange()
+  agentStatus         ← from events channel (agent_status)
+  currentSessionId    ← set on session_created/session_resumed
+  currentProvider     ← set on session_created/providers_list_response
+  currentModel        ← set on session_created/providers_list_response
+  sessions[]          ← from sessions_list_response
+  providers[]         ← from providers_list_response
+  conversations[]     ← local cache linked to server sessions via sessionId
+  pendingConfirm      ← from confirm messages
+```
+
+### CLI (Ink TUI)
+
+The CLI follows the same protocol flow but stores state in-memory only (no localStorage). It auto-resumes the most recent session on connect and displays session list via `Ctrl+S`.
 
 ## Session Branching (future)
 
@@ -225,31 +386,10 @@ Like ChatGPT's "edit and regenerate":
 ```
 1. User wants to branch from message seq:15
 2. Create new session with parentSessionId = original
-3. Copy messages.jsonl lines 1-15 to new session
+3. Copy messages 1-15 to new session
 4. New session continues independently
 5. Original session unchanged
 ```
-
-## Wire Protocol (session listing)
-
-The `sessions_list_response` returns data from `index.json`:
-
-```typescript
-{
-  type: "sessions_list_response",
-  sessions: [{
-    id: "sess_abc123",
-    title: "Deploy nginx with SSL",
-    provider: "openrouter",
-    model: "minimax/minimax-m2.5",
-    messageCount: 24,
-    createdAt: 1711036800000,
-    lastActiveAt: 1711038600000,
-  }]
-}
-```
-
-No message content is sent over the wire for listing — only metadata. Full messages are loaded server-side when a session is resumed.
 
 ## Search (future)
 
@@ -259,7 +399,6 @@ anton sessions search "nginx ssl"
 
 Searches across:
 1. Session titles (index.json)
-2. Summary files (summary.md)
-3. Message content (messages.jsonl via grep)
+2. Message content (messages via grep or LLM search)
 
 Results ranked by relevance and recency.

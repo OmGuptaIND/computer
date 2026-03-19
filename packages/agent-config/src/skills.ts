@@ -15,42 +15,42 @@
  * Adding a new skill is as simple as adding a YAML file to ~/.anton/skills/
  */
 
-import { readFileSync, readdirSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import type { SkillConfig } from "./config.js";
-import { getAntonDir } from "./config.js";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
+import type { SkillConfig } from './config.js'
+import { getAntonDir } from './config.js'
 
-const SKILLS_DIR = join(getAntonDir(), "skills");
+const SKILLS_DIR = join(getAntonDir(), 'skills')
 
 export function loadSkills(): SkillConfig[] {
   if (!existsSync(SKILLS_DIR)) {
-    mkdirSync(SKILLS_DIR, { recursive: true });
+    mkdirSync(SKILLS_DIR, { recursive: true })
     // Create example skills on first run
-    createExampleSkills();
+    createExampleSkills()
   }
 
-  const files = readdirSync(SKILLS_DIR).filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"));
-  const skills: SkillConfig[] = [];
+  const files = readdirSync(SKILLS_DIR).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
+  const skills: SkillConfig[] = []
 
   for (const file of files) {
     try {
-      const raw = readFileSync(join(SKILLS_DIR, file), "utf-8");
-      const skill = parseYaml(raw) as SkillConfig;
-      skills.push(skill);
+      const raw = readFileSync(join(SKILLS_DIR, file), 'utf-8')
+      const skill = parseYaml(raw) as SkillConfig
+      skills.push(skill)
     } catch (err) {
-      console.error(`Failed to load skill ${file}:`, err);
+      console.error(`Failed to load skill ${file}:`, err)
     }
   }
 
-  return skills;
+  return skills
 }
 
 function createExampleSkills() {
   const examples: Record<string, SkillConfig> = {
-    "content-writer.yaml": {
-      name: "AI Content Writer",
-      description: "Writes blog posts, social media content, and newsletters",
+    'content-writer.yaml': {
+      name: 'AI Content Writer',
+      description: 'Writes blog posts, social media content, and newsletters',
       prompt: `You are a content writer. When activated, you:
 1. Check ~/content/drafts/ for any content briefs
 2. Research the topic using the browser tool
@@ -60,12 +60,12 @@ function createExampleSkills() {
 
 Write in a clear, engaging style. Include headers, bullet points, and relevant examples.
 Optimize for readability and SEO when applicable.`,
-      tools: ["shell", "filesystem", "browser"],
+      tools: ['shell', 'filesystem', 'browser'],
     },
 
-    "server-monitor.yaml": {
-      name: "Server Monitor",
-      description: "Monitors server health and alerts on issues",
+    'server-monitor.yaml': {
+      name: 'Server Monitor',
+      description: 'Monitors server health and alerts on issues',
       prompt: `You are a server monitor. When activated, you:
 1. Check disk usage (df -h)
 2. Check memory usage (free -m)
@@ -77,13 +77,13 @@ Optimize for readability and SEO when applicable.`,
 
 If everything is healthy, give a brief "all clear" summary.
 If there are issues, explain what's wrong and suggest fixes.`,
-      schedule: "0 */6 * * *", // Every 6 hours
-      tools: ["shell", "filesystem"],
+      schedule: '0 */6 * * *', // Every 6 hours
+      tools: ['shell', 'filesystem'],
     },
 
-    "deployer.yaml": {
-      name: "AI Deployer",
-      description: "Deploys code from git repos with zero-downtime",
+    'deployer.yaml': {
+      name: 'AI Deployer',
+      description: 'Deploys code from git repos with zero-downtime',
       prompt: `You are a deployment agent. When asked to deploy:
 1. Pull the latest code from the specified git repo
 2. Install dependencies
@@ -94,14 +94,14 @@ If there are issues, explain what's wrong and suggest fixes.`,
 7. Report the result
 
 If any step fails, roll back and report the error.`,
-      tools: ["shell", "filesystem", "network"],
+      tools: ['shell', 'filesystem', 'network'],
     },
-  };
+  }
 
   for (const [filename, skill] of Object.entries(examples)) {
-    const path = join(SKILLS_DIR, filename);
+    const path = join(SKILLS_DIR, filename)
     if (!existsSync(path)) {
-      writeFileSync(path, stringifyYaml(skill), "utf-8");
+      writeFileSync(path, stringifyYaml(skill), 'utf-8')
     }
   }
 }
@@ -111,10 +111,10 @@ If any step fails, roll back and report the error.`,
  * This turns a generic agent into a specialized worker.
  */
 export function buildSkillPrompt(skill: SkillConfig, userMessage?: string): string {
-  let prompt = `[SKILL ACTIVATED: ${skill.name}]\n\n`;
-  prompt += skill.prompt;
+  let prompt = `[SKILL ACTIVATED: ${skill.name}]\n\n`
+  prompt += skill.prompt
   if (userMessage) {
-    prompt += `\n\n[USER REQUEST]: ${userMessage}`;
+    prompt += `\n\n[USER REQUEST]: ${userMessage}`
   }
-  return prompt;
+  return prompt
 }

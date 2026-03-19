@@ -1,0 +1,22 @@
+{
+  "name": "@anton/agent-core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "dev": "tsc --watch",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@anton/agent-config": "workspace:*",
+    "@anton/protocol": "workspace:*",
+    "@mariozechner/pi-ai": "^0.60.0",
+    "@mariozechner/pi-agent-core": "^0.60.0",
+    "@sinclair/typebox": "^0.34.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

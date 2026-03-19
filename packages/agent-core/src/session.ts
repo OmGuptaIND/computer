@@ -1,0 +1,610 @@
+/**
+ * Session — one pi SDK Agent instance per session.
+ *
+ * Each session has its own:
+ * - Model/provider (can differ from defaults)
+ * - Message history (persisted to ~/.anton/sessions/)
+ * - Context window management (transformContext hook)
+ *
+ * pi SDK does the heavy lifting — we just manage lifecycle and persistence.
+ */
+
+import type { AgentConfig, PersistedSession } from '@anton/agent-config'
+import { loadSession, saveSession } from '@anton/agent-config'
+import type { TokenUsage } from '@anton/protocol'
+import { Agent as PiAgent } from '@mariozechner/pi-agent-core'
+import type {
+  AgentMessage,
+  AgentTool,
+  AgentEvent as PiAgentEvent,
+} from '@mariozechner/pi-agent-core'
+import { getModel } from '@mariozechner/pi-ai'
+import type { Api, Model, TextContent } from '@mariozechner/pi-ai'
+import { SYSTEM_PROMPT, buildTools } from './agent.js'
+import {
+  type CompactionConfig,
+  type CompactionState,
+  compactContext,
+  createInitialCompactionState,
+  getDefaultCompactionConfig,
+} from './compaction.js'
+
+export type ConfirmHandler = (command: string, reason: string) => Promise<boolean>
+
+export type SessionEvent =
+  | { type: 'thinking'; text: string }
+  | { type: 'text'; content: string }
+  | { type: 'tool_call'; id: string; name: string; input: Record<string, unknown> }
+  | { type: 'tool_result'; id: string; output: string; isError?: boolean }
+  | { type: 'confirm'; id: string; command: string; reason: string }
+  | { type: 'compaction'; compactedMessages: number; totalCompactions: number }
+  | { type: 'done'; usage?: TokenUsage; cumulativeUsage?: TokenUsage }
+  | { type: 'error'; message: string }
+
+export interface SessionInfo {
+  id: string
+  provider: string
+  model: string
+  title: string
+  messageCount: number
+  createdAt: number
+  lastActiveAt: number
+}
+
+/** Fallback max messages if compaction fails */
+const FALLBACK_MAX_MESSAGES = 100
+
+export class Session {
+  readonly id: string
+  readonly provider: string
+  readonly model: string
+  readonly createdAt: number
+
+  private piAgent: PiAgent
+  private config: AgentConfig
+  private confirmHandler?: ConfirmHandler
+  private title = ''
+  private lastActiveAt: number
+  private clientApiKey?: string // client-provided, never persisted
+  private lastEmittedTextLength = 0 // track delta for streaming
+
+  // Token usage tracking
+  private lastTurnUsage: TokenUsage | undefined
+  private cumulativeUsage: TokenUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  }
+
+  // Compaction state
+  private compactionState: CompactionState
+  private compactionConfig: CompactionConfig
+  private compactionInProgress = false
+  private pendingCompactionEvent: SessionEvent | null = null
+  private resolvedModel: Model<Api>
+
+  constructor(opts: {
+    id: string
+    provider: string
+    model: string
+    config: AgentConfig
+    tools: AgentTool[]
+    apiKey?: string // client override
+    existingMessages?: unknown[] // for session resume
+    title?: string
+    createdAt?: number
+    compactionState?: CompactionState
+  }) {
+    this.id = opts.id
+    this.provider = opts.provider
+    this.model = opts.model
+    this.config = opts.config
+    this.clientApiKey = opts.apiKey
+    this.title = opts.title || ''
+    this.createdAt = opts.createdAt || Date.now()
+    this.lastActiveAt = Date.now()
+
+    // Initialize compaction
+    const configCompaction = opts.config.compaction
+    const defaultCompaction = getDefaultCompactionConfig(opts.model)
+    this.compactionConfig = {
+      enabled: configCompaction?.enabled ?? defaultCompaction.enabled,
+      threshold: configCompaction?.threshold ?? defaultCompaction.threshold,
+      maxContextTokens: defaultCompaction.maxContextTokens,
+      toolOutputMaxTokens:
+        configCompaction?.toolOutputMaxTokens ?? defaultCompaction.toolOutputMaxTokens,
+      preserveRecentCount:
+        configCompaction?.preserveRecentCount ?? defaultCompaction.preserveRecentCount,
+    }
+    this.compactionState = opts.compactionState || createInitialCompactionState()
+
+    // Runtime strings from config — cast to the SDK's nominal types
+    const model = (getModel as (p: string, m: string) => Model<Api> | undefined)(
+      opts.provider,
+      opts.model,
+    )
+
+    if (!model) {
+      throw new Error(
+        `Unknown model "${opts.model}" for provider "${opts.provider}". Model IDs must exactly match pi SDK's registry. For openrouter, use format like "anthropic/claude-sonnet-4.6" or "MiniMaxAI/MiniMax-M2.5".`,
+      )
+    }
+
+    this.resolvedModel = model
+
+    this.piAgent = new PiAgent({
+      initialState: {
+        model,
+        systemPrompt: this.getSystemPrompt(),
+        tools: opts.tools,
+        messages: (opts.existingMessages || []) as AgentMessage[],
+        thinkingLevel: 'off',
+      },
+      // Dynamic API key resolution — called on every LLM call
+      getApiKey: async (provider: string) => {
+        return this.resolveApiKey(provider, this.clientApiKey, this.config)
+      },
+      transformContext: async (messages) => {
+        try {
+          // Prevent re-entrant compaction
+          if (this.compactionInProgress) {
+            return messages
+          }
+
+          this.compactionInProgress = true
+          const prevCount = this.compactionState.compactionCount
+
+          const { messages: compacted, state } = await compactContext(
+            messages,
+            this.compactionState,
+            this.compactionConfig,
+            this.resolvedModel,
+            this.provider,
+            async (provider: string) =>
+              this.resolveApiKey(provider, this.clientApiKey, this.config),
+          )
+
+          this.compactionState = state
+
+          // If compaction happened, queue an event
+          if (state.compactionCount > prevCount) {
+            this.pendingCompactionEvent = {
+              type: 'compaction',
+              compactedMessages: state.compactedMessageCount,
+              totalCompactions: state.compactionCount,
+            }
+          }
+
+          return compacted
+        } catch (err) {
+          // Safe fallback: sliding window
+          console.error('[compaction] Failed, falling back to sliding window:', err)
+          if (messages.length > FALLBACK_MAX_MESSAGES) {
+            return messages.slice(messages.length - FALLBACK_MAX_MESSAGES)
+          }
+          return messages
+        } finally {
+          this.compactionInProgress = false
+        }
+      },
+      beforeToolCall: async (ctx) => {
+        if (ctx.toolCall.name === 'shell') {
+          const args = ctx.args as { command: string }
+          const { needsConfirmation } = await import('./tools/shell.js')
+          if (needsConfirmation(args.command, this.config.security.confirmPatterns)) {
+            if (this.confirmHandler) {
+              const approved = await this.confirmHandler(
+                args.command,
+                'Command matches a dangerous pattern',
+              )
+              if (!approved) {
+                return { block: true, reason: 'Command denied by user.' }
+              }
+            } else {
+              return {
+                block: true,
+                reason: 'Command requires confirmation but no handler available.',
+              }
+            }
+          }
+        }
+        return undefined
+      },
+    })
+  }
+
+  setConfirmHandler(handler: ConfirmHandler) {
+    this.confirmHandler = handler
+  }
+
+  /**
+   * Process a user message. Streams events back via async generator.
+   * Persists session state after completion.
+   */
+  async *processMessage(userMessage: string): AsyncGenerator<SessionEvent> {
+    this.lastActiveAt = Date.now()
+    this.lastEmittedTextLength = 0 // reset delta tracking for new turn
+
+    // Auto-generate title from first message
+    if (!this.title) {
+      this.title = userMessage.slice(0, 80).replace(/\n/g, ' ')
+    }
+
+    const events: SessionEvent[] = []
+    let resolveNext: (() => void) | null = null
+    let done = false
+
+    const unsub = this.piAgent.subscribe((event: PiAgentEvent) => {
+      const translated = this.translateEvent(event)
+      if (translated) {
+        events.push(translated)
+        resolveNext?.()
+      }
+    })
+
+    try {
+      this.piAgent
+        .prompt(userMessage)
+        .then(() => {
+          done = true
+          resolveNext?.()
+        })
+        .catch((err: Error) => {
+          events.push({ type: 'error', message: err.message })
+          done = true
+          resolveNext?.()
+        })
+
+      while (!done || events.length > 0) {
+        if (events.length > 0) {
+          yield events.shift()!
+        } else if (!done) {
+          await new Promise<void>((resolve) => {
+            resolveNext = resolve
+          })
+        }
+      }
+    } finally {
+      unsub()
+    }
+
+    // Yield any pending compaction event
+    if (this.pendingCompactionEvent) {
+      yield this.pendingCompactionEvent
+      this.pendingCompactionEvent = null
+    }
+
+    // Persist after each turn
+    this.persist()
+
+    yield { type: 'done', usage: this.lastTurnUsage, cumulativeUsage: this.getCumulativeUsage() }
+  }
+
+  /**
+   * Force compaction now (for /compact command).
+   * Optionally pass custom instructions for what to focus on.
+   */
+  async compactNow(customInstructions?: string): Promise<CompactionState> {
+    this.compactionInProgress = true
+    try {
+      const messages = this.piAgent.state.messages
+      const forceConfig = { ...this.compactionConfig, threshold: 0 } // force by setting threshold to 0
+
+      const { messages: compacted, state } = await compactContext(
+        messages,
+        this.compactionState,
+        forceConfig,
+        this.resolvedModel,
+        this.provider,
+        async (provider: string) => this.resolveApiKey(provider, this.clientApiKey, this.config),
+        customInstructions,
+      )
+
+      this.compactionState = state
+      this.piAgent.replaceMessages(compacted)
+      this.persist()
+      return state
+    } finally {
+      this.compactionInProgress = false
+    }
+  }
+
+  /** Get current compaction state for status queries. */
+  getCompactionState(): CompactionState {
+    return { ...this.compactionState }
+  }
+
+  /** Get cumulative token usage for this session. */
+  getUsage(): TokenUsage {
+    return { ...this.cumulativeUsage }
+  }
+
+  private getCumulativeUsage(): TokenUsage {
+    return { ...this.cumulativeUsage }
+  }
+
+  /**
+   * Switch model mid-session. pi SDK handles this gracefully —
+   * keeps all messages, next LLM call uses the new model.
+   */
+  switchModel(provider: string, model: string): void {
+    const newModel = (getModel as (p: string, m: string) => Model<Api>)(provider, model)
+    this.piAgent.setModel(newModel)
+    // Note: we don't update this.provider/this.model since they're readonly
+    // The persisted session will track the latest model used
+    this.persist()
+  }
+
+  /** Cancel any running work. */
+  cancel() {
+    // pi Agent handles abort internally
+  }
+
+  /** Get chat history in a client-friendly format. */
+  getHistory(): Array<{
+    seq: number
+    role: 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'system'
+    content: string
+    ts: number
+    toolName?: string
+    toolInput?: Record<string, unknown>
+    toolId?: string
+    isError?: boolean
+  }> {
+    const entries: Array<{
+      seq: number
+      role: 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'system'
+      content: string
+      ts: number
+      toolName?: string
+      toolInput?: Record<string, unknown>
+      toolId?: string
+      isError?: boolean
+    }> = []
+    let seq = 0
+
+    type ContentBlock = { type: string; text?: string; name?: string; input?: unknown; id?: string }
+    type RawMsg = {
+      role: string
+      content: string | ContentBlock[]
+      tool_use_id?: string
+      is_error?: boolean
+    }
+
+    for (const msg of this.piAgent.state.messages as RawMsg[]) {
+      if (msg.role === 'user') {
+        const text = Array.isArray(msg.content)
+          ? msg.content
+              .filter((c) => c.type === 'text')
+              .map((c) => c.text ?? '')
+              .join('')
+          : String(msg.content)
+        entries.push({ seq: ++seq, role: 'user', content: text, ts: this.createdAt })
+      } else if (msg.role === 'assistant') {
+        if (!Array.isArray(msg.content)) continue
+        // Extract text parts
+        const textParts = msg.content.filter((c) => c.type === 'text')
+        if (textParts.length > 0) {
+          const text = textParts.map((c) => c.text ?? '').join('')
+          entries.push({ seq: ++seq, role: 'assistant', content: text, ts: this.createdAt })
+        }
+        // Extract tool use parts
+        const toolUses = msg.content.filter((c) => c.type === 'tool_use')
+        for (const tu of toolUses) {
+          entries.push({
+            seq: ++seq,
+            role: 'tool_call',
+            content: `Running: ${tu.name}`,
+            toolName: tu.name,
+            toolInput: tu.input as Record<string, unknown>,
+            toolId: tu.id,
+            ts: this.createdAt,
+          })
+        }
+      } else if (msg.role === 'tool') {
+        const content = Array.isArray(msg.content)
+          ? msg.content
+              .filter((c) => c.type === 'text')
+              .map((c) => c.text ?? '')
+              .join('')
+          : String(msg.content || '')
+        entries.push({
+          seq: ++seq,
+          role: 'tool_result',
+          content,
+          toolId: msg.tool_use_id,
+          isError: msg.is_error,
+          ts: this.createdAt,
+        })
+      }
+    }
+
+    return entries
+  }
+
+  /** Get session info for listing. */
+  getInfo(): SessionInfo {
+    return {
+      id: this.id,
+      provider: this.provider,
+      model: this.model,
+      title: this.title,
+      messageCount: this.piAgent.state.messages.length,
+      createdAt: this.createdAt,
+      lastActiveAt: this.lastActiveAt,
+    }
+  }
+
+  /** Persist session state to disk. */
+  private persist(): void {
+    const persisted: PersistedSession = {
+      id: this.id,
+      provider: this.provider,
+      model: this.model,
+      messages: this.piAgent.state.messages as unknown[],
+      createdAt: this.createdAt,
+      lastActiveAt: this.lastActiveAt,
+      title: this.title,
+      compactionState: this.compactionState,
+    }
+    saveSession(persisted)
+  }
+
+  private translateEvent(piEvent: PiAgentEvent): SessionEvent | null {
+    switch (piEvent.type) {
+      case 'message_update': {
+        const msg = piEvent.message
+        if (msg.role === 'assistant') {
+          const textParts = msg.content.filter((c): c is TextContent => c.type === 'text')
+          if (textParts.length > 0) {
+            const fullText = textParts.map((c) => c.text).join('')
+            // pi SDK sends full accumulated text on each update.
+            // We emit only the delta (new chars since last emit).
+            if (fullText.length > this.lastEmittedTextLength) {
+              const delta = fullText.slice(this.lastEmittedTextLength)
+              this.lastEmittedTextLength = fullText.length
+              return { type: 'text', content: delta }
+            }
+          }
+        }
+        return null
+      }
+
+      case 'tool_execution_start':
+        return {
+          type: 'tool_call',
+          id: piEvent.toolCallId,
+          name: piEvent.toolName,
+          input: piEvent.args || {},
+        }
+
+      case 'tool_execution_end': {
+        const resultContent = piEvent.result?.content as
+          | { type: string; text?: string }[]
+          | undefined
+        return {
+          type: 'tool_result',
+          id: piEvent.toolCallId,
+          output:
+            resultContent
+              ?.filter((c) => c.type === 'text')
+              ?.map((c) => c.text ?? '')
+              ?.join('\n') ?? '',
+          isError: piEvent.isError,
+        }
+      }
+
+      case 'turn_end': {
+        const msg = piEvent.message as unknown as Record<string, Record<string, number>>
+        if (msg?.usage) {
+          const u = msg.usage
+          this.lastTurnUsage = {
+            inputTokens: u.input ?? 0,
+            outputTokens: u.output ?? 0,
+            totalTokens: u.totalTokens ?? 0,
+            cacheReadTokens: u.cacheRead ?? 0,
+            cacheWriteTokens: u.cacheWrite ?? 0,
+          }
+          this.cumulativeUsage.inputTokens += this.lastTurnUsage.inputTokens
+          this.cumulativeUsage.outputTokens += this.lastTurnUsage.outputTokens
+          this.cumulativeUsage.totalTokens += this.lastTurnUsage.totalTokens
+          this.cumulativeUsage.cacheReadTokens += this.lastTurnUsage.cacheReadTokens
+          this.cumulativeUsage.cacheWriteTokens += this.lastTurnUsage.cacheWriteTokens
+        }
+        return null
+      }
+
+      case 'agent_end':
+        return null
+
+      default:
+        return null
+    }
+  }
+
+  /**
+   * Resolve API key with priority: client override > config > env var.
+   */
+  private resolveApiKey(
+    provider: string,
+    clientKey?: string,
+    config?: AgentConfig,
+  ): string | undefined {
+    // 1. Client-provided key (highest priority)
+    if (clientKey) return clientKey
+
+    // 2. Config file key
+    const providerConfig = config?.providers?.[provider]
+    if (providerConfig?.apiKey) return providerConfig.apiKey
+
+    // 3. Environment variable fallback
+    const envMap: Record<string, string> = {
+      anthropic: 'ANTHROPIC_API_KEY',
+      openai: 'OPENAI_API_KEY',
+      google: 'GOOGLE_API_KEY',
+      groq: 'GROQ_API_KEY',
+      together: 'TOGETHER_API_KEY',
+      openrouter: 'OPENROUTER_API_KEY',
+      mistral: 'MISTRAL_API_KEY',
+    }
+    const envVar = envMap[provider]
+    if (envVar && process.env[envVar]) return process.env[envVar]
+
+    return undefined
+  }
+
+  private getSystemPrompt(): string {
+    let prompt = SYSTEM_PROMPT
+    if (this.config.skills.length > 0) {
+      prompt += '\n\n## Active Skills\n'
+      for (const skill of this.config.skills) {
+        prompt += `\n### ${skill.name}\n${skill.description}\n${skill.prompt}\n`
+      }
+    }
+    return prompt
+  }
+}
+
+/**
+ * Create a new session from scratch.
+ */
+export function createSession(
+  id: string,
+  config: AgentConfig,
+  opts?: { provider?: string; model?: string; apiKey?: string },
+): Session {
+  const provider = opts?.provider || config.defaults.provider
+  const model = opts?.model || config.defaults.model
+
+  return new Session({
+    id,
+    provider,
+    model,
+    config,
+    tools: buildTools(config),
+    apiKey: opts?.apiKey,
+  })
+}
+
+/**
+ * Resume a persisted session from disk.
+ * Returns null if session doesn't exist.
+ */
+export function resumeSession(id: string, config: AgentConfig): Session | null {
+  const persisted = loadSession(id)
+  if (!persisted) return null
+
+  return new Session({
+    id: persisted.id,
+    provider: persisted.provider,
+    model: persisted.model,
+    config,
+    tools: buildTools(config),
+    existingMessages: persisted.messages,
+    title: persisted.title,
+    createdAt: persisted.createdAt,
+    compactionState: persisted.compactionState || undefined,
+  })
+}

@@ -1,49 +1,48 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import { AnimatePresence } from "framer-motion";
-import { ArrowDown } from "lucide-react";
-import type { ChatMessage } from "../../lib/store.js";
-import { MessageBubble } from "./MessageBubble.js";
+import { AnimatePresence } from 'framer-motion'
+import { ArrowDown } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ChatMessage } from '../../lib/store.js'
+import { MessageBubble } from './MessageBubble.js'
 
 interface Props {
-  messages: ChatMessage[];
+  messages: ChatMessage[]
 }
 
 export function MessageList({ messages }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
 
   const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [])
 
   // Auto-scroll on new messages
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messages triggers scroll check
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    const container = containerRef.current
+    if (!container) return
 
-    const isNearBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
 
     if (isNearBottom) {
-      scrollToBottom();
+      scrollToBottom()
     }
-  }, [messages, scrollToBottom]);
+  }, [messages, scrollToBottom])
 
   // Show/hide scroll button
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    const container = containerRef.current
+    if (!container) return
 
     const onScroll = () => {
-      const distFromBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight;
-      setShowScrollBtn(distFromBottom > 200);
-    };
+      const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+      setShowScrollBtn(distFromBottom > 200)
+    }
 
-    container.addEventListener("scroll", onScroll);
-    return () => container.removeEventListener("scroll", onScroll);
-  }, []);
+    container.addEventListener('scroll', onScroll)
+    return () => container.removeEventListener('scroll', onScroll)
+  }, [])
 
   return (
     <div ref={containerRef} className="message-list">
@@ -58,13 +57,10 @@ export function MessageList({ messages }: Props) {
 
       {/* Scroll to bottom button */}
       {showScrollBtn && (
-        <button
-          onClick={scrollToBottom}
-          className="message-list__scrollButton"
-        >
+        <button type="button" onClick={scrollToBottom} className="message-list__scrollButton">
           <ArrowDown className="message-list__scrollIcon" />
         </button>
       )}
     </div>
-  );
+  )
 }

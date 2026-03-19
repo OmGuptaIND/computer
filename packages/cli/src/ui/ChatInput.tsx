@@ -1,23 +1,23 @@
-import React, { useState } from "react";
-import { Box, Text, useInput } from "ink";
-import TextInput from "ink-text-input";
-import { ICONS } from "../lib/theme.js";
-import { Spinner } from "./Spinner.js";
+import { Box, Text } from 'ink'
+import TextInput from 'ink-text-input'
+import { useState } from 'react'
+import { ICONS } from '../lib/theme.js'
+import { Spinner } from './Spinner.js'
 
 interface ChatInputProps {
-  onSubmit: (message: string) => void;
-  disabled?: boolean;
+  onSubmit: (message: string) => void
+  disabled?: boolean
 }
 
 export function ChatInput({ onSubmit, disabled }: ChatInputProps) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState('')
 
   const handleSubmit = (input: string) => {
-    const trimmed = input.trim();
-    if (!trimmed) return;
-    onSubmit(trimmed);
-    setValue("");
-  };
+    const trimmed = input.trim()
+    if (!trimmed) return
+    onSubmit(trimmed)
+    setValue('')
+  }
 
   return (
     <Box paddingX={1}>
@@ -35,5 +35,5 @@ export function ChatInput({ onSubmit, disabled }: ChatInputProps) {
         </>
       )}
     </Box>
-  );
+  )
 }

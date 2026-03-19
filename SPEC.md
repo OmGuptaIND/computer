@@ -1,12 +1,14 @@
 # anton.computer — Connection Spec
 
-> **Spec Version: 0.2.0**
+> **Spec Version: 0.3.0**
 >
 > Single source of truth for ports, protocols, and connection behavior.
 > All clients (desktop, CLI) and the agent server MUST honor this spec.
 >
 > Bump this version when protocol or behavior changes. The agent reports
 > this version in `auth_ok.specVersion` so clients know what to expect.
+>
+> For the complete message-by-message API reference, see [API.md](./API.md).
 
 ---
 
@@ -46,13 +48,13 @@ Frame: [1 byte channel] [N bytes JSON payload]
 |---------|-----|---------|
 | CONTROL | 0x00 | Auth, ping/pong, lifecycle, config management |
 | TERMINAL | 0x01 | PTY data (base64-encoded) |
-| AI | 0x02 | Chat, sessions, providers, tool calls, confirmations |
-| FILESYNC | 0x03 | File sync (reserved, v0.3) |
+| AI | 0x02 | Chat, sessions, providers, tool calls, confirmations, compaction |
+| FILESYNC | 0x03 | File sync (reserved, v0.4) |
 | EVENTS | 0x04 | Status updates, notifications |
 
-## Session Management (v0.2.0)
+## Session Management (v0.2.0+)
 
-Sessions are independent agent instances, each with their own model, provider, and message history. Sessions persist to `~/.anton/sessions/` and can be resumed across client reconnects.
+Sessions are independent agent instances, each with their own model, provider, and message history. Sessions persist to `~/.anton/sessions/` on the agent VM and can be resumed across client reconnects.
 
 ### Session Lifecycle
 
@@ -64,6 +66,8 @@ Sessions are independent agent instances, each with their own model, provider, a
 | Resumed | Agent → Client | AI | `{ type: "session_resumed", id, provider, model, messageCount, title }` |
 | List | Client → Agent | AI | `{ type: "sessions_list" }` |
 | List Response | Agent → Client | AI | `{ type: "sessions_list_response", sessions: [...] }` |
+| History | Client → Agent | AI | `{ type: "session_history", id }` |
+| History Response | Agent → Client | AI | `{ type: "session_history_response", id, messages: [...] }` |
 | Destroy | Client → Agent | AI | `{ type: "session_destroy", id }` |
 | Destroyed | Agent → Client | AI | `{ type: "session_destroyed", id }` |
 
@@ -71,13 +75,50 @@ Sessions are independent agent instances, each with their own model, provider, a
 - `apiKey` in `session_create` overrides the server-stored key for that session only (never persisted)
 - Sessions auto-expire after `sessions.ttlDays` (default: 7 days)
 
+### Session History (v0.3.0)
+
+Clients can fetch the full message history for any session. The server reads the pi SDK message array and translates it to a client-friendly format:
+
+```typescript
+// Request
+{ type: "session_history", id: "sess_abc123" }
+
+// Response
+{
+  type: "session_history_response",
+  id: "sess_abc123",
+  messages: [
+    { seq: 1, role: "user", content: "deploy nginx", ts: 1711036800000 },
+    { seq: 2, role: "assistant", content: "I'll set up nginx...", ts: 1711036802000 },
+    { seq: 3, role: "tool_call", content: "Running: shell", toolName: "shell", toolInput: { command: "apt install nginx" }, toolId: "tc_1", ts: 1711036802500 },
+    { seq: 4, role: "tool_result", content: "Reading package lists...", toolId: "tc_1", ts: 1711036803000 }
+  ]
+}
+```
+
+History entry fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| seq | number | Monotonically increasing sequence number |
+| role | string | `"user"`, `"assistant"`, `"tool_call"`, `"tool_result"`, `"system"` |
+| content | string | Message text or tool output |
+| ts | number | Timestamp (ms) |
+| toolName | string? | Tool name (for `tool_call`) |
+| toolInput | object? | Tool input (for `tool_call`) |
+| toolId | string? | Links `tool_call` to `tool_result` |
+| isError | boolean? | Whether tool result is an error |
+
+This allows clients to be thin — all message history lives on the server. The desktop and CLI fetch history on session resume instead of storing messages locally.
+
 ### Chat Messages (with session support)
 
-All AI chat messages now accept an optional `sessionId` field:
+All AI chat messages accept an optional `sessionId` field:
 
 ```typescript
 { type: "message", content: string, sessionId?: string }
 { type: "text", content: string, sessionId?: string }
+{ type: "thinking", text: string, sessionId?: string }
 { type: "tool_call", id, name, input, sessionId?: string }
 { type: "tool_result", id, output, isError?, sessionId?: string }
 { type: "confirm", id, command, reason, sessionId?: string }
@@ -86,7 +127,97 @@ All AI chat messages now accept an optional `sessionId` field:
 { type: "error", message, sessionId?: string }
 ```
 
-## Provider Management (v0.2.0)
+### Token Usage (v0.3.0)
+
+The `done` message includes optional token usage for the completed turn:
+
+```typescript
+{
+  type: "done",
+  sessionId?: string,
+  usage?: {
+    inputTokens: number,
+    outputTokens: number,
+    totalTokens: number,
+    cacheReadTokens: number,
+    cacheWriteTokens: number
+  },
+  cumulativeUsage?: {  // session lifetime totals
+    inputTokens: number,
+    outputTokens: number,
+    totalTokens: number,
+    cacheReadTokens: number,
+    cacheWriteTokens: number
+  }
+}
+```
+
+Clients can use this to display per-turn and cumulative token costs.
+
+### Text Streaming
+
+The agent sends `text` events as deltas (only new characters since the last emit). Clients MUST append each `text` event to the current assistant message rather than creating a new message bubble. This mirrors how the pi SDK emits accumulated text — the session translates it to deltas before sending.
+
+### Confirmation Flow
+
+When the agent detects a dangerous command (matches `security.confirmPatterns`), it pauses and asks the client:
+
+```
+Agent → Client: { type: "confirm", id: "c_1", command: "sudo rm -rf /var/log", reason: "Matches pattern: sudo" }
+Client → Agent: { type: "confirm_response", id: "c_1", approved: true }
+```
+
+- Confirmation timeout: 60 seconds (resolves to denied if no response)
+- Confirmation is per-session — the handler is wired when the session is created/resumed
+
+## Context Compaction (v0.3.0)
+
+Sessions automatically manage context window usage through a two-layer compaction strategy.
+
+### Compaction Events
+
+| Direction | Channel | Message |
+|-----------|---------|---------|
+| Agent → Client | AI | `{ type: "compaction_start", sessionId? }` |
+| Agent → Client | AI | `{ type: "compaction_complete", sessionId?, compactedMessages, totalCompactions }` |
+
+### Manual Compaction
+
+Clients can trigger compaction by sending a message containing `/compact`:
+
+```typescript
+{ type: "message", content: "/compact", sessionId: "sess_abc123" }
+// Optional: "/compact Focus on the deployment steps"
+```
+
+The `/compact` command triggers an immediate LLM-based summarization of older messages, regardless of the threshold. Custom instructions after `/compact` are passed to the summarization prompt.
+
+See [SESSIONS.md](./SESSIONS.md) for full compaction architecture.
+
+## Scheduler (v0.3.0)
+
+Skills can be scheduled to run automatically via cron expressions. The scheduler is managed via AI channel messages.
+
+| Direction | Channel | Message |
+|-----------|---------|---------|
+| Client → Agent | AI | `{ type: "scheduler_list" }` |
+| Agent → Client | AI | `{ type: "scheduler_list_response", jobs: [...] }` |
+| Client → Agent | AI | `{ type: "scheduler_run", name }` |
+| Agent → Client | AI | `{ type: "scheduler_run_response", name, success, error? }` |
+
+Job entries:
+```typescript
+{
+  name: string,
+  description: string,
+  schedule: string,        // cron expression
+  nextRun: number,         // unix ms
+  lastRun: number | null,
+  enabled: boolean
+}
+```
+
+## Provider Management (v0.2.0+)
 
 Providers are managed via AI channel messages. API keys are stored in `~/.anton/config.yaml`.
 
@@ -104,7 +235,15 @@ Provider list entries:
 { name: string, models: string[], hasApiKey: boolean, baseUrl?: string }
 ```
 
-## Config Management (v0.2.0)
+### API Key Resolution (Priority Order)
+
+When the agent needs an API key for an LLM call, it resolves in this order:
+
+1. **Client-provided key** — passed in `session_create.apiKey` (temporary, never persisted)
+2. **Config file key** — from `~/.anton/config.yaml` providers section
+3. **Environment variable** — `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, etc.
+
+## Config Management (v0.2.0+)
 
 System-level config queries/updates via CONTROL channel:
 
@@ -116,6 +255,31 @@ System-level config queries/updates via CONTROL channel:
 | Agent → Client | CONTROL | `{ type: "config_update_response", success, error? }` |
 
 Valid keys: `"providers"`, `"defaults"`, `"security"`
+
+## Client Connection Flow
+
+### On Connect
+
+Clients SHOULD perform these steps after `auth_ok`:
+
+1. Send `providers_list` — get available providers and which have API keys
+2. Send `sessions_list` — get existing sessions sorted by `lastActiveAt` desc
+3. Auto-resume the most recent session (send `session_resume` + `session_history`)
+4. If no sessions exist, create a new one with `session_create`
+
+### On New Conversation
+
+1. Generate session ID: `sess_<Date.now().toString(36)>`
+2. Send `session_create` with desired provider/model
+3. Wait for `session_created` response
+4. Start sending messages with `sessionId`
+
+### On Switch Conversation
+
+1. Send `session_resume` for the target session
+2. Wait for `session_resumed` response
+3. Send `session_history` to fetch message history
+4. Render messages from the history response
 
 ## Client Connection Defaults
 
@@ -169,6 +333,7 @@ providers:
       - gpt-4o
       - gpt-4o-mini
       - o3
+      - o4-mini
   ollama:
     baseUrl: "http://localhost:11434"
     models:
@@ -186,12 +351,18 @@ defaults:
   model: claude-sonnet-4-6
 
 security:
-  confirmPatterns: [...]
-  forbiddenPaths: [...]
-  networkAllowlist: [...]
+  confirmPatterns: [rm -rf, sudo, shutdown, reboot, mkfs, "dd if=", ":(){ :|:& };:"]
+  forbiddenPaths: [/etc/shadow, ~/.ssh/id_*, ~/.anton/config.yaml]
+  networkAllowlist: [github.com, npmjs.org, pypi.org, api.anthropic.com, api.openai.com]
 
 sessions:
   ttlDays: 7
+
+compaction:
+  enabled: true
+  threshold: 0.80
+  preserveRecentCount: 20
+  toolOutputMaxTokens: 4000
 
 skills: []
 ```
@@ -207,7 +378,7 @@ ai:
   apiKey: "sk-ant-..."
   model: claude-sonnet-4-6
 
-# → auto-migrated to v0.2.0
+# → auto-migrated to v0.2.0+
 providers:
   anthropic:
     apiKey: "sk-ant-..."
@@ -217,30 +388,11 @@ defaults:
   model: claude-sonnet-4-6
 ```
 
-## Session Persistence
-
-Location: `~/.anton/sessions/<session-id>.json`
-
-```json
-{
-  "id": "sess_abc123",
-  "provider": "anthropic",
-  "model": "claude-sonnet-4-6",
-  "messages": [],
-  "createdAt": 1711036800000,
-  "lastActiveAt": 1711036900000,
-  "title": "Deploy nginx config"
-}
-```
-
-- Title is auto-generated from the first user message
-- Messages use pi SDK's internal format
-- Sessions are cleaned up after `sessions.ttlDays` (default 7 days)
-
 ## Backward Compatibility
 
-- v0.2.0 clients work with v0.1.0 agents (session/provider messages will be ignored)
-- v0.1.0 clients work with v0.2.0 agents (messages without `sessionId` use "default" session)
+- v0.3.0 clients work with v0.2.0 agents (history/compaction messages will be ignored)
+- v0.2.0 clients work with v0.3.0 agents (messages without `sessionId` use "default" session)
+- v0.1.0 clients work with v0.3.0 agents (session/provider/history messages ignored)
 - Legacy config auto-migrates on agent startup
 
 ## Changelog
@@ -249,3 +401,4 @@ Location: `~/.anton/sessions/<session-id>.json`
 |------|---------|--------|
 | 2026-03-19 | 0.1.0 | Initial spec. Plain WS on 9876 as default, TLS on 9877. |
 | 2026-03-19 | 0.2.0 | Multi-provider registry, per-session models, session persistence, config management protocol. |
+| 2026-03-19 | 0.3.0 | Session history API, context compaction protocol, text streaming delta spec, token usage on `done`, scheduler protocol, client connection flow, API key resolution order. Full API reference in API.md. |

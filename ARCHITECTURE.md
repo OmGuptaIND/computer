@@ -2,7 +2,7 @@
 
 ## One-Liner
 
-A TypeScript agent daemon on your VPS + a native desktop app on your machine, connected by WebSocket pipes. The agent uses pi SDK (OpenClaw's engine) to think and act.
+A TypeScript agent daemon on your VPS + native desktop app + CLI on your machine, connected by WebSocket pipes. The agent uses pi SDK to think and act. Sessions live on the server.
 
 ## System Diagram
 
@@ -10,19 +10,27 @@ A TypeScript agent daemon on your VPS + a native desktop app on your machine, co
 YOUR DESKTOP                                          YOUR VPS / CLOUD SERVER
 ┌────────────────────────┐                             ┌──────────────────────────────┐
 │  Desktop App (Tauri)   │      WebSocket (TLS)        │  Agent Daemon (Node.js)      │
-│                        │◄──────────────────────────►│                              │
-│  ┌──────────────────┐  │   Single multiplexed conn   │  ┌────────────────────────┐  │
-│  │ Terminal (xterm)  │──┼─── PTY channel ──────────►│  │  PTY Manager (node-pty)│  │
-│  │ AI Agent Chat     │──┼─── AI channel ───────────►│  │  pi SDK Agent Loop     │  │
-│  │ File Browser      │──┼─── FileSync channel ────►│  │  Tool Registry          │  │
-│  │ Notifications     │◄─┼─── Event channel ────────┤  │  File Watcher           │  │
-│  └──────────────────┘  │                             │  │  Port Scanner           │  │
-│                        │                             │  └────────────────────────┘  │
-│  Rust: tunnel mgr,     │                             │                              │
-│  tray, local file sync │                             │  Sandbox: bubblewrap (Linux)  │
-└────────────────────────┘                             │  or sandbox-exec (macOS)      │
-                                                       │                              │
-                                                       │  User's files, Docker, apps  │
+│  or CLI (Ink TUI)      │◄──────────────────────────►│                              │
+│                        │   Single multiplexed conn   │  ┌────────────────────────┐  │
+│  ┌──────────────────┐  │                             │  │  Server (server.ts)    │  │
+│  │ Terminal (xterm)  │──┼─── PTY channel ──────────►│  │  ├── Auth + TLS        │  │
+│  │ AI Agent Chat     │──┼─── AI channel ───────────►│  │  ├── Session Router    │  │
+│  │ Model Selector    │──┼─── AI channel ───────────►│  │  ├── Provider Manager  │  │
+│  │ Session Sidebar   │──┼─── AI channel ───────────►│  │  └── Confirm Handler   │  │
+│  │ Notifications     │◄─┼─── Event channel ────────┤  │                        │  │
+│  └──────────────────┘  │                             │  │  Session (session.ts)  │  │
+│                        │                             │  │  ├── pi SDK Agent      │  │
+│  Zustand state store   │                             │  │  ├── Compaction Engine │  │
+│  localStorage cache    │                             │  │  ├── Persistence       │  │
+│                        │                             │  │  └── Tool Execution    │  │
+│  Rust: shell, notify   │                             │  └────────────────────────┘  │
+└────────────────────────┘                             │                              │
+                                                       │  ~/.anton/                    │
+                                                       │  ├── config.yaml             │
+                                                       │  ├── sessions/               │
+                                                       │  │   ├── index.json          │
+                                                       │  │   └── data/sess_*/        │
+                                                       │  └── certs/                  │
                                                        └──────────────────────────────┘
 ```
 
@@ -32,260 +40,261 @@ YOUR DESKTOP                                          YOUR VPS / CLOUD SERVER
 anton.computer/
 ├── package.json              # pnpm workspace root
 ├── pnpm-workspace.yaml
-├── SHIPPING.md               # Task tracker
+├── SPEC.md                   # Wire protocol spec (v0.3.0)
+├── SESSIONS.md               # Session persistence & compaction spec
 ├── ARCHITECTURE.md           # This file
+├── PROVIDERS.md              # Supported AI providers
+├── GOALS.md                  # Product vision & roadmap
 │
 ├── packages/
 │   ├── agent/                # The daemon (runs on VPS)
-│   │   ├── src/
-│   │   │   ├── index.ts      # Entry point — start WebSocket server
-│   │   │   ├── config.ts     # Load ~/.anton/config.yaml
-│   │   │   ├── server.ts     # WebSocket server + pipe multiplexer
-│   │   │   ├── agent.ts      # pi SDK integration — the AI brain
-│   │   │   ├── pty.ts        # Terminal session manager (node-pty)
-│   │   │   ├── sandbox.ts    # Sandboxed command execution
-│   │   │   ├── events.ts     # Event bus (agent → desktop)
-│   │   │   └── tools/
-│   │   │       ├── shell.ts      # Execute commands
-│   │   │       ├── filesystem.ts # Read/write/search files
-│   │   │       ├── browser.ts    # Headless browsing
-│   │   │       ├── process.ts    # Process management
-│   │   │       └── network.ts    # Port scan, curl, DNS
-│   │   ├── package.json
-│   │   └── tsconfig.json
+│   │   └── src/
+│   │       ├── index.ts      # Entry point — start server
+│   │       ├── config.ts     # Load config, session persistence, provider registry
+│   │       ├── server.ts     # WebSocket server + pipe multiplexer + session routing
+│   │       ├── session.ts    # pi SDK agent wrapper, streaming, confirmation
+│   │       ├── compaction.ts # Two-layer context compaction engine
+│   │       ├── compaction-prompt.ts  # LLM prompts for summarization
+│   │       ├── agent.ts      # System prompt + tool definitions
+│   │       └── tools/        # Shell, filesystem, browser, process, network
 │   │
-│   ├── protocol/             # Shared types & protocol spec
-│   │   ├── src/
-│   │   │   ├── messages.ts   # All message type definitions
-│   │   │   ├── pipes.ts      # Pipe channel types
-│   │   │   └── codec.ts      # Encode/decode multiplexed frames
-│   │   ├── package.json
-│   │   └── tsconfig.json
+│   ├── protocol/             # Shared types & wire format
+│   │   └── src/
+│   │       ├── messages.ts   # All message type definitions (control, AI, terminal, events)
+│   │       ├── pipes.ts      # Channel enum (CONTROL, TERMINAL, AI, FILESYNC, EVENTS)
+│   │       └── codec.ts      # Binary frame encode/decode
 │   │
-│   └── desktop/              # Tauri v2 app
-│       ├── src-tauri/        # Rust backend
-│       │   ├── src/
-│       │   │   ├── main.rs
-│       │   │   ├── tunnel.rs     # WebSocket connection manager
-│       │   │   └── tray.rs       # System tray
-│       │   ├── Cargo.toml
-│       │   └── tauri.conf.json
-│       ├── src/              # React frontend
-│       │   ├── App.tsx
-│       │   ├── components/
-│       │   │   ├── Terminal.tsx   # xterm.js terminal
-│       │   │   ├── AgentChat.tsx  # AI agent interface
-│       │   │   ├── FileTree.tsx   # Remote file browser
-│       │   │   └── Connect.tsx    # Connection setup
-│       │   └── lib/
-│       │       ├── ws.ts         # WebSocket client
-│       │       └── protocol.ts   # Import from @anton/protocol
-│       ├── package.json
-│       └── vite.config.ts
+│   ├── desktop/              # Tauri v2 native app
+│   │   ├── src-tauri/        # Rust backend (shell, notification plugins)
+│   │   └── src/              # React 19 + Tailwind 4 + Zustand 5
+│   │       ├── App.tsx       # Root — connection gate + workspace shell
+│   │       ├── components/
+│   │       │   ├── Connect.tsx       # Connection form + saved machines
+│   │       │   ├── Sidebar.tsx       # Session list + skills library
+│   │       │   ├── AgentChat.tsx     # Chat orchestrator
+│   │       │   ├── Terminal.tsx      # xterm.js remote terminal
+│   │       │   └── chat/
+│   │       │       ├── ChatInput.tsx      # Message input + slash commands
+│   │       │       ├── MessageList.tsx    # Auto-scrolling message view
+│   │       │       ├── MessageBubble.tsx  # Per-message rendering
+│   │       │       ├── ModelSelector.tsx  # Provider/model dropdown
+│   │       │       ├── ToolCallBlock.tsx  # Expandable tool call display
+│   │       │       ├── ConfirmDialog.tsx  # Dangerous command approval
+│   │       │       └── MarkdownRenderer.tsx  # GFM markdown + syntax highlighting
+│   │       └── lib/
+│   │           ├── connection.ts    # WebSocket client + binary codec
+│   │           ├── store.ts         # Zustand store + message handler wiring
+│   │           ├── conversations.ts # Local conversation cache (linked to server sessions)
+│   │           └── skills.ts        # Skill definitions
+│   │
+│   └── cli/                  # Terminal client (Ink-based TUI)
+│       └── src/
+│           ├── lib/
+│           │   └── connection.ts    # WebSocket client (ws package)
+│           ├── ui/
+│           │   ├── App.tsx          # Main TUI with keybindings
+│           │   ├── MessageList.tsx  # Chat display
+│           │   ├── ChatInput.tsx    # Text input
+│           │   ├── SessionList.tsx  # Session picker (Ctrl+S)
+│           │   ├── ModelPicker.tsx  # Model selector (Ctrl+M)
+│           │   ├── ProviderPanel.tsx # API key manager (Ctrl+P)
+│           │   └── StatusBar.tsx    # Connection + model info
+│           └── commands/
+│               ├── connect.ts
+│               ├── chat.ts
+│               ├── shell.ts
+│               └── status.ts
+```
+
+## Agent Architecture
+
+### Server (server.ts)
+
+The WebSocket server is the hub that connects clients to sessions:
+
+```
+Client WebSocket → Auth → Message Router
+                            │
+                  ┌─────────┼──────────┐
+                  │         │          │
+            CONTROL    AI Channel   TERMINAL
+            (ping,     (messages,   (PTY I/O)
+             config)    sessions,
+                        providers)
+                            │
+                  ┌─────────┼──────────┐
+                  │         │          │
+              Session A  Session B  Session C
+              (Claude)   (GPT-4o)   (Gemini)
+```
+
+Key behaviors:
+- **One client at a time** — new connections replace old ones
+- **Session map** — routes messages to the correct `Session` instance by `sessionId`
+- **Lazy loading** — sessions are loaded from disk on first access, not on server start
+- **Confirmation wiring** — each session gets a confirm handler that sends requests to the client and awaits response (60s timeout)
+
+### Session (session.ts)
+
+Each session is an independent pi SDK Agent:
+
+```
+Session "sess_abc123"
+├── pi SDK Agent
+│   ├── Model: claude-sonnet-4-6 (Anthropic)
+│   ├── System Prompt: SYSTEM_PROMPT + active skills
+│   ├── Tools: shell, filesystem, browser, process, network
+│   └── Messages: [user, assistant, tool, ...] (in memory)
 │
-├── deploy/
-│   ├── install.sh            # curl | bash installer
-│   ├── Dockerfile            # Agent Docker image
-│   └── docker-compose.yml
+├── Compaction Engine
+│   ├── Config: { threshold: 0.8, preserveRecent: 20, toolOutputMax: 4000 }
+│   ├── State: { summary: "...", compactedCount: 42, compactionCount: 3 }
+│   └── Runs via transformContext hook on every LLM call
 │
-└── docs/
+├── Persistence
+│   ├── Saves after each turn: messages + meta + compaction state
+│   └── Format: pi SDK message array (standard LLM format)
+│
+└── Streaming
+    ├── processMessage() is an async generator
+    ├── Yields: thinking → text (deltas) → tool_call → tool_result → done
+    └── Text deltas: tracks lastEmittedTextLength, emits only new chars
 ```
 
-## Agent Architecture (The Core)
+### Compaction (compaction.ts)
 
-### How the AI Brain Works
-
-The agent uses **pi SDK** (`@mariozechner/pi-coding-agent`) — the same engine that powers OpenClaw (250k+ GitHub stars). We use pi as the engine, NOT OpenClaw the product. No Gateway, no 50+ integrations we don't need. Just the agentic core.
-
-**What pi gives us (so we don't build it):**
-- Agentic tool-calling loop (message → LLM → tools → execute → repeat until done)
-- Context management (automatic windowing — no blowup on long conversations)
-- Session persistence (save/resume to `~/.anton/sessions/`)
-- Multi-model support (Claude, GPT, Gemini, Ollama, Bedrock — user picks in config)
-- Real-time streaming
-- Parallel tool execution
-- Error recovery and retries
-- AbortSignal for task cancellation
-
-**What we build on top:**
-- Custom tools (shell, filesystem, browser, process, network)
-- Skills system (YAML-based AI workers, 24/7 scheduler)
-- Desktop confirmation flow (dangerous commands need approval)
-- WebSocket pipe to desktop app
-
-```typescript
-import { createAgentSession, SessionManager } from "@mariozechner/pi-coding-agent";
-import { getModel } from "@mariozechner/pi-ai";
-
-// pi-ai handles ALL providers with one call
-const model = getModel(config.ai.provider, config.ai.model, {
-  apiKey: config.ai.apiKey,
-});
-
-const { session } = await createAgentSession({
-  model,
-  sessionManager: SessionManager.open("~/.anton/sessions/default.json"),
-  systemPrompt: SYSTEM_PROMPT,
-  customTools: [shellTool, fsTool, browserTool, processTool, networkTool],
-  abortSignal: controller.signal,
-});
-
-// User sends a message from desktop app
-session.subscribe(event => {
-  // Stream tool calls, outputs, and responses back via WebSocket
-  ws.send(encode({ pipe: "ai", data: event }));
-});
-
-await session.prompt(userMessage);
-```
-
-This gives us:
-- **Tool calling loop** — LLM requests tools, pi executes them, feeds results back
-- **Multi-model support** — Claude, GPT, Gemini, Ollama, any OpenAI-compatible API
-- **Session persistence** — conversations survive reconnects
-- **Streaming** — real-time output as the agent works
-
-### Custom Tools (What Makes It a "Computer")
-
-pi SDK lets us inject custom tools. These are what make the agent DO things:
-
-| Tool | What it does | Why it matters |
-|------|-------------|----------------|
-| `shell` | Execute commands with timeout, streaming stdout/stderr | Deploy code, install packages, run scripts |
-| `filesystem` | Read, write, search, list, watch files | Manage configs, edit code, organize data |
-| `browser` | Headless Chromium via Playwright | Scrape data, test websites, fill forms |
-| `process` | List, kill, monitor running processes | Manage services, debug issues |
-| `network` | Port scan, HTTP requests, DNS lookup | Check connectivity, test APIs |
-
-Each tool runs inside the **sandbox** (see below).
-
-### Sandboxing Model
-
-Inspired by Anthropic's Claude Code sandboxing (they open-sourced it as `@anthropic-ai/sandbox-runtime`):
+Two-layer context management, inspired by Claude Code:
 
 ```
-┌─────────────────────────────────────────────┐
-│  Agent Process (Node.js)                    │
-│                                             │
-│  Tool call: shell("apt install nginx")      │
-│       │                                     │
-│       ▼                                     │
-│  ┌─────────────────────────────────┐        │
-│  │  Sandbox Wrapper                │        │
-│  │                                 │        │
-│  │  Linux: bubblewrap (bwrap)      │        │
-│  │  - Filesystem: deny-then-allow  │        │
-│  │  - Network: namespace removed   │        │
-│  │  - Seccomp: dangerous syscalls  │        │
-│  │    blocked                      │        │
-│  │                                 │        │
-│  │  macOS: sandbox-exec (Seatbelt) │        │
-│  │  - Filesystem: scoped access    │        │
-│  │  - Network: localhost proxy only│        │
-│  │                                 │        │
-│  │  ┌───────────────────────┐      │        │
-│  │  │ Command executes here │      │        │
-│  │  └───────────────────────┘      │        │
-│  └─────────────────────────────────┘        │
-│       │                                     │
-│       ▼                                     │
-│  Network Proxy (allowlist-based)            │
-│  - Default: deny all outbound               │
-│  - Allow: github.com, npmjs.org, pypi.org   │
-│  - User-configurable allowlist              │
-└─────────────────────────────────────────────┘
+Layer 1: Tool Output Trimming
+  - Runs on every LLM call (transformContext hook)
+  - Preserves last 20 messages verbatim
+  - Truncates older tool results > 4000 tokens
+  - Silent — no events emitted
+
+Layer 2: LLM Summarization
+  - Triggers at 80% context window usage
+  - Splits: older messages | recent 20 messages
+  - Sends older to LLM for summarization
+  - Replaces older with [CONVERSATION SUMMARY] message
+  - Emits compaction_start + compaction_complete events
+
+Token estimation: ~4 chars/token heuristic
+Threshold: configurable per config.yaml
+Manual trigger: /compact command
 ```
 
-**Dangerous command flow:**
-1. Agent wants to run `sudo rm -rf /var/log`
-2. Sandbox checks against `confirm_patterns` in config
-3. Match found → emit confirmation request to desktop via event channel
-4. Desktop shows native dialog: "Agent wants to run: sudo rm -rf /var/log. Allow?"
-5. User approves/denies → result sent back to agent
-6. If approved, command runs inside sandbox
-
-## Pipe Protocol
-
-All communication over a single WebSocket with multiplexed channels.
-
-### Frame Format
+### Message Flow (end to end)
 
 ```
-┌──────────┬──────────┬──────────────────────────┐
-│ channel  │ type     │ payload                  │
-│ (1 byte) │ (1 byte) │ (variable, msgpack/JSON) │
-└──────────┴──────────┴──────────────────────────┘
+1. User types in desktop chat input
+2. Desktop: addMessage(user) to store → sendAiMessageToSession(text, sessionId)
+3. Connection: encodes [AI channel byte][JSON] → WebSocket.send()
+4. Server: decodes frame → routes to Session by sessionId
+5. Session: piAgent.processMessage(text)
+6. pi SDK: calls LLM → gets response → may call tools → loops
+
+   For each event:
+   7. Session: translateEvent(piEvent) → yields SessionEvent
+   8. Server: sends event to client as [AI channel][JSON]
+   9. Connection: decodes → dispatches to store handler
+   10. Store:
+       - text → appendAssistantText() (append to last assistant message)
+       - tool_call → addMessage(tool)
+       - tool_result → addMessage(tool)
+       - done → setAgentStatus('idle')
+
+11. Session: persist() after turn completes
 ```
 
-### Channels
+### Tool Confirmation Flow
 
-| ID | Channel | Payload format | Description |
-|----|---------|---------------|-------------|
-| `0x00` | Control | JSON | Auth handshake, ping/pong, errors |
-| `0x01` | Terminal | Binary (raw bytes) | PTY stdin/stdout stream |
-| `0x02` | AI | JSON | Chat messages, tool calls, tool results, streaming text |
-| `0x03` | FileSync | Binary + JSON header | File chunks, sync operations |
-| `0x04` | Events | JSON | Agent notifications → desktop |
-
-### Key Messages
-
-```typescript
-// Control channel
-{ type: "auth", token: "abc123" }
-{ type: "auth_ok", agent_id: "xyz", version: "0.1.0" }
-{ type: "ping" } / { type: "pong" }
-
-// Terminal channel
-// Raw bytes — stdin from desktop, stdout from agent PTY
-// Control messages use JSON:
-{ type: "pty_spawn", id: "t1", cols: 120, rows: 40 }
-{ type: "pty_resize", id: "t1", cols: 80, rows: 24 }
-{ type: "pty_close", id: "t1" }
-
-// AI channel
-{ type: "message", content: "Deploy nginx and configure SSL" }
-{ type: "thinking", text: "I'll install nginx, then use certbot..." }
-{ type: "tool_call", id: "tc1", name: "shell", input: { command: "apt install -y nginx" } }
-{ type: "tool_result", id: "tc1", output: "Reading package lists..." }
-{ type: "text", content: "Nginx is installed. Now configuring SSL..." }
-{ type: "confirm", id: "c1", command: "sudo certbot --nginx", reason: "Needs root access" }
-{ type: "confirm_response", id: "c1", approved: true }
-{ type: "done" }
-
-// Event channel
-{ type: "file_changed", path: "/etc/nginx/nginx.conf", change: "modified" }
-{ type: "port_opened", port: 443, process: "nginx" }
-{ type: "task_completed", summary: "SSL configured for example.com" }
 ```
+1. Session calls shell tool with "sudo rm -rf /var/log"
+2. Tool checks against security.confirmPatterns → match!
+3. Session calls confirmHandler(command, reason)
+4. Server sends: { type: "confirm", id: "c_1", command, reason }
+5. Client shows ConfirmDialog
+6. User clicks Approve/Deny
+7. Client sends: { type: "confirm_response", id: "c_1", approved: true/false }
+8. Server resolves the Promise in confirmHandler
+9. If approved: tool executes. If denied: tool returns error.
+10. 60-second timeout: auto-denies
+```
+
+## Protocol
+
+See [SPEC.md](./SPEC.md) for the full wire protocol specification.
+
+Key design choices:
+- **Single WebSocket** — multiplexed via 1-byte channel prefix
+- **JSON payloads** — human-readable, debuggable, good enough for chat
+- **Base64 for PTY** — binary safety over JSON transport
+- **Stateless frames** — each frame is self-contained, no sequence numbers at the wire level
 
 ## Security Model
 
-1. **Auth**: Shared secret token generated on agent install. Desktop must present it on WebSocket handshake.
-2. **TLS**: Agent generates self-signed cert on first run. Desktop pins the cert fingerprint after first connection.
-3. **Sandbox**: All AI-initiated commands run inside bubblewrap/sandbox-exec. Direct terminal sessions are unsandboxed (user is in control).
-4. **Network**: Sandboxed commands have no network by default. Proxy with domain allowlist for approved outbound.
-5. **Confirmation**: Dangerous patterns (`rm -rf`, `sudo`, `systemctl`, `reboot`) require desktop approval.
-6. **Audit**: Every AI action logged with timestamp, tool name, input, output to `~/.anton/audit.log`.
-7. **No root by default**: Agent runs as a dedicated `anton` user. Sudo available but requires confirmation.
+1. **Auth**: Shared secret token (`ak_<hex>`) generated on agent install
+2. **TLS**: Self-signed cert at `~/.anton/certs/`, port 9877
+3. **Confirmation**: Dangerous patterns require client approval (60s timeout)
+4. **Forbidden paths**: Agent cannot read/write sensitive files
+5. **Network allowlist**: Sandboxed commands restricted to approved domains
+6. **One client**: Only one active connection at a time — prevents conflicts
+7. **API key isolation**: Client-provided keys are session-scoped and never persisted
 
-## Connection Flow
+## Client Architecture
+
+### Desktop (Tauri v2)
 
 ```
-1. User installs agent on VPS:
-   $ curl -fsSL https://get.anton.computer | bash
-   → Installs Node 22, agent package
-   → Generates token: "ak_7f3a2b..."
-   → Starts on port 9876
-   → Prints: "Connect with token: ak_7f3a2b..."
+React 19 + Tailwind 4 + Zustand 5
 
-2. User opens desktop app:
-   → Clicks "Add Machine"
-   → Enters: IP = 1.2.3.4, Token = ak_7f3a2b...
-   → Desktop connects: wss://1.2.3.4:9876
-
-3. WebSocket handshake:
-   Desktop → { channel: 0x00, type: "auth", token: "ak_7f3a2b..." }
-   Agent  → { channel: 0x00, type: "auth_ok", agent_id: "xyz" }
-
-4. Ready. Desktop shows terminal + AI chat.
+App.tsx
+├── Connect screen (if not connected)
+│   ├── New connection form (host, token, name, TLS toggle)
+│   └── Saved machines list (from localStorage)
+│
+├── Connected workspace
+│   ├── Sidebar
+│   │   ├── New task button (creates session on server)
+│   │   ├── Conversation list (linked to server sessions via sessionId)
+│   │   └── Skills library
+│   │
+│   ├── AgentChat
+│   │   ├── ModelSelector dropdown (providers with API keys)
+│   │   ├── MessageList (auto-scroll, scroll button)
+│   │   ├── ChatInput (auto-expanding, slash commands)
+│   │   └── ConfirmDialog (for dangerous commands)
+│   │
+│   └── Terminal (xterm.js, base64 PTY data)
+│
+└── Connection events → Zustand store → React re-renders
 ```
+
+### CLI (Ink)
+
+```
+Keybindings:
+  Ctrl+P  Provider panel (manage API keys)
+  Ctrl+M  Model picker (switch model)
+  Ctrl+S  Session list (view/switch/create)
+  Ctrl+Q  Quit
+
+Same protocol, same session management, text-only interface.
+Auto-resumes most recent session on connect.
+```
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Agent runtime | Node.js 22 + TypeScript |
+| AI engine | pi SDK (`@mariozechner/pi-agent-core` + `pi-ai`) |
+| Desktop app | Tauri v2 (Rust) + React 19 |
+| Desktop UI | Tailwind 4 + Framer Motion + Shiki + react-markdown |
+| CLI | Ink (React for terminals) |
+| Terminal | xterm.js 5.5 |
+| State | Zustand 5 (desktop), in-memory (CLI) |
+| Protocol | Custom binary framing over WebSocket |
+| Config | YAML (`~/.anton/config.yaml`) |
+| Sessions | JSON + pi SDK message format on disk |

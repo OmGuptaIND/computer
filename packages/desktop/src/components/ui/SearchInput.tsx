@@ -1,13 +1,12 @@
-import React from "react";
-import { Search, X } from "lucide-react";
+import { Search, X } from 'lucide-react'
 
 interface Props {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
 }
 
-export function SearchInput({ value, onChange, placeholder = "Search..." }: Props) {
+export function SearchInput({ value, onChange, placeholder = 'Search...' }: Props) {
   return (
     <div className="search-input">
       <Search className="search-input__icon" />
@@ -19,13 +18,10 @@ export function SearchInput({ value, onChange, placeholder = "Search..." }: Prop
         className="search-input__field"
       />
       {value && (
-        <button
-          onClick={() => onChange("")}
-          className="search-input__clear"
-        >
+        <button type="button" onClick={() => onChange('')} className="search-input__clear">
           <X className="search-input__clearIcon" />
         </button>
       )}
     </div>
-  );
+  )
 }

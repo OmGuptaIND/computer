@@ -1,0 +1,26 @@
+export { SYSTEM_PROMPT, buildTools, needsConfirmation } from './agent.js'
+export {
+  type CompactionConfig,
+  type CompactionState,
+  compactContext,
+  createInitialCompactionState,
+  estimateMessageTokens,
+  estimateTokens,
+  getDefaultCompactionConfig,
+  getModelContextSize,
+  trimToolOutputs,
+} from './compaction.js'
+export {
+  COMPACTION_SYSTEM_PROMPT,
+  COMPACTION_USER_PROMPT_PREFIX,
+  COMPACTION_CUSTOM_INSTRUCTIONS_PREFIX,
+  buildCompactionUserPrompt,
+} from './compaction-prompt.js'
+export {
+  Session,
+  createSession,
+  resumeSession,
+  type ConfirmHandler,
+  type SessionEvent,
+  type SessionInfo,
+} from './session.js'

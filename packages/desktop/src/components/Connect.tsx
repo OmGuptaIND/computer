@@ -1,43 +1,34 @@
-import React, { useState } from "react";
-import { motion } from "framer-motion";
-import {
-  ArrowRight, Lock, Server, ShieldCheck, Unlock, Wifi,
-} from "lucide-react";
-import { connection, type ConnectionConfig } from "../lib/connection.js";
-import {
-  loadMachines,
-  saveMachines,
-  type SavedMachine,
-  useConnectionStatus,
-} from "../lib/store.js";
+import { motion } from 'framer-motion'
+import { ArrowRight, Lock, Server, ShieldCheck, Unlock, Wifi } from 'lucide-react'
+import type React from 'react'
+import { useState } from 'react'
+import { type ConnectionConfig, connection } from '../lib/connection.js'
+import { type SavedMachine, loadMachines, saveMachines, useConnectionStatus } from '../lib/store.js'
 
-const PORT_PLAIN = 9876;
-const PORT_TLS = 9877;
+const PORT_PLAIN = 9876
+const PORT_TLS = 9877
 
 export function Connect({ onConnected }: { onConnected: () => void }) {
-  const status = useConnectionStatus();
-  const [machines] = useState(loadMachines);
-  const [host, setHost] = useState("");
-  const [token, setToken] = useState("");
-  const [name, setName] = useState("");
-  const [useTLS, setUseTLS] = useState(false);
-  const [error, setError] = useState("");
+  const status = useConnectionStatus()
+  const [machines] = useState(loadMachines)
+  const [host, setHost] = useState('')
+  const [token, setToken] = useState('')
+  const [name, setName] = useState('')
+  const [useTLS, setUseTLS] = useState(false)
+  const [error, setError] = useState('')
 
-  const port = useTLS ? PORT_TLS : PORT_PLAIN;
-  const isConnecting = status === "connecting" || status === "authenticating";
+  const port = useTLS ? PORT_TLS : PORT_PLAIN
+  const isConnecting = status === 'connecting' || status === 'authenticating'
 
-  const handleConnect = (
-    config: ConnectionConfig,
-    machineName?: string
-  ) => {
-    setError("");
+  const handleConnect = (config: ConnectionConfig, machineName?: string) => {
+    setError('')
 
     const unsub = connection.onStatusChange((s, detail) => {
-      if (s === "connected") {
+      if (s === 'connected') {
         if (machineName || name) {
-          const existing = loadMachines();
-          const id = `${config.host}:${config.port}`;
-          const updated = existing.filter((m) => m.id !== id);
+          const existing = loadMachines()
+          const id = `${config.host}:${config.port}`
+          const updated = existing.filter((m) => m.id !== id)
           updated.push({
             id,
             name: machineName || name || config.host,
@@ -45,24 +36,24 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
             port: config.port,
             token: config.token,
             useTLS: config.useTLS,
-          });
-          saveMachines(updated);
+          })
+          saveMachines(updated)
         }
-        unsub();
-        onConnected();
-      } else if (s === "error") {
-        setError(detail || "Connection failed");
-        unsub();
+        unsub()
+        onConnected()
+      } else if (s === 'error') {
+        setError(detail || 'Connection failed')
+        unsub()
       }
-    });
+    })
 
-    connection.connect(config);
-  };
+    connection.connect(config)
+  }
 
   const connectFromForm = () => {
-    if (!host || !token) return;
-    handleConnect({ host, port, token, useTLS });
-  };
+    if (!host || !token) return
+    handleConnect({ host, port, token, useTLS })
+  }
 
   const connectSaved = (machine: SavedMachine) => {
     handleConnect(
@@ -72,9 +63,9 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
         token: machine.token,
         useTLS: machine.useTLS,
       },
-      machine.name
-    );
-  };
+      machine.name,
+    )
+  }
 
   return (
     <div className="connect-screen">
@@ -111,21 +102,27 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
                 <ShieldCheck className="connect-bullet__icon" />
                 <div>
                   <p className="connect-bullet__title">Secure by default</p>
-                  <p className="connect-bullet__copy">Use standard or TLS mode depending on how your machine is exposed.</p>
+                  <p className="connect-bullet__copy">
+                    Use standard or TLS mode depending on how your machine is exposed.
+                  </p>
                 </div>
               </div>
               <div className="connect-bullet">
                 <Wifi className="connect-bullet__icon" />
                 <div>
                   <p className="connect-bullet__title">Reconnect instantly</p>
-                  <p className="connect-bullet__copy">Saved machines stay available here for one-click access.</p>
+                  <p className="connect-bullet__copy">
+                    Saved machines stay available here for one-click access.
+                  </p>
                 </div>
               </div>
             </div>
 
             <div className="connect-panel__install">
               <span className="connect-panel__installLabel">First time setting up a machine?</span>
-              <code className="connect-panel__installCode">curl -fsSL https://get.anton.computer | bash</code>
+              <code className="connect-panel__installCode">
+                curl -fsSL https://get.anton.computer | bash
+              </code>
             </div>
           </section>
 
@@ -138,6 +135,7 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
                 <div className="connect-savedList">
                   {machines.map((m) => (
                     <button
+                      type="button"
                       key={m.id}
                       onClick={() => connectSaved(m)}
                       disabled={isConnecting}
@@ -173,7 +171,7 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
                 placeholder="ak_7f3a2b..."
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && connectFromForm()}
+                onKeyDown={(e) => e.key === 'Enter' && connectFromForm()}
               />
 
               <ConnectLabel>
@@ -194,7 +192,11 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
                   className="connect-toggle__checkbox"
                 />
                 <span className="connect-toggle__body">
-                  {useTLS ? <Lock className="connect-toggle__icon" /> : <Unlock className="connect-toggle__icon" />}
+                  {useTLS ? (
+                    <Lock className="connect-toggle__icon" />
+                  ) : (
+                    <Unlock className="connect-toggle__icon" />
+                  )}
                   <span className="connect-toggle__text">
                     {useTLS
                       ? `Secure connection (wss://, port ${PORT_TLS})`
@@ -206,16 +208,17 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
               {error && <div className="connect-error">{error}</div>}
 
               <button
+                type="button"
                 onClick={connectFromForm}
                 disabled={!host || !token || isConnecting}
                 className="connect-submit"
               >
                 <span className="connect-submit__label">
                   {isConnecting
-                    ? status === "connecting"
-                      ? "Connecting..."
-                      : "Verifying..."
-                    : "Connect to machine"}
+                    ? status === 'connecting'
+                      ? 'Connecting...'
+                      : 'Verifying...'
+                    : 'Connect to machine'}
                 </span>
                 <span className="connect-submit__iconWrap">
                   <ArrowRight className="connect-submit__icon" />
@@ -226,9 +229,9 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
         </motion.div>
       </div>
     </div>
-  );
+  )
 }
 
 function ConnectLabel({ children }: { children: React.ReactNode }) {
-  return <label className="connect-label">{children}</label>;
+  return <span className="connect-label">{children}</span>
 }
