@@ -6,6 +6,8 @@
   "scripts": {
     "agent:dev": "pnpm --filter @anton/agent dev",
     "agent:build": "pnpm --filter @anton/agent build",
+    "cli:dev": "pnpm --filter @anton/cli dev",
+    "cli:build": "pnpm --filter @anton/cli build",
     "desktop:dev": "pnpm --filter @anton/desktop dev",
     "desktop:build": "pnpm --filter @anton/desktop build",
     "protocol:build": "pnpm --filter @anton/protocol build",
@@ -15,7 +17,10 @@
     "format": "biome format ./packages",
     "format:fix": "biome format --write ./packages",
     "check": "biome check ./packages",
-    "check:fix": "biome check --write ./packages"
+    "check:fix": "biome check --write ./packages",
+    "deploy": "./deploy/sync.sh",
+    "dev": "pnpm protocol:build && concurrently \"pnpm agent:dev\" \"pnpm desktop:dev\"",
+    "dev:local": "ANTON_LOCAL=1 pnpm dev"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0"

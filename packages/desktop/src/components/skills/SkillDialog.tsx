@@ -1,0 +1,102 @@
+import React, { useState } from "react";
+import { Modal } from "../ui/Modal.js";
+import { executeSkill, type Skill } from "../../lib/skills.js";
+import {
+  Rocket, Activity, Globe, Box, FileText, Shield, Database, Clock,
+} from "lucide-react";
+
+const iconMap: Record<string, React.ElementType> = {
+  rocket: Rocket,
+  activity: Activity,
+  globe: Globe,
+  box: Box,
+  "file-text": FileText,
+  shield: Shield,
+  database: Database,
+  clock: Clock,
+};
+
+interface Props {
+  skill: Skill | null;
+  onClose: () => void;
+}
+
+export function SkillDialog({ skill, onClose }: Props) {
+  const [params, setParams] = useState<Record<string, string>>({});
+
+  if (!skill) return null;
+
+  const Icon = iconMap[skill.icon] || Activity;
+  const hasParams = skill.parameters && skill.parameters.length > 0;
+
+  const handleRun = () => {
+    executeSkill(skill, params);
+    setParams({});
+    onClose();
+  };
+
+  const canRun = !skill.parameters?.some(
+    (p) => p.required && !params[p.name]?.trim()
+  );
+
+  return (
+    <Modal open={!!skill} onClose={onClose} title={skill.name}>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center">
+          <Icon className="w-5 h-5 text-zinc-400" />
+        </div>
+        <div>
+          <p className="text-sm text-zinc-300">{skill.description}</p>
+          <p className="text-[11px] text-zinc-600 font-mono mt-0.5">{skill.command}</p>
+        </div>
+      </div>
+
+      {hasParams && (
+        <div className="space-y-3 mb-5">
+          {skill.parameters!.map((param) => (
+            <div key={param.name}>
+              <label className="block text-xs text-zinc-400 mb-1 font-medium">
+                {param.label}
+                {param.required && <span className="text-red-400 ml-0.5">*</span>}
+              </label>
+              {param.type === "select" ? (
+                <select
+                  value={params[param.name] || ""}
+                  onChange={(e) =>
+                    setParams((p) => ({ ...p, [param.name]: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-200 outline-none focus:border-zinc-600 transition-colors"
+                >
+                  <option value="">Select...</option>
+                  {param.options?.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={params[param.name] || ""}
+                  onChange={(e) =>
+                    setParams((p) => ({ ...p, [param.name]: e.target.value }))
+                  }
+                  placeholder={param.placeholder}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-200 font-mono placeholder-zinc-600 outline-none focus:border-zinc-600 transition-colors"
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button
+        onClick={handleRun}
+        disabled={!canRun}
+        className="w-full py-2.5 bg-green-600 rounded-lg text-sm font-semibold text-white hover:bg-green-500 disabled:bg-zinc-800 disabled:text-zinc-600 transition-colors"
+      >
+        Run Skill
+      </button>
+    </Modal>
+  );
+}

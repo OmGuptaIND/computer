@@ -1,6 +1,13 @@
 import React, { useState } from "react";
+import { motion } from "framer-motion";
+import { Server, Wifi, ArrowRight } from "lucide-react";
 import { connection, type ConnectionConfig } from "../lib/connection.js";
-import { loadMachines, saveMachines, type SavedMachine, useConnectionStatus } from "../lib/store.js";
+import {
+  loadMachines,
+  saveMachines,
+  type SavedMachine,
+  useConnectionStatus,
+} from "../lib/store.js";
 
 export function Connect({ onConnected }: { onConnected: () => void }) {
   const status = useConnectionStatus();
@@ -12,12 +19,14 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
   const [useTLS, setUseTLS] = useState(false);
   const [error, setError] = useState("");
 
-  const handleConnect = (config: ConnectionConfig, machineName?: string) => {
+  const handleConnect = (
+    config: ConnectionConfig,
+    machineName?: string
+  ) => {
     setError("");
 
     const unsub = connection.onStatusChange((s, detail) => {
       if (s === "connected") {
-        // Save machine for next time
         if (machineName || name) {
           const existing = loadMachines();
           const id = `${config.host}:${config.port}`;
@@ -45,273 +54,172 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
 
   const connectFromForm = () => {
     if (!host || !token) return;
-    handleConnect({
-      host,
-      port: parseInt(port) || 9876,
-      token,
-      useTLS,
-    });
+    handleConnect({ host, port: parseInt(port) || 9876, token, useTLS });
   };
 
   const connectSaved = (machine: SavedMachine) => {
     handleConnect(
-      { host: machine.host, port: machine.port, token: machine.token, useTLS: machine.useTLS },
+      {
+        host: machine.host,
+        port: machine.port,
+        token: machine.token,
+        useTLS: machine.useTLS,
+      },
       machine.name
     );
   };
 
+  const isConnecting =
+    status === "connecting" || status === "authenticating";
+
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <div style={styles.logo}>
-          <span style={styles.logoIcon}>&#9632;</span>
-          <h1 style={styles.title}>anton.computer</h1>
+    <div className="flex items-center justify-center h-full bg-zinc-950 p-5">
+      <motion.div
+        initial={{ scale: 0.97, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.2 }}
+        className="w-full max-w-md bg-zinc-900 rounded-2xl p-8 border border-zinc-800"
+      >
+        {/* Logo */}
+        <div className="flex items-center gap-3 mb-1">
+          <div className="w-10 h-10 rounded-xl bg-green-600/15 flex items-center justify-center">
+            <Server className="w-5 h-5 text-green-500" />
+          </div>
+          <h1 className="text-xl font-semibold text-zinc-100 tracking-tight">
+            anton.computer
+          </h1>
         </div>
-        <p style={styles.subtitle}>Connect to your cloud computer</p>
+        <p className="text-sm text-zinc-500 mb-6">
+          Connect to your cloud computer
+        </p>
 
         {/* Saved machines */}
         {machines.length > 0 && (
-          <div style={styles.section}>
-            <h3 style={styles.sectionTitle}>Your Machines</h3>
-            {machines.map((m) => (
-              <button
-                key={m.id}
-                style={styles.machineButton}
-                onClick={() => connectSaved(m)}
-                disabled={status === "connecting" || status === "authenticating"}
-              >
-                <span style={styles.machineName}>{m.name}</span>
-                <span style={styles.machineHost}>{m.host}:{m.port}</span>
-              </button>
-            ))}
+          <div className="mb-6">
+            <h3 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider mb-2.5">
+              Your Machines
+            </h3>
+            <div className="space-y-1.5">
+              {machines.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => connectSaved(m)}
+                  disabled={isConnecting}
+                  className="group flex items-center justify-between w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl hover:bg-zinc-800/60 hover:border-zinc-700 transition-all disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Wifi className="w-3.5 h-3.5 text-zinc-500 group-hover:text-green-500 transition-colors" />
+                    <span className="text-sm font-medium text-zinc-200">
+                      {m.name}
+                    </span>
+                  </div>
+                  <span className="text-xs text-zinc-600 font-mono">
+                    {m.host}:{m.port}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* New connection */}
-        <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>
+        {/* New connection form */}
+        <div className="mb-4">
+          <h3 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider mb-3">
             {machines.length > 0 ? "Add New Machine" : "Connect"}
           </h3>
 
-          <div style={styles.field}>
-            <label style={styles.label}>Name (optional)</label>
-            <input
-              style={styles.input}
-              placeholder="My VPS"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-
-          <div style={styles.row}>
-            <div style={{ ...styles.field, flex: 2 }}>
-              <label style={styles.label}>Host</label>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs text-zinc-400 mb-1 font-medium">
+                Name (optional)
+              </label>
               <input
-                style={styles.input}
-                placeholder="192.168.1.100 or my-vps.com"
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-600 transition-colors"
+                placeholder="My VPS"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
               />
             </div>
-            <div style={{ ...styles.field, flex: 0, minWidth: 80 }}>
-              <label style={styles.label}>Port</label>
+
+            <div className="flex gap-2.5">
+              <div className="flex-[2]">
+                <label className="block text-xs text-zinc-400 mb-1 font-medium">
+                  Host
+                </label>
+                <input
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-200 font-mono placeholder-zinc-600 outline-none focus:border-zinc-600 transition-colors"
+                  placeholder="192.168.1.100"
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                />
+              </div>
+              <div className="w-20">
+                <label className="block text-xs text-zinc-400 mb-1 font-medium">
+                  Port
+                </label>
+                <input
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-200 font-mono placeholder-zinc-600 outline-none focus:border-zinc-600 transition-colors"
+                  placeholder="9876"
+                  value={port}
+                  onChange={(e) => setPort(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-zinc-400 mb-1 font-medium">
+                Token
+              </label>
               <input
-                style={styles.input}
-                placeholder="9876"
-                value={port}
-                onChange={(e) => setPort(e.target.value)}
+                type="password"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-zinc-200 font-mono placeholder-zinc-600 outline-none focus:border-zinc-600 transition-colors"
+                placeholder="ak_7f3a2b..."
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && connectFromForm()}
               />
             </div>
-          </div>
 
-          <div style={styles.field}>
-            <label style={styles.label}>Token</label>
-            <input
-              style={styles.input}
-              type="password"
-              placeholder="ak_7f3a2b..."
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && connectFromForm()}
-            />
-          </div>
-
-          <div style={styles.checkRow}>
-            <input
-              type="checkbox"
-              id="tls"
-              checked={useTLS}
-              onChange={(e) => setUseTLS(e.target.checked)}
-            />
-            <label htmlFor="tls" style={styles.checkLabel}>
-              Use TLS (wss://)
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useTLS}
+                onChange={(e) => setUseTLS(e.target.checked)}
+                className="accent-green-500"
+              />
+              <span className="text-xs text-zinc-400">Use TLS (wss://)</span>
             </label>
           </div>
 
-          {error && <div style={styles.error}>{error}</div>}
+          {error && (
+            <div className="mt-3 px-3 py-2 bg-red-950/40 border border-red-900/40 rounded-lg text-xs text-red-400">
+              {error}
+            </div>
+          )}
 
           <button
-            style={styles.connectButton}
             onClick={connectFromForm}
-            disabled={!host || !token || status === "connecting" || status === "authenticating"}
+            disabled={!host || !token || isConnecting}
+            className="mt-4 flex items-center justify-center gap-2 w-full py-2.5 bg-green-600 rounded-xl text-sm font-semibold text-white hover:bg-green-500 disabled:bg-zinc-800 disabled:text-zinc-600 transition-colors"
           >
-            {status === "connecting"
-              ? "Connecting..."
-              : status === "authenticating"
-                ? "Authenticating..."
-                : "Connect"}
+            {isConnecting ? (
+              status === "connecting" ? "Connecting..." : "Authenticating..."
+            ) : (
+              <>
+                Connect
+                <ArrowRight className="w-3.5 h-3.5" />
+              </>
+            )}
           </button>
         </div>
 
-        <p style={styles.hint}>
+        <p className="text-[11px] text-zinc-600 text-center leading-relaxed">
           Don't have an agent running?{" "}
-          <code style={styles.code}>curl -fsSL https://get.anton.computer | bash</code>
+          <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-[10px] font-mono text-zinc-400">
+            curl -fsSL https://get.anton.computer | bash
+          </code>
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    height: "100%",
-    background: "#0a0a0a",
-    padding: 20,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 420,
-    background: "#18181b",
-    borderRadius: 12,
-    padding: 32,
-    border: "1px solid #27272a",
-  },
-  logo: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 4,
-  },
-  logoIcon: {
-    fontSize: 24,
-    color: "#22c55e",
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 600,
-    color: "#fafafa",
-    letterSpacing: "-0.02em",
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#71717a",
-    marginBottom: 24,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: 600,
-    color: "#a1a1aa",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.05em",
-    marginBottom: 10,
-  },
-  machineButton: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    width: "100%",
-    padding: "10px 14px",
-    background: "#09090b",
-    border: "1px solid #27272a",
-    borderRadius: 8,
-    color: "#fafafa",
-    cursor: "pointer",
-    marginBottom: 6,
-    fontSize: 14,
-  },
-  machineName: {
-    fontWeight: 500,
-  },
-  machineHost: {
-    fontSize: 12,
-    color: "#71717a",
-    fontFamily: "monospace",
-  },
-  field: {
-    marginBottom: 12,
-    flex: 1,
-  },
-  label: {
-    display: "block",
-    fontSize: 12,
-    color: "#a1a1aa",
-    marginBottom: 4,
-    fontWeight: 500,
-  },
-  input: {
-    width: "100%",
-    padding: "8px 12px",
-    background: "#09090b",
-    border: "1px solid #27272a",
-    borderRadius: 6,
-    color: "#fafafa",
-    fontSize: 14,
-    fontFamily: "monospace",
-    outline: "none",
-  },
-  row: {
-    display: "flex",
-    gap: 10,
-  },
-  checkRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 16,
-  },
-  checkLabel: {
-    fontSize: 13,
-    color: "#a1a1aa",
-  },
-  error: {
-    padding: "8px 12px",
-    background: "#450a0a",
-    border: "1px solid #7f1d1d",
-    borderRadius: 6,
-    color: "#fca5a5",
-    fontSize: 13,
-    marginBottom: 12,
-  },
-  connectButton: {
-    width: "100%",
-    padding: "10px 16px",
-    background: "#22c55e",
-    color: "#000",
-    border: "none",
-    borderRadius: 8,
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  hint: {
-    fontSize: 12,
-    color: "#52525b",
-    textAlign: "center" as const,
-    marginTop: 16,
-    lineHeight: 1.5,
-  },
-  code: {
-    background: "#27272a",
-    padding: "2px 6px",
-    borderRadius: 4,
-    fontSize: 11,
-    fontFamily: "monospace",
-    color: "#a1a1aa",
-  },
-};

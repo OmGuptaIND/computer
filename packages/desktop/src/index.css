@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue",
+    sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", Menlo, monospace;
+  --color-surface: #09090b;
+  --color-surface-raised: #18181b;
+  --color-border: #27272a;
+  --color-border-subtle: #1c1c1e;
+  --color-accent: #22c55e;
+  --color-accent-hover: #16a34a;
+  --color-text: #e4e4e7;
+  --color-text-muted: #71717a;
+  --color-text-subtle: #52525b;
+  --color-danger: #ef4444;
+  --color-warning: #eab308;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: #0a0a0a;
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Typing indicator animation */
+@keyframes bounce-dot {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-4px);
+  }
+}

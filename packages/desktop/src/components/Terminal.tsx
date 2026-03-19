@@ -16,7 +16,6 @@ export function Terminal() {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Create terminal
     const term = new XTerm({
       theme: {
         background: "#09090b",
@@ -60,18 +59,19 @@ export function Terminal() {
     termRef.current = term;
     fitRef.current = fitAddon;
 
-    // Spawn PTY on agent
     const { cols, rows } = term;
     connection.sendTerminalSpawn(TERMINAL_ID, cols, rows);
 
-    // Send input to agent
     term.onData((data) => {
       connection.sendTerminalData(TERMINAL_ID, btoa(data));
     });
 
-    // Receive output from agent
     const unsub = connection.onMessage((channel, msg) => {
-      if (channel === Channel.TERMINAL && msg.type === "pty_data" && msg.id === TERMINAL_ID) {
+      if (
+        channel === Channel.TERMINAL &&
+        msg.type === "pty_data" &&
+        msg.id === TERMINAL_ID
+      ) {
         try {
           term.write(atob(msg.data));
         } catch {
@@ -80,7 +80,6 @@ export function Terminal() {
       }
     });
 
-    // Handle resize
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit();
       connection.sendTerminalResize(TERMINAL_ID, term.cols, term.rows);
@@ -95,20 +94,8 @@ export function Terminal() {
   }, []);
 
   return (
-    <div style={styles.container}>
-      <div ref={containerRef} style={styles.terminal} />
+    <div className="h-full bg-[#09090b] p-1">
+      <div ref={containerRef} className="h-full w-full" />
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    height: "100%",
-    background: "#09090b",
-    padding: 4,
-  },
-  terminal: {
-    height: "100%",
-    width: "100%",
-  },
-};

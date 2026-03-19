@@ -1,32 +1,41 @@
 import React, { useState } from "react";
 import { Connect } from "./components/Connect.js";
+import { Sidebar } from "./components/Sidebar.js";
 import { AgentChat } from "./components/AgentChat.js";
 import { Terminal } from "./components/Terminal.js";
-import { useConnectionStatus } from "./lib/store.js";
+import { useConnectionStatus, useStore } from "./lib/store.js";
 import { connection } from "./lib/connection.js";
+import { Bot, TerminalSquare } from "lucide-react";
 
-type Tab = "agent" | "terminal";
+type View = "agent" | "terminal";
 
 export function App() {
   const [connected, setConnected] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>("agent");
+  const [activeView, setActiveView] = useState<View>("agent");
   const status = useConnectionStatus();
+
+  const handleDisconnect = () => {
+    connection.disconnect();
+    setConnected(false);
+  };
 
   // Show connect screen if not connected
   if (!connected) {
     return <Connect onConnected={() => setConnected(true)} />;
   }
 
-  // If disconnected after being connected, show reconnect banner
+  // Disconnected after being connected — show reconnect
   if (status === "disconnected" || status === "error") {
     return (
-      <div style={styles.disconnected}>
-        <div style={styles.disconnectedCard}>
-          <p style={styles.disconnectedTitle}>Connection lost</p>
-          <p style={styles.disconnectedText}>Reconnecting...</p>
+      <div className="flex items-center justify-center h-full bg-zinc-950">
+        <div className="text-center p-8">
+          <p className="text-lg font-semibold text-zinc-100 mb-2">
+            Connection lost
+          </p>
+          <p className="text-sm text-zinc-500 mb-5">Reconnecting...</p>
           <button
-            style={styles.disconnectedButton}
-            onClick={() => { connection.disconnect(); setConnected(false); }}
+            onClick={handleDisconnect}
+            className="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:bg-zinc-700 transition-colors"
           >
             Connect to a different machine
           </button>
@@ -36,192 +45,64 @@ export function App() {
   }
 
   return (
-    <div style={styles.layout}>
-      {/* Sidebar */}
-      <div style={styles.sidebar}>
-        <div style={styles.sidebarHeader}>
-          <span style={styles.logoIcon}>&#9632;</span>
-          <span style={styles.logoText}>anton</span>
-        </div>
-
-        <nav style={styles.nav}>
-          <button
-            style={activeTab === "agent" ? styles.navButtonActive : styles.navButton}
-            onClick={() => setActiveTab("agent")}
-          >
-            <span style={styles.navIcon}>&#9881;</span>
-            Agent
-          </button>
-          <button
-            style={activeTab === "terminal" ? styles.navButtonActive : styles.navButton}
-            onClick={() => setActiveTab("terminal")}
-          >
-            <span style={styles.navIcon}>&#9002;</span>
-            Terminal
-          </button>
-        </nav>
-
-        <div style={styles.sidebarFooter}>
-          <div style={styles.connectionInfo}>
-            <span style={{ ...styles.dot, background: status === "connected" ? "#22c55e" : "#ef4444" }} />
-            <span style={styles.connectionText}>
-              {status === "connected" ? "Connected" : status}
-            </span>
-          </div>
-          <button
-            style={styles.disconnectButton}
-            onClick={() => { connection.disconnect(); setConnected(false); }}
-          >
-            Disconnect
-          </button>
-        </div>
-      </div>
+    <div className="flex h-full bg-zinc-950">
+      <Sidebar onDisconnect={handleDisconnect} />
 
       {/* Main content */}
-      <div style={styles.main}>
-        {activeTab === "agent" && <AgentChat />}
-        {activeTab === "terminal" && <Terminal />}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* View toggle */}
+        <div
+          className="flex items-center gap-1 px-4 pt-2 pb-1"
+          data-tauri-drag-region
+        >
+          <div className="flex bg-zinc-900 rounded-lg p-0.5">
+            <ViewTab
+              active={activeView === "agent"}
+              onClick={() => setActiveView("agent")}
+              icon={<Bot className="w-3.5 h-3.5" />}
+              label="Agent"
+            />
+            <ViewTab
+              active={activeView === "terminal"}
+              onClick={() => setActiveView("terminal")}
+              icon={<TerminalSquare className="w-3.5 h-3.5" />}
+              label="Terminal"
+            />
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-hidden">
+          {activeView === "agent" && <AgentChat />}
+          {activeView === "terminal" && <Terminal />}
+        </div>
       </div>
     </div>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  layout: {
-    display: "flex",
-    height: "100%",
-    background: "#0a0a0a",
-  },
-  sidebar: {
-    width: 200,
-    background: "#09090b",
-    borderRight: "1px solid #1c1c1e",
-    display: "flex",
-    flexDirection: "column",
-    // Tauri: make title bar draggable
-    WebkitUserSelect: "none",
-  },
-  sidebarHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "20px 16px 16px",
-    // Leave space for traffic lights on macOS
-    paddingTop: 40,
-  },
-  logoIcon: {
-    fontSize: 18,
-    color: "#22c55e",
-  },
-  logoText: {
-    fontSize: 15,
-    fontWeight: 600,
-    color: "#fafafa",
-    letterSpacing: "-0.02em",
-  },
-  nav: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-    padding: "0 8px",
-  },
-  navButton: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "8px 10px",
-    background: "transparent",
-    border: "none",
-    borderRadius: 6,
-    color: "#71717a",
-    cursor: "pointer",
-    fontSize: 13,
-    fontWeight: 500,
-    textAlign: "left" as const,
-  },
-  navButtonActive: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "8px 10px",
-    background: "#18181b",
-    border: "none",
-    borderRadius: 6,
-    color: "#fafafa",
-    cursor: "pointer",
-    fontSize: 13,
-    fontWeight: 500,
-    textAlign: "left" as const,
-  },
-  navIcon: {
-    fontSize: 14,
-    width: 18,
-    textAlign: "center" as const,
-  },
-  sidebarFooter: {
-    padding: "12px 12px 16px",
-    borderTop: "1px solid #1c1c1e",
-  },
-  connectionInfo: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 8,
-    paddingLeft: 4,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: "50%",
-  },
-  connectionText: {
-    fontSize: 11,
-    color: "#71717a",
-  },
-  disconnectButton: {
-    width: "100%",
-    padding: "6px 10px",
-    background: "#18181b",
-    border: "1px solid #27272a",
-    borderRadius: 6,
-    color: "#a1a1aa",
-    cursor: "pointer",
-    fontSize: 12,
-  },
-  main: {
-    flex: 1,
-    overflow: "hidden",
-  },
-  disconnected: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    height: "100%",
-    background: "#0a0a0a",
-  },
-  disconnectedCard: {
-    textAlign: "center" as const,
-    padding: 32,
-  },
-  disconnectedTitle: {
-    fontSize: 18,
-    fontWeight: 600,
-    color: "#fafafa",
-    marginBottom: 8,
-  },
-  disconnectedText: {
-    fontSize: 14,
-    color: "#71717a",
-    marginBottom: 20,
-  },
-  disconnectedButton: {
-    padding: "8px 16px",
-    background: "#27272a",
-    border: "1px solid #3f3f46",
-    borderRadius: 8,
-    color: "#e4e4e7",
-    cursor: "pointer",
-    fontSize: 13,
-  },
-};
+function ViewTab({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+        active
+          ? "bg-zinc-800 text-zinc-200"
+          : "text-zinc-500 hover:text-zinc-400"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}

@@ -4,7 +4,8 @@
  */
 
 import { WebSocketServer, WebSocket } from "ws";
-import { createServer } from "node:https";
+import { createServer as createHttpsServer } from "node:https";
+import { createServer as createHttpServer } from "node:http";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
@@ -70,82 +71,104 @@ export class AgentServer {
     const { port } = this.config;
     const certDir = join(getAntonDir(), "certs");
 
-    // Generate self-signed cert if none exists
+    // Try TLS first, fall back to plain HTTP
+    let server: ReturnType<typeof createHttpServer>;
+    const certPath = join(certDir, "cert.pem");
+    const keyPath = join(certDir, "key.pem");
+
     ensureCerts(certDir);
 
-    const server = createServer({
-      cert: readFileSync(join(certDir, "cert.pem")),
-      key: readFileSync(join(certDir, "key.pem")),
-    });
+    if (existsSync(certPath) && existsSync(keyPath)) {
+      // TLS server on main port
+      const tlsServer = createHttpsServer({
+        cert: readFileSync(certPath),
+        key: readFileSync(keyPath),
+      });
+      server = tlsServer as any;
+
+      // Also start a plain HTTP server on port+1 for clients that can't handle self-signed certs
+      const plainServer = createHttpServer();
+      const plainWss = new WebSocketServer({ server: plainServer });
+      plainWss.on("connection", (ws) => this.handleConnection(ws));
+      plainServer.listen(port + 1, () => {
+        console.log(`  Plain WS fallback on ws://0.0.0.0:${port + 1}`);
+      });
+    } else {
+      // No certs available — plain HTTP only
+      server = createHttpServer();
+    }
 
     this.wss = new WebSocketServer({ server });
 
-    this.wss.on("connection", (ws) => {
-      console.log("Client connected, waiting for auth...");
-
-      let authenticated = false;
-      const authTimeout = setTimeout(() => {
-        if (!authenticated) {
-          ws.close(4001, "Auth timeout");
-        }
-      }, 10_000);
-
-      ws.on("message", async (data: Buffer) => {
-        try {
-          const frame = decodeFrame(new Uint8Array(data));
-
-          // Must authenticate first
-          if (!authenticated) {
-            if (frame.channel === Channel.CONTROL) {
-              const msg = parseJsonPayload<ControlMessage>(frame.payload);
-              if (msg.type === "auth" && msg.token === this.config.token) {
-                authenticated = true;
-                clearTimeout(authTimeout);
-                this.activeClient = ws;
-                this.sendToClient(Channel.CONTROL, {
-                  type: "auth_ok",
-                  agentId: this.config.agentId,
-                  version: "0.1.0",
-                });
-                console.log("Client authenticated");
-
-                // Send initial status
-                this.sendToClient(Channel.EVENTS, {
-                  type: "agent_status",
-                  status: "idle",
-                });
-              } else {
-                ws.send(
-                  encodeFrame(Channel.CONTROL, {
-                    type: "auth_error",
-                    reason: "Invalid token",
-                  })
-                );
-                ws.close(4003, "Auth failed");
-              }
-            }
-            return;
-          }
-
-          // Route by channel
-          await this.handleMessage(frame.channel as any, frame.payload);
-        } catch (err: any) {
-          console.error("Message error:", err.message);
-        }
-      });
-
-      ws.on("close", () => {
-        if (ws === this.activeClient) {
-          this.activeClient = null;
-          console.log("Client disconnected");
-        }
-      });
-    });
+    this.wss.on("connection", (ws) => this.handleConnection(ws));
 
     server.listen(port, () => {
-      console.log(`\n  anton.computer agent running on wss://0.0.0.0:${port}`);
+      const proto = existsSync(certPath) ? "wss" : "ws";
+      console.log(`\n  anton.computer agent running on ${proto}://0.0.0.0:${port}`);
       console.log(`  Agent ID: ${this.config.agentId}`);
       console.log(`  Token: ${this.config.token}\n`);
+    });
+  }
+
+  private handleConnection(ws: WebSocket) {
+    console.log("Client connected, waiting for auth...");
+
+    let authenticated = false;
+    const authTimeout = setTimeout(() => {
+      if (!authenticated) {
+        ws.close(4001, "Auth timeout");
+      }
+    }, 10_000);
+
+    ws.on("message", async (data: Buffer) => {
+      try {
+        const frame = decodeFrame(new Uint8Array(data));
+
+        // Must authenticate first
+        if (!authenticated) {
+          if (frame.channel === Channel.CONTROL) {
+            const msg = parseJsonPayload<ControlMessage>(frame.payload);
+            if (msg.type === "auth" && msg.token === this.config.token) {
+              authenticated = true;
+              clearTimeout(authTimeout);
+              this.activeClient = ws;
+              this.sendToClient(Channel.CONTROL, {
+                type: "auth_ok",
+                agentId: this.config.agentId,
+                version: "0.1.0",
+              });
+              console.log("Client authenticated");
+
+              // Send initial status
+              this.sendToClient(Channel.EVENTS, {
+                type: "agent_status",
+                status: "idle",
+              });
+            } else {
+              ws.send(
+                encodeFrame(Channel.CONTROL, {
+                  type: "auth_error",
+                  reason: "Invalid token",
+                })
+              );
+              ws.close(4003, "Auth failed");
+            }
+          }
+          return;
+        }
+
+        // Route by channel
+        await this.handleMessage(frame.channel as any, frame.payload);
+      } catch (err: any) {
+        console.error("Message error:", err.message);
+      }
+    });
+
+    ws.on("close", () => {
+      if (ws === this.activeClient) {
+        this.activeClient = null;
+        console.log("Client disconnected");
+      }
     });
   }
 
