@@ -1,0 +1,43 @@
+# AntonComputer Agent Configuration
+# Copy to ~/.antoncomputer/config.yaml
+
+# Agent identity
+agent_id: ""          # Auto-generated on first run if empty
+agent_secret: ""      # Shared secret for desktop auth
+
+# Network
+listen_port: 9876
+# broker_url: ""      # Optional: relay broker for NAT traversal
+
+# AI Configuration
+ai:
+  engine: builtin     # "builtin" or "openclaw"
+  provider: claude    # "claude", "openai", "ollama"
+  api_key: ""         # Set via ANTHROPIC_API_KEY or OPENAI_API_KEY env var
+  model: ""           # Empty = provider default
+  # ollama_url: "http://localhost:11434"  # For local models
+
+# File Sync
+sync:
+  enabled: true
+  watch_paths:
+    - ~/projects
+    - ~/documents
+  ignore:
+    - node_modules
+    - .git
+    - "*.pyc"
+    - __pycache__
+
+# Security
+security:
+  # Commands that require desktop confirmation before execution
+  confirm_patterns:
+    - "rm -rf"
+    - "sudo"
+    - "shutdown"
+    - "reboot"
+  # Paths the AI agent cannot access
+  forbidden_paths:
+    - /etc/shadow
+    - ~/.ssh/id_*
