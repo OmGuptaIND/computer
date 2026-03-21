@@ -1,6 +1,6 @@
 # anton.computer — Connection Spec
 
-> **Spec Version: 0.4.0**
+> **Spec Version: 0.5.0**
 >
 > Single source of truth for ports, protocols, and connection behavior.
 > All clients (desktop, CLI) and the agent server MUST honor this spec.
@@ -29,12 +29,38 @@
 | Step | Direction | Channel | Message |
 |------|-----------|---------|---------|
 | 1 | Client → Agent | CONTROL (0x00) | `{ type: "auth", token: "<token>" }` |
-| 2a | Agent → Client | CONTROL (0x00) | `{ type: "auth_ok", agentId, version, gitHash, specVersion }` |
+| 2a | Agent → Client | CONTROL (0x00) | `{ type: "auth_ok", agentId, version, gitHash, specVersion, minClientSpec?, updateAvailable? }` |
 | 2b | Agent → Client | CONTROL (0x00) | `{ type: "auth_error", reason }` |
 
 - Token format: `ak_<48 hex chars>` (24 random bytes)
 - Auth timeout: 10 seconds — server closes connection if no auth received
 - One active client at a time — new connection replaces the old one
+
+### Version Compatibility (v0.5.0)
+
+The `auth_ok` response includes version compatibility metadata:
+
+```typescript
+{
+  type: "auth_ok",
+  agentId: string,
+  version: string,           // agent package version (e.g. "0.5.0")
+  gitHash: string,           // short git commit hash
+  specVersion: string,       // wire protocol version (e.g. "0.5.0")
+  minClientSpec?: string,    // oldest client spec this agent supports
+  updateAvailable?: {        // included if agent knows a newer version exists
+    version: string,
+    specVersion: string,
+    changelog: string,
+    releaseUrl: string,
+  }
+}
+```
+
+**Compatibility rules:**
+- Client SHOULD check `specVersion >= MIN_AGENT_SPEC` — if the agent is too old, show "Agent outdated" banner
+- Agent checks client compatibility via `minClientSpec` — clients older than this get degraded features
+- Both sides remain backward compatible: unknown fields are ignored, unknown message types are dropped
 
 ## Wire Protocol
 
@@ -425,12 +451,71 @@ defaults:
   model: claude-sonnet-4-6
 ```
 
+## Self-Update Protocol (v0.5.0)
+
+The agent can check for updates and update itself. The desktop app can trigger and monitor updates.
+
+### Update Manifest
+
+The agent periodically fetches a manifest from a known URL (default: GitHub raw):
+
+```json
+{
+  "version": "0.5.0",
+  "specVersion": "0.5.0",
+  "gitHash": "abc1234",
+  "releaseUrl": "https://github.com/OmGuptaIND/anton.computer/releases",
+  "changelog": "- Feature A\n- Fix B",
+  "publishedAt": "2026-03-21T00:00:00Z"
+}
+```
+
+### Update Messages (CONTROL channel)
+
+| Direction | Channel | Message |
+|-----------|---------|---------|
+| Client → Agent | CONTROL | `{ type: "update_check" }` |
+| Agent → Client | CONTROL | `{ type: "update_check_response", currentVersion, currentSpecVersion, latestVersion, latestSpecVersion, updateAvailable, changelog, releaseUrl }` |
+| Client → Agent | CONTROL | `{ type: "update_start" }` |
+| Agent → Client | CONTROL | `{ type: "update_progress", stage, message }` |
+
+Update progress stages: `pulling` → `installing` → `building` → `restarting` → `done` (or `error`)
+
+### Update Event (EVENTS channel)
+
+When the agent detects a new version during its periodic check, it proactively notifies connected clients:
+
+```typescript
+{ type: "update_available", currentVersion, latestVersion, latestSpecVersion, changelog, releaseUrl }
+```
+
+### Self-Update Flow
+
+1. Agent checks manifest URL every hour (and on startup)
+2. If newer version found, caches manifest and includes `updateAvailable` in next `auth_ok`
+3. Client shows banner: "Update available: v0.4.0 → v0.5.0"
+4. User clicks "Update" → client sends `update_start`
+5. Agent runs: `git pull` → `pnpm install` → `pnpm build` → writes `version.json` → `systemctl restart`
+6. Agent streams `update_progress` events so the client can show a progress bar
+7. After restart, client reconnects and gets the new version in `auth_ok`
+
+### Version Matrix
+
+| Component | Version Source | How It's Set |
+|-----------|---------------|--------------|
+| Agent package version | `package.json` | Bumped on release |
+| Spec version | `SPEC.md` + `version.ts` | Bumped on protocol changes |
+| Git hash | `git rev-parse --short HEAD` | Automatic |
+| Desktop version | `tauri.conf.json` | Bumped on desktop release |
+| Deployed version | `~/.anton/version.json` | Written by Makefile sync or self-update |
+
 ## Backward Compatibility
 
+- v0.5.0 clients work with v0.4.0 agents (`minClientSpec`, `updateAvailable`, update messages ignored)
 - v0.4.0 clients work with v0.3.0 agents (`provider_set_models` and filesync messages will be ignored)
-- v0.3.0 clients work with v0.4.0 agents (`defaultModels` field ignored, filesync not used)
-- v0.2.0 clients work with v0.4.0 agents (messages without `sessionId` use "default" session)
-- v0.1.0 clients work with v0.4.0 agents (session/provider/history messages ignored)
+- v0.3.0 clients work with v0.4.0+ agents (`defaultModels` field ignored, filesync not used)
+- v0.2.0 clients work with v0.5.0 agents (messages without `sessionId` use "default" session)
+- v0.1.0 clients work with v0.5.0 agents (session/provider/history/update messages ignored)
 - Legacy config auto-migrates on agent startup
 
 ## Changelog
@@ -441,3 +526,4 @@ defaults:
 | 2026-03-19 | 0.2.0 | Multi-provider registry, per-session models, session persistence, config management protocol. |
 | 2026-03-19 | 0.3.0 | Session history API, context compaction protocol, text streaming delta spec, token usage on `done`, scheduler protocol, client connection flow, API key resolution order. Full API reference in API.md. |
 | 2026-03-19 | 0.4.0 | Provider model management (`provider_set_models`), `defaultModels` in provider list, FILESYNC channel with `fs_list` / `fs_read`, OpenRouter provider with default models. |
+| 2026-03-21 | 0.5.0 | Version compatibility in `auth_ok` (`minClientSpec`, `updateAvailable`), self-update protocol (`update_check`, `update_start`, `update_progress`), `update_available` event, periodic update checker, update manifest format. |

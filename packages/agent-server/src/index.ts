@@ -73,4 +73,5 @@ main().catch((err) => {
 
 export { AgentServer } from './server.js'
 export { Scheduler } from './scheduler.js'
+export { Updater } from './updater.js'
 export type { SchedulerJobInfo, SchedulerEventCallback } from './scheduler.js'

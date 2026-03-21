@@ -59,6 +59,18 @@ export interface AgentStep {
 }
 
 export type AgentStatus = 'idle' | 'working' | 'error' | 'unknown'
+
+export interface UpdateInfo {
+  currentVersion: string
+  currentSpecVersion: string
+  latestVersion: string | null
+  latestSpecVersion: string | null
+  updateAvailable: boolean
+  changelog: string | null
+  releaseUrl: string | null
+}
+
+export type UpdateStage = 'pulling' | 'installing' | 'building' | 'restarting' | 'done' | 'error' | null
 export type SidebarTab = 'history' | 'skills'
 
 // ── Saved machines (localStorage) ───────────────────────────────────
@@ -149,6 +161,15 @@ interface AppState {
   // Ask-user questionnaire
   pendingAskUser: { id: string; questions: AskUserQuestion[] } | null
 
+  // Version & updates
+  agentVersion: string | null
+  agentSpecVersion: string | null
+  agentGitHash: string | null
+  updateInfo: UpdateInfo | null
+  updateStage: UpdateStage
+  updateMessage: string | null
+  updateDismissed: boolean
+
   // Sidebar
   sidebarCollapsed: boolean
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -207,6 +228,12 @@ interface AppState {
 
   // Ask-user actions
   setPendingAskUser: (ask: { id: string; questions: AskUserQuestion[] } | null) => void
+
+  // Update actions
+  setAgentVersionInfo: (version: string, specVersion: string, gitHash: string) => void
+  setUpdateInfo: (info: UpdateInfo | null) => void
+  setUpdateProgress: (stage: UpdateStage, message: string | null) => void
+  dismissUpdate: () => void
 }
 
 export const useStore = create<AppState>((set, get) => {
@@ -247,6 +274,13 @@ export const useStore = create<AppState>((set, get) => {
     pendingPlan: null,
     sidePanelView: 'artifacts' as const,
     pendingAskUser: null,
+    agentVersion: null,
+    agentSpecVersion: null,
+    agentGitHash: null,
+    updateInfo: null,
+    updateStage: null,
+    updateMessage: null,
+    updateDismissed: false,
     sidebarCollapsed: false,
     setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
     toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
@@ -340,7 +374,7 @@ export const useStore = create<AppState>((set, get) => {
 
           // Find the tracked assistant message, or the last assistant message
           const targetId = state._currentAssistantMsgId
-          let idx = targetId ? messages.findIndex((m) => m.id === targetId) : -1
+          const idx = targetId ? messages.findIndex((m) => m.id === targetId) : -1
 
           if (idx >= 0) {
             // Append to tracked message
@@ -464,6 +498,17 @@ export const useStore = create<AppState>((set, get) => {
     setPendingPlan: (plan) => set({ pendingPlan: plan }),
     setSidePanelView: (view) => set({ sidePanelView: view }),
     setPendingAskUser: (ask) => set({ pendingAskUser: ask }),
+
+    setAgentVersionInfo: (version, specVersion, gitHash) =>
+      set({ agentVersion: version, agentSpecVersion: specVersion, agentGitHash: gitHash }),
+
+    setUpdateInfo: (info) =>
+      set({ updateInfo: info, updateDismissed: false }),
+
+    setUpdateProgress: (stage, message) =>
+      set({ updateStage: stage, updateMessage: message }),
+
+    dismissUpdate: () => set({ updateDismissed: true }),
   }
 })
 
@@ -478,6 +523,52 @@ connection.onMessage((channel, msg) => {
 
   // Debug logging for all messages
   console.log(`[WS] ch=${channel} type=${msg.type}`, msg)
+
+  // ── CONTROL channel: auth_ok version info + update messages ──
+  if (channel === Channel.CONTROL) {
+    if (msg.type === 'auth_ok') {
+      store.setAgentVersionInfo(msg.version || '', msg.specVersion || '', msg.gitHash || '')
+      // If agent already knows about an update, store it
+      if (msg.updateAvailable) {
+        store.setUpdateInfo({
+          currentVersion: msg.version,
+          currentSpecVersion: msg.specVersion,
+          latestVersion: msg.updateAvailable.version,
+          latestSpecVersion: msg.updateAvailable.specVersion,
+          updateAvailable: true,
+          changelog: msg.updateAvailable.changelog,
+          releaseUrl: msg.updateAvailable.releaseUrl,
+        })
+      }
+    } else if (msg.type === 'update_check_response') {
+      store.setUpdateInfo({
+        currentVersion: msg.currentVersion,
+        currentSpecVersion: msg.currentSpecVersion,
+        latestVersion: msg.latestVersion,
+        latestSpecVersion: msg.latestSpecVersion,
+        updateAvailable: msg.updateAvailable,
+        changelog: msg.changelog,
+        releaseUrl: msg.releaseUrl,
+      })
+    } else if (msg.type === 'update_progress') {
+      store.setUpdateProgress(msg.stage, msg.message)
+    }
+    // Don't return — let other control messages fall through for ping/pong etc.
+  }
+
+  // ── EVENTS channel: agent status + update notifications ──
+  if (channel === Channel.EVENTS && msg.type === 'update_available') {
+    store.setUpdateInfo({
+      currentVersion: msg.currentVersion,
+      currentSpecVersion: store.agentSpecVersion || '',
+      latestVersion: msg.latestVersion,
+      latestSpecVersion: msg.latestSpecVersion,
+      updateAvailable: true,
+      changelog: msg.changelog,
+      releaseUrl: msg.releaseUrl,
+    })
+    return
+  }
 
   if (channel === Channel.EVENTS && msg.type === 'agent_status') {
     console.log(`[WS] Agent status: ${msg.status}`, msg.detail || '')

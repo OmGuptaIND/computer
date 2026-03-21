@@ -56,6 +56,7 @@ export class Connection {
   private reconnectTimer: number | null = null
   private agentId = ''
   private agentVersion = ''
+  private agentSpecVersion = ''
 
   get status() {
     return this._status
@@ -179,6 +180,16 @@ export class Connection {
     this.send(Channel.CONTROL, { type: 'config_query', key })
   }
 
+  // ── Update management ──────────────────────────────────────────
+
+  sendUpdateCheck() {
+    this.send(Channel.CONTROL, { type: 'update_check' })
+  }
+
+  sendUpdateStart() {
+    this.send(Channel.CONTROL, { type: 'update_start' })
+  }
+
   // ── Filesystem ─────────────────────────────────────────────────
 
   sendFilesystemList(path: string) {
@@ -235,6 +246,7 @@ export class Connection {
         if (channel === Channel.CONTROL && payload.type === 'auth_ok') {
           this.agentId = payload.agentId
           this.agentVersion = payload.version
+          this.agentSpecVersion = payload.specVersion || ''
           this.setStatus('connected', `Agent: ${this.agentId}`)
         } else if (channel === Channel.CONTROL && payload.type === 'auth_error') {
           this.setStatus('error', `Auth failed: ${payload.reason}`)

@@ -11,6 +11,15 @@ export interface AuthOkMessage {
   version: string
   gitHash: string
   specVersion: string
+  /** Minimum client spec version the agent supports. Clients older than this should warn. */
+  minClientSpec?: string
+  /** If the agent knows a newer version is available, include it here. */
+  updateAvailable?: {
+    version: string
+    specVersion: string
+    changelog: string
+    releaseUrl: string
+  }
 }
 
 export interface AuthErrorMessage {
@@ -49,6 +58,37 @@ export interface ConfigUpdateResponse {
   error?: string
 }
 
+// ── Update messages ──────────────────────────────────────────────
+
+/** Client asks agent to check for updates now */
+export interface UpdateCheckMessage {
+  type: 'update_check'
+}
+
+/** Agent responds with current update status */
+export interface UpdateCheckResponse {
+  type: 'update_check_response'
+  currentVersion: string
+  currentSpecVersion: string
+  latestVersion: string | null
+  latestSpecVersion: string | null
+  updateAvailable: boolean
+  changelog: string | null
+  releaseUrl: string | null
+}
+
+/** Client tells agent to self-update */
+export interface UpdateStartMessage {
+  type: 'update_start'
+}
+
+/** Agent streams progress as it updates */
+export interface UpdateProgressMessage {
+  type: 'update_progress'
+  stage: 'pulling' | 'installing' | 'building' | 'restarting' | 'done' | 'error'
+  message: string
+}
+
 export type ControlMessage =
   | AuthMessage
   | AuthOkMessage
@@ -59,6 +99,10 @@ export type ControlMessage =
   | ConfigQueryResponse
   | ConfigUpdateMessage
   | ConfigUpdateResponse
+  | UpdateCheckMessage
+  | UpdateCheckResponse
+  | UpdateStartMessage
+  | UpdateProgressMessage
 
 // ── Terminal Channel (0x01) ─────────────────────────────────────────
 
@@ -461,8 +505,19 @@ export interface AgentStatusEvent {
   detail?: string
 }
 
+/** Emitted proactively when the agent detects a newer version is available */
+export interface UpdateAvailableEvent {
+  type: 'update_available'
+  currentVersion: string
+  latestVersion: string
+  latestSpecVersion: string
+  changelog: string
+  releaseUrl: string
+}
+
 export type EventMessage =
   | FileChangedEvent
   | PortChangedEvent
   | TaskCompletedEvent
   | AgentStatusEvent
+  | UpdateAvailableEvent

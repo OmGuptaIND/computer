@@ -26,12 +26,13 @@ import {
   setProviderKey,
   setProviderModels,
 } from '@anton/agent-config'
-import { GIT_HASH, SPEC_VERSION, VERSION } from '@anton/agent-config'
+import { GIT_HASH, MIN_CLIENT_SPEC, SPEC_VERSION, VERSION } from '@anton/agent-config'
 import { type Session, createSession, resumeSession } from '@anton/agent-core'
 import { Channel, decodeFrame, encodeFrame, parseJsonPayload } from '@anton/protocol'
 import type { AiMessage, ChannelId, ControlMessage, TerminalMessage } from '@anton/protocol'
 import { WebSocket, WebSocketServer } from 'ws'
 import type { Scheduler } from './scheduler.js'
+import { Updater } from './updater.js'
 
 const DEFAULT_SESSION_ID = 'default'
 
@@ -41,6 +42,7 @@ export class AgentServer {
   private sessions: Map<string, Session> = new Map()
   private activeClient: WebSocket | null = null
   private scheduler: Scheduler | null = null
+  private updater: Updater = new Updater()
 
   constructor(config: AgentConfig) {
     this.config = config
@@ -64,6 +66,7 @@ export class AgentServer {
     // ── Primary: plain WS on config.port (default 9876) ──
     const plainServer = createHttpServer((req, res) => {
       if (req.url === '/health') {
+        const updateInfo = this.updater.getUpdateAvailable()
         res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end(
           JSON.stringify({
@@ -72,6 +75,9 @@ export class AgentServer {
             version: VERSION,
             gitHash: GIT_HASH,
             specVersion: SPEC_VERSION,
+            ...(updateInfo
+              ? { updateAvailable: { version: updateInfo.version, specVersion: updateInfo.specVersion } }
+              : {}),
           }),
         )
         return
@@ -112,6 +118,9 @@ export class AgentServer {
       }
     }
 
+    // Start update checker
+    this.updater.start()
+
     console.log(`\n  Agent ID: ${this.config.agentId}`)
     console.log(`  Token:    ${this.config.token}\n`)
   }
@@ -139,13 +148,29 @@ export class AgentServer {
               authenticated = true
               clearTimeout(authTimeout)
               this.activeClient = ws
-              this.sendToClient(Channel.CONTROL, {
+
+              // Build auth_ok with version compatibility + update info
+              const authOk: Record<string, unknown> = {
                 type: 'auth_ok',
                 agentId: this.config.agentId,
                 version: VERSION,
                 gitHash: GIT_HASH,
                 specVersion: SPEC_VERSION,
-              })
+                minClientSpec: MIN_CLIENT_SPEC,
+              }
+
+              // Include update info if available
+              const updateManifest = this.updater.getUpdateAvailable()
+              if (updateManifest) {
+                authOk.updateAvailable = {
+                  version: updateManifest.version,
+                  specVersion: updateManifest.specVersion,
+                  changelog: updateManifest.changelog,
+                  releaseUrl: updateManifest.releaseUrl,
+                }
+              }
+
+              this.sendToClient(Channel.CONTROL, authOk)
               console.log('Client authenticated')
 
               this.sendToClient(Channel.EVENTS, {
@@ -223,6 +248,14 @@ export class AgentServer {
       case 'config_update':
         this.handleConfigUpdate(msg.key, msg.value)
         break
+
+      case 'update_check':
+        this.handleUpdateCheck()
+        break
+
+      case 'update_start':
+        this.handleUpdateStart()
+        break
     }
   }
 
@@ -272,6 +305,40 @@ export class AgentServer {
         type: 'config_update_response',
         success: false,
         error: (err as Error).message,
+      })
+    }
+  }
+
+  // ── Update handlers ─────────────────────────────────────────────
+
+  private async handleUpdateCheck() {
+    const result = await this.updater.checkForUpdates()
+    const status = this.updater.getStatus()
+
+    this.sendToClient(Channel.CONTROL, {
+      type: 'update_check_response',
+      ...status,
+    })
+
+    // Also emit event if update is available
+    if (result.updateAvailable && result.manifest) {
+      this.sendToClient(Channel.EVENTS, {
+        type: 'update_available',
+        currentVersion: VERSION,
+        latestVersion: result.manifest.version,
+        latestSpecVersion: result.manifest.specVersion,
+        changelog: result.manifest.changelog,
+        releaseUrl: result.manifest.releaseUrl,
+      })
+    }
+  }
+
+  private async handleUpdateStart() {
+    for await (const progress of this.updater.selfUpdate()) {
+      this.sendToClient(Channel.CONTROL, {
+        type: 'update_progress',
+        stage: progress.stage,
+        message: progress.message,
       })
     }
   }
