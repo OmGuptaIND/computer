@@ -1,0 +1,41 @@
+.github/workflows/release.yml
+  c2e7f0437ce0c09b 62-63,71,93-96,98,125-128,134,136,139,145
+manifest.json
+  c2e7f0437ce0c09b 12
+specs/UPDATES.md
+  c2e7f0437ce0c09b 391,477,481,485
+packages/agent-config/src/version.ts
+  c2e7f0437ce0c09b 60-61
+packages/desktop/src-tauri/tauri.conf.json
+  c2e7f0437ce0c09b 39,45
+scripts/build-binary.sh
+  c2e7f0437ce0c09b 59-60,69,106
+scripts/build-cli.sh
+  c2e7f0437ce0c09b 3,6,9,11-16,26,31,37,40-43,49,51,55,57,59,61-62
+scripts/install.sh
+  c2e7f0437ce0c09b 159,161-177,179,181,184,200-201,203,205-206,210,238,240-241,243-254,263-264,267,271-272,281-282
+scripts/release.sh
+  c2e7f0437ce0c09b 210
+packages/cli/src/lib/version.ts
+  c2e7f0437ce0c09b 36,116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "9c218da458ec4f031ce9ac3eadd29044382cc928",
+  "prompts": {
+    "c2e7f0437ce0c09b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "45375abe-e063-4699-8b06-0c04cf773234",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 169,
+      "total_deletions": 232,
+      "accepted_lines": 112,
+      "overriden_lines": 0
+    }
+  }
+}
