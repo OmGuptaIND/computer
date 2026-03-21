@@ -1,0 +1,56 @@
+package.json
+  b48dfcbc8ea50c10 4
+packages/agent-server/src/updater.ts
+  b48dfcbc8ea50c10 1-251
+SPEC.md
+  b48dfcbc8ea50c10 3,32,39-63,454-511,514,516-518,529
+UPDATES.md
+  b48dfcbc8ea50c10 1-256
+packages/desktop/src/lib/store.ts
+  b48dfcbc8ea50c10 62-73,164-172,231-236,277-283,501-511,527-572
+packages/agent-server/src/index.ts
+  b48dfcbc8ea50c10 76
+packages/desktop/src/lib/connection.ts
+  b48dfcbc8ea50c10 59,183-192,249
+packages/agent-config/src/version.ts
+  b48dfcbc8ea50c10 4-9,17-82
+packages/protocol/src/messages.ts
+  b48dfcbc8ea50c10 14-22,61-91,102-105,508-517,523
+packages/agent-server/src/server.ts
+  b48dfcbc8ea50c10 29,35,45,69,78-80,121-123,151-153,159,161-173,251-258,312-345
+manifest.json
+  b48dfcbc8ea50c10 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "d4cd8c16265714fda3f730fd1a34cb99704b20a0",
+  "prompts": {
+    "b48dfcbc8ea50c10": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bee86912-f9e4-471d-957b-9a9fd4f00b45",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 909,
+      "total_deletions": 10,
+      "accepted_lines": 907,
+      "overriden_lines": 0
+    },
+    "e5a5bc51f3fa2258": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "06fe9efb-4280-40fa-a4dc-521455c35d7e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 340,
+      "total_deletions": 129,
+      "accepted_lines": 212,
+      "overriden_lines": 0
+    }
+  }
+}
