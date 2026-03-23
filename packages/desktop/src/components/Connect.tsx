@@ -1,24 +1,28 @@
 import { motion } from 'framer-motion'
-import { ArrowRight, Lock, Trash2, Unlock, Wifi } from 'lucide-react'
+import { ArrowRight, Monitor, Trash2, User, Wifi } from 'lucide-react'
 import { useState } from 'react'
 import { type ConnectionConfig, connection } from '../lib/connection.js'
 import { type SavedMachine, loadMachines, saveMachines, useConnectionStatus } from '../lib/store.js'
 import { AntonLogo } from './AntonLogo.js'
 
 const PORT_PLAIN = 9876
-const PORT_TLS = 9877
+
+const isDev =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+
+type ConnectMode = 'username' | 'ip'
 
 export function Connect({ onConnected }: { onConnected: () => void }) {
   const status = useConnectionStatus()
   const [machines, setMachines] = useState(loadMachines)
+  const [mode, setMode] = useState<ConnectMode>('username')
+  const [username, setUsername] = useState('')
   const [host, setHost] = useState('')
   const [token, setToken] = useState('')
-  const [useTLS, setUseTLS] = useState(false)
   const [remember, setRemember] = useState(true)
   const [error, setError] = useState('')
-  const [showAdvanced, setShowAdvanced] = useState(false)
 
-  const port = useTLS ? PORT_TLS : PORT_PLAIN
   const isConnecting = status === 'connecting' || status === 'authenticating'
 
   const handleConnect = (config: ConnectionConfig, machineName?: string) => {
@@ -26,7 +30,6 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
 
     const unsub = connection.onStatusChange((s, detail) => {
       if (s === 'connected') {
-        // Always save machine if remember is checked
         if (remember || machineName) {
           const existing = loadMachines()
           const id = `${config.host}:${config.port}`
@@ -53,8 +56,21 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
   }
 
   const connectFromForm = () => {
-    if (!host || !token) return
-    handleConnect({ host, port, token, useTLS })
+    if (mode === 'username') {
+      if (!username || !token) return
+      handleConnect(
+        {
+          host: `${username}.antoncomputer.in`,
+          port: 443,
+          token,
+          useTLS: true,
+        },
+        username,
+      )
+    } else {
+      if (!host || !token) return
+      handleConnect({ host, port: PORT_PLAIN, token, useTLS: false })
+    }
   }
 
   const connectSaved = (machine: SavedMachine) => {
@@ -75,6 +91,8 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
     saveMachines(updated)
     setMachines(updated)
   }
+
+  const canSubmit = mode === 'username' ? username && token : host && token
 
   return (
     <div className="connect-screen">
@@ -139,28 +157,81 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
           <>
             <h1 className="connect-heading">Connect your machine</h1>
             <p className="connect-subheading">
-              Enter your server address and token to get started.
+              {isDev
+                ? 'Sign in with your username or connect directly via IP.'
+                : 'Enter your username and password to get started.'}
             </p>
           </>
         )}
 
+        {/* Mode tabs — dev only */}
+        {isDev && (
+          <div className="connect-tabs">
+            <button
+              type="button"
+              className={`connect-tabs__btn${mode === 'username' ? ' connect-tabs__btn--active' : ''}`}
+              onClick={() => {
+                setMode('username')
+                setError('')
+              }}
+            >
+              <User className="connect-tabs__icon" />
+              Username
+            </button>
+            <button
+              type="button"
+              className={`connect-tabs__btn${mode === 'ip' ? ' connect-tabs__btn--active' : ''}`}
+              onClick={() => {
+                setMode('ip')
+                setError('')
+              }}
+            >
+              <Monitor className="connect-tabs__icon" />
+              Direct IP
+            </button>
+          </div>
+        )}
+
         {/* Form */}
         <div className="connect-form">
-          <input
-            className="connect-input"
-            placeholder="Server address (e.g. 192.168.1.100)"
-            value={host}
-            onChange={(e) => setHost(e.target.value)}
-          />
-
-          <input
-            type="password"
-            className="connect-input"
-            placeholder="Access token"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && connectFromForm()}
-          />
+          {mode === 'username' || !isDev ? (
+            <>
+              <input
+                className="connect-input"
+                placeholder="Username"
+                value={username}
+                onChange={(e) =>
+                  setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))
+                }
+                onKeyDown={(e) => e.key === 'Enter' && connectFromForm()}
+              />
+              <input
+                type="password"
+                className="connect-input"
+                placeholder="Password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && connectFromForm()}
+              />
+            </>
+          ) : (
+            <>
+              <input
+                className="connect-input"
+                placeholder="Server address (e.g. 192.168.1.100)"
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+              />
+              <input
+                type="password"
+                className="connect-input"
+                placeholder="Access token"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && connectFromForm()}
+              />
+            </>
+          )}
 
           <label className="connect-remember">
             <input
@@ -172,50 +243,12 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
             <span className="connect-remember__text">Remember this machine</span>
           </label>
 
-          {showAdvanced && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              transition={{ duration: 0.2 }}
-              className="connect-advanced"
-            >
-              <label className="connect-toggle">
-                <input
-                  type="checkbox"
-                  checked={useTLS}
-                  onChange={(e) => setUseTLS(e.target.checked)}
-                  className="connect-toggle__checkbox"
-                />
-                <span className="connect-toggle__body">
-                  {useTLS ? (
-                    <Lock className="connect-toggle__icon" />
-                  ) : (
-                    <Unlock className="connect-toggle__icon" />
-                  )}
-                  <span className="connect-toggle__text">
-                    {useTLS ? 'Secure connection (TLS)' : 'Standard connection'}
-                  </span>
-                </span>
-              </label>
-            </motion.div>
-          )}
-
-          {!showAdvanced && (
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(true)}
-              className="connect-advanced-toggle"
-            >
-              Advanced options
-            </button>
-          )}
-
           {error && <div className="connect-error">{error}</div>}
 
           <button
             type="button"
             onClick={connectFromForm}
-            disabled={!host || !token || isConnecting}
+            disabled={!canSubmit || isConnecting}
             className="connect-submit"
           >
             {isConnecting

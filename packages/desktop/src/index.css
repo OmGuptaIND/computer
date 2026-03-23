@@ -2220,6 +2220,48 @@ button {
   white-space: nowrap;
 }
 
+/* Mode tabs */
+.connect-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  margin-bottom: 6px;
+  width: 100%;
+}
+
+.connect-tabs__btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.connect-tabs__btn:hover {
+  color: var(--text-muted);
+}
+
+.connect-tabs__btn--active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.connect-tabs__icon {
+  width: 14px;
+  height: 14px;
+}
+
 /* Form */
 .connect-form {
   width: 100%;
