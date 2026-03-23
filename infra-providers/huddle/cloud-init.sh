@@ -22,7 +22,7 @@ set -euo pipefail
 
 # ── Defaults ──
 AGENT_PORT="${AGENT_PORT:-9876}"
-AGENT_ARCH="${AGENT_ARCH:-x64}"
+AGENT_ARCH="${AGENT_ARCH:-arm64}"
 ANTON_DIR="/home/anton/.anton"
 BINARY_URL="https://github.com/OmGuptaIND/anton.computer/releases/download/v${ANTON_VERSION}/anton-agent-linux-${AGENT_ARCH}"
 
@@ -124,5 +124,5 @@ CADDY
 # Restart Caddy to pick up the new config
 systemctl restart caddy
 
-echo ">>> Caddy configured: wss://${DOMAIN} → ws://127.0.0.1:${AGENT_PORT}"
-echo ">>> Done! Agent is live at wss://${DOMAIN}"
+echo ">>> Caddy configured: https://${DOMAIN} → http://127.0.0.1:${AGENT_PORT}"
+echo ">>> Done! Agent is live at https://${DOMAIN} (wss:// also supported)"
