@@ -1,13 +1,13 @@
 {
-  "version": "0.8.0",
+  "version": "0.9.0",
   "specVersion": "0.5.0",
   "gitHash": "",
   "releaseUrl": "https://github.com/OmGuptaIND/anton.computer/releases",
   "changelog": "",
-  "publishedAt": "2026-03-23T03:39:09.122Z",
+  "publishedAt": "2026-03-23T04:26:12.980Z",
   "binaries": {
-    "linux-x64": "https://github.com/OmGuptaIND/anton.computer/releases/download/v0.8.0/anton-agent-linux-x64",
-    "linux-arm64": "https://github.com/OmGuptaIND/anton.computer/releases/download/v0.8.0/anton-agent-linux-arm64"
+    "linux-x64": "https://github.com/OmGuptaIND/anton.computer/releases/download/v0.9.0/anton-agent-linux-x64",
+    "linux-arm64": "https://github.com/OmGuptaIND/anton.computer/releases/download/v0.9.0/anton-agent-linux-arm64"
   },
-  "cli": "https://github.com/OmGuptaIND/anton.computer/releases/download/v0.8.0/anton-cli.mjs"
+  "cli": "https://github.com/OmGuptaIND/anton.computer/releases/download/v0.9.0/anton-cli.mjs"
 }
