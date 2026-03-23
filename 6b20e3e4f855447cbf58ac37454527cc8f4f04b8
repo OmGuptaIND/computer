@@ -1,0 +1,23 @@
+scripts/release.sh
+  27d227884a7b1351 71-72,74-77,80-127,272,286
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "6b20e3e4f855447cbf58ac37454527cc8f4f04b8",
+  "prompts": {
+    "27d227884a7b1351": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8391f308-cf43-476b-90fa-4c64ab5cf4d5",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 57,
+      "total_deletions": 32,
+      "accepted_lines": 57,
+      "overriden_lines": 0
+    }
+  }
+}
