@@ -40,7 +40,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIwRTUwNkJBMUZBRTIzNjMKUldSakk2NGZ1Z2JsSUhiZnh5SUdxN2NoZHhhVENlSE5wQU9mTVd3VnZOU0kzTURJMnREcEhSQ1MK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUxRTkwQkZFNzE2MDAyMkEKUldRcUFtQngvZ3ZwVVF4YTdMU1pNWnVucTZrVGRBVjdJY3JRc0RBUEFmVFZrdVRlODRHTzErdUIK",
       "endpoints": [
         "https://github.com/OmGuptaIND/anton.computer/releases/latest/download/latest.json"
       ]
