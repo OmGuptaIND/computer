@@ -1,0 +1,84 @@
+packages/desktop/src/components/chat/ProviderSettingsModal.tsx
+  ef16e84d65bd2bea 138-140,143,171
+packages/desktop/src/components/FileBrowser.tsx
+  ef16e84d65bd2bea 34,42,134
+infra-providers/huddle/cloud-init.sh
+  2d8213ac86db5040 27
+  a4422e66c6bc00b8 19,58
+packages/agent-core/src/tools/http-api.ts
+  ef16e84d65bd2bea 64
+packages/cli/src/index.ts
+  ef16e84d65bd2bea 126,131,149,175,189,208-209,212
+packages/agent-config/src/config.ts
+  a4422e66c6bc00b8 198-214,220,222-224,227-228,243-244,250-254,256
+packages/desktop/src/components/AntonLogo.tsx
+  ef16e84d65bd2bea 52-53
+packages/desktop/src/components/PlanPanel.tsx
+  ef16e84d65bd2bea 59
+packages/agent-server/src/index.ts
+  a4422e66c6bc00b8 12-14
+packages/desktop/src/components/ui/Modal.tsx
+  ef16e84d65bd2bea 24-32
+packages/agent-core/src/tools/git.ts
+  ef16e84d65bd2bea 24,85-86
+packages/agent-server/src/updater.ts
+  ef16e84d65bd2bea 187
+packages/desktop/src/components/Sidebar.tsx
+  ef16e84d65bd2bea 25,143-151
+packages/cli/src/ui/App.tsx
+  ef16e84d65bd2bea 56,204
+packages/desktop/src/components/chat/AskUserDialog.tsx
+  ef16e84d65bd2bea 57,62-63
+packages/desktop/src/components/chat/ActionsGroup.tsx
+  ef16e84d65bd2bea 72,120
+packages/desktop/src/components/AgentChat.tsx
+  ef16e84d65bd2bea 20
+packages/desktop/src/components/chat/MarkdownRenderer.tsx
+  ef16e84d65bd2bea 55-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "72575dadf48ee94570cc9fe068b11a041690e0f2",
+  "prompts": {
+    "2d8213ac86db5040": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4fd2d58b-9756-4974-9cad-dc3284e53f7b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 3,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "a4422e66c6bc00b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e5e3c3e6-9936-4efe-9999-aa5b8ac4eee8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 44,
+      "total_deletions": 7,
+      "accepted_lines": 40,
+      "overriden_lines": 0
+    },
+    "ef16e84d65bd2bea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b80c20ce-d482-4b1a-b172-eef1821dfb5f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 66,
+      "total_deletions": 43,
+      "accepted_lines": 56,
+      "overriden_lines": 0
+    }
+  }
+}
