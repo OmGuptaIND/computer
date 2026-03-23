@@ -68,24 +68,63 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
-# Check for unreleased changelog entries
-UNRELEASED_CONTENT=$(node -e "
-  const fs = require('fs');
-  const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
-  const match = changelog.match(/## \\[Unreleased\\]\\n([\\s\\S]*?)\\n---/);
-  if (match) console.log(match[1].trim());
+# Auto-generate changelog from commits since last tag
+LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+if [[ -n "$LAST_TAG" ]]; then
+  COMMIT_RANGE="${LAST_TAG}..HEAD"
+else
+  COMMIT_RANGE="HEAD"
+fi
+
+# Generate grouped changelog from commit messages
+AUTO_CHANGELOG=$(node -e "
+  const { execSync } = require('child_process');
+  const log = execSync('git log ${COMMIT_RANGE} --pretty=format:%s --no-merges', { encoding: 'utf8' });
+  const lines = log.trim().split('\n').filter(Boolean);
+
+  const groups = { feat: [], fix: [], add: [], chore: [], other: [] };
+  const labels = { feat: 'Features', fix: 'Fixes', add: 'Added', chore: 'Chores', other: 'Other' };
+
+  for (const msg of lines) {
+    // Skip release commits
+    if (msg.startsWith('release:') || msg.startsWith('ci:')) continue;
+
+    const match = msg.match(/^(\w+):\s*(.+)/);
+    if (match && groups[match[1]]) {
+      groups[match[1]].push(match[2].trim());
+    } else if (match) {
+      groups.other.push(msg);
+    } else {
+      groups.other.push(msg);
+    }
+  }
+
+  const parts = [];
+  for (const [key, items] of Object.entries(groups)) {
+    if (items.length === 0) continue;
+    parts.push('### ' + labels[key]);
+    for (const item of items) parts.push('- ' + item);
+    parts.push('');
+  }
+
+  console.log(parts.join('\n').trim() || 'Maintenance release.');
 ")
 
-if [[ -z "$UNRELEASED_CONTENT" || "$UNRELEASED_CONTENT" == "" ]]; then
-  warn "No entries under [Unreleased] in CHANGELOG.md"
-  echo ""
-  read -p "  Continue anyway? (y/N) " -n 1 -r
-  echo ""
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "  Aborted."
-    exit 0
-  fi
-fi
+# Write auto-generated changelog into [Unreleased] section
+node -e "
+  const fs = require('fs');
+  let changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+  const match = changelog.match(/(## \\[Unreleased\\]\\n)([\\s\\S]*?)(\\n---)/);
+  if (match) {
+    changelog = changelog.replace(match[0], match[1] + '\n' + \`${AUTO_CHANGELOG}\` + match[3]);
+    fs.writeFileSync('CHANGELOG.md', changelog);
+  }
+"
+
+step "Auto-generated changelog from ${LAST_TAG:-'initial'}..HEAD"
+echo "$AUTO_CHANGELOG" | sed 's/^/    /'
+echo ""
 
 # ── 1. Update package versions ─────────────────────────────────────
 
@@ -230,7 +269,7 @@ ok "Committed and tagged v${NEW_VERSION}"
 
 if [[ "$AUTO_PUSH" == "--push" ]]; then
   step "Pushing to origin"
-  git push origin main --tags
+  git push origin main "v${NEW_VERSION}"
   ok "Pushed to origin — CI will build agent binaries + desktop app"
   echo ""
   echo -e "  ${BOLD}CI will:${NC}"
@@ -244,7 +283,7 @@ else
   echo ""
   echo -e "  ${BOLD}Release v${NEW_VERSION} ready locally.${NC}"
   echo ""
-  echo "  To publish:  git push origin main --tags"
+  echo "  To publish:  git push origin main "v${NEW_VERSION}""
   echo "  Or run:      make release  (will push automatically)"
 fi
 
