@@ -1,0 +1,23 @@
+packages/desktop/src-tauri/tauri.conf.json
+  27d227884a7b1351 43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "e94943d5a619d3b56320405b53266f4e3a243243",
+  "prompts": {
+    "27d227884a7b1351": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8391f308-cf43-476b-90fa-4c64ab5cf4d5",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
