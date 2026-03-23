@@ -36,5 +36,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "createUpdaterArtifacts": "v1Compatible"
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIwRTUwNkJBMUZBRTIzNjMKUldSakk2NGZ1Z2JsSUhiZnh5SUdxN2NoZHhhVENlSE5wQU9mTVd3VnZOU0kzTURJMnREcEhSQ1MK",
+      "endpoints": [
+        "https://github.com/OmGuptaIND/anton.computer/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
