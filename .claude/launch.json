@@ -6,6 +6,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@anton/desktop", "dev"],
       "port": 1420
+    },
+    {
+      "name": "antoncomputer-web",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["--cwd", "/Users/omg/Desktop/01/antoncomputer.in", "dev"],
+      "port": 3000
     }
   ]
 }

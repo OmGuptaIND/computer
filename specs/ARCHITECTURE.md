@@ -2,35 +2,35 @@
 
 ## One-Liner
 
-A TypeScript agent daemon on your VPS + native desktop app + CLI on your machine, connected by WebSocket pipes. The agent uses pi SDK to think and act. Sessions live on the server.
+A TypeScript agent daemon on your VPS + Go sidecar for health/status + native desktop app + CLI on your machine, connected by WebSocket pipes. The agent uses pi SDK to think and act. Sessions live on the server. The sidecar reports VM health to antoncomputer.in.
 
 ## System Diagram
 
 ```
 YOUR DESKTOP                                          YOUR VPS / CLOUD SERVER
 ┌────────────────────────┐                             ┌──────────────────────────────┐
-│  Desktop App (Tauri)   │      WebSocket (TLS)        │  Agent Daemon (Node.js)      │
-│  or CLI (Ink TUI)      │◄──────────────────────────►│                              │
-│                        │   Single multiplexed conn   │  ┌────────────────────────┐  │
-│  ┌──────────────────┐  │                             │  │  Server (server.ts)    │  │
-│  │ Terminal (xterm)  │──┼─── PTY channel ──────────►│  │  ├── Auth + TLS        │  │
-│  │ AI Agent Chat     │──┼─── AI channel ───────────►│  │  ├── Session Router    │  │
-│  │ Model Selector    │──┼─── AI channel ───────────►│  │  ├── Provider Manager  │  │
-│  │ Session Sidebar   │──┼─── AI channel ───────────►│  │  └── Confirm Handler   │  │
-│  │ Notifications     │◄─┼─── Event channel ────────┤  │                        │  │
-│  └──────────────────┘  │                             │  │  Session (session.ts)  │  │
-│                        │                             │  │  ├── pi SDK Agent      │  │
-│  Zustand state store   │                             │  │  ├── Compaction Engine │  │
-│  localStorage cache    │                             │  │  ├── Persistence       │  │
-│                        │                             │  │  └── Tool Execution    │  │
-│  Rust: shell, notify   │                             │  └────────────────────────┘  │
-└────────────────────────┘                             │                              │
-                                                       │  ~/.anton/                    │
-                                                       │  ├── config.yaml             │
-                                                       │  ├── sessions/               │
-                                                       │  │   ├── index.json          │
-                                                       │  │   └── data/sess_*/        │
-                                                       │  └── certs/                  │
+│  Desktop App (Tauri)   │      WebSocket (TLS)        │  Caddy (:443 TLS)            │
+│  or CLI (Ink TUI)      │◄──────────────────────────►│  ├── /* → Agent (:9876)      │
+│                        │   Single multiplexed conn   │  └── /_anton/* → Sidecar     │
+│  ┌──────────────────┐  │                             │                              │
+│  │ Terminal (xterm)  │──┼─── PTY channel ──────────►│  ┌────────────────────────┐  │
+│  │ AI Agent Chat     │──┼─── AI channel ───────────►│  │  Agent (Node.js :9876) │  │
+│  │ Model Selector    │──┼─── AI channel ───────────►│  │  ├── WebSocket Server  │  │
+│  │ Session Sidebar   │──┼─── AI channel ───────────►│  │  ├── Session Router    │  │
+│  │ Notifications     │◄─┼─── Event channel ────────┤  │  └── Tool Execution    │  │
+│  └──────────────────┘  │                             │  └────────────────────────┘  │
+│                        │                             │                              │
+│  Zustand state store   │                             │  ┌────────────────────────┐  │
+│  localStorage cache    │                             │  │  Sidecar (Go :9878)    │  │
+│                        │                             │  │  ├── /health           │  │
+│  Rust: shell, notify   │                             │  │  ├── /status           │  │
+└────────────────────────┘                             │  │  └── System checks     │  │
+                                                       │  └────────────────────────┘  │
+antoncomputer.in                                       │                              │
+┌────────────────────────┐    /_anton/status            │  ~/.anton/                    │
+│  Polls sidecar for     │◄──────────────────────────►│  ├── config.yaml             │
+│  provisioning status   │    every 3s during deploy   │  ├── sessions/               │
+└────────────────────────┘                             │  └── certs/                  │
                                                        └──────────────────────────────┘
 ```
 
@@ -45,6 +45,11 @@ anton.computer/
 ├── ARCHITECTURE.md           # This file
 ├── PROVIDERS.md              # Supported AI providers
 ├── GOALS.md                  # Product vision & roadmap
+│
+├── sidecar/                     # Health & status service (Go)
+│   ├── main.go
+│   ├── Makefile
+│   └── internal/                # config, server, middleware, handlers, checks
 │
 ├── packages/
 │   ├── agent/                # The daemon (runs on VPS)
@@ -415,11 +420,101 @@ The confirmation is a blocking `Promise` — the entire agent loop pauses until 
 
 All tools receive the `AgentConfig` at creation time (for security rules) but hold no state between calls. The pi SDK manages the conversation state and tool results.
 
+## Sidecar (Health & Status Service)
+
+A lightweight Go binary running as a systemd service on each VM. Provides health checks, status, and system telemetry. Exposed via Caddy at `/_anton/*`.
+
+### Architecture
+
+```
+Internet → Caddy (:443 TLS)
+              ├── /_anton/* → sidecar (127.0.0.1:9878)
+              └── /*        → agent   (127.0.0.1:9876)
+```
+
+The sidecar is the single source of truth for VM status. antoncomputer.in polls it directly instead of relying on callbacks.
+
+### Endpoints
+
+| Endpoint | Auth | Purpose |
+|----------|------|---------|
+| `GET /_anton/health` | None (rate limited) | Liveness probe: `{ status, uptime }` |
+| `GET /_anton/status` | None (rate limited) | Full VM status: agent, caddy, DNS, TLS, system metrics |
+| `* /_anton/*` (future) | Bearer ANTON_TOKEN | Reserved for control endpoints (restart, logs, exec) |
+
+### Status Response
+
+```json
+{
+  "status": "ready | provisioning | error",
+  "agent": { "healthy": true },
+  "caddy": { "running": true },
+  "dns": { "resolved": true, "ip": "103.x.x.x" },
+  "tls": { "valid": true },
+  "system": {
+    "cpuPercent": 12,
+    "memUsedMB": 512,
+    "memTotalMB": 4096,
+    "diskUsedGB": 3,
+    "diskTotalGB": 10,
+    "uptimeSeconds": 3600
+  },
+  "domain": "username.antoncomputer.in",
+  "version": "1.0.0"
+}
+```
+
+Top-level `status` is derived: `"ready"` only when agent healthy + caddy running + DNS resolved + TLS valid.
+
+### Security
+
+- Sidecar listens on `127.0.0.1:9878` only (never directly exposed)
+- Caddy provides TLS for all `/_anton/*` traffic
+- Public endpoints rate-limited (60/min health, 30/min status)
+- Protected endpoints (future) require Bearer token (ANTON_TOKEN)
+- No sensitive data exposed on public endpoints
+
+### Provisioning Flow
+
+```
+1. VM boots → cloud-init installs agent + sidecar + Caddy
+2. Sidecar starts first (reports "provisioning")
+3. Caddy starts → TLS provisioned → sidecar becomes reachable via HTTPS
+4. Agent starts → sidecar reports "ready"
+5. antoncomputer.in polls https://{domain}/_anton/status every 3s
+6. Frontend shows status progression: provisioning → dns → caddy → agent → running
+```
+
+### Project Structure
+
+```
+sidecar/
+├── main.go                     # Entry point
+├── go.mod
+├── Makefile                    # Cross-compile targets
+└── internal/
+    ├── config/config.go        # Env: ANTON_TOKEN, AGENT_PORT, DOMAIN
+    ├── server/server.go        # Fiber HTTP server
+    ├── middleware/
+    │   ├── auth.go             # Bearer token auth
+    │   └── ratelimit.go        # Token bucket rate limiter
+    ├── handlers/
+    │   ├── health.go           # GET /health
+    │   └── status.go           # GET /status
+    └── checks/
+        ├── agent.go            # Agent health check (localhost:9876/health)
+        ├── caddy.go            # systemctl is-active caddy
+        ├── dns.go              # net.LookupHost
+        ├── tls.go              # TLS handshake check
+        └── system.go           # CPU, RAM, disk, uptime
+```
+
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Agent runtime | Node.js 22 + TypeScript |
+| Sidecar | Go + Fiber (health, status, telemetry) |
 | AI engine | pi SDK (`@mariozechner/pi-agent-core` + `pi-ai`) |
 | Desktop app | Tauri v2 (Rust) + React 19 |
 | Desktop UI | Tailwind 4 + Framer Motion + Shiki + react-markdown |

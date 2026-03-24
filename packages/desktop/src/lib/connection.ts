@@ -56,7 +56,6 @@ export class Connection {
   private reconnectTimer: number | null = null
   private agentId = ''
   private agentVersion = ''
-  private agentSpecVersion = ''
 
   get status() {
     return this._status
@@ -249,7 +248,6 @@ export class Connection {
         if (channel === Channel.CONTROL && payload.type === 'auth_ok') {
           this.agentId = payload.agentId
           this.agentVersion = payload.version
-          this.agentSpecVersion = payload.specVersion || ''
           this.setStatus('connected', `Agent: ${this.agentId}`)
         } else if (channel === Channel.CONTROL && payload.type === 'auth_error') {
           this.setStatus('error', `Auth failed: ${payload.reason}`)

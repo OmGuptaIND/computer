@@ -1,12 +1,8 @@
 # anton.computer — Connection Spec
 
-> **Spec Version: 0.5.0**
->
 > Single source of truth for ports, protocols, and connection behavior.
 > All clients (desktop, CLI) and the agent server MUST honor this spec.
->
-> Bump this version when protocol or behavior changes. The agent reports
-> this version in `auth_ok.specVersion` so clients know what to expect.
+> One unified version for agent, sidecar, desktop, and CLI.
 >
 > For the complete message-by-message API reference, see [API.md](./API.md).
 
@@ -18,8 +14,9 @@
 |------|----------|---------|
 | **9876** | `ws://` | Primary WebSocket (plain, no TLS) |
 | **9877** | `wss://` | TLS WebSocket (self-signed or CA cert) |
+| **9878** | HTTP | Sidecar health/status (localhost only, exposed via Caddy at `/_anton/*`) |
 
-- The agent server MUST listen on **both** ports simultaneously.
+- The agent server MUST listen on **both** WS ports simultaneously.
 - Port 9876 (plain WS) is the **default** for all clients.
 - Port 9877 (TLS) is optional — used when security is required over untrusted networks.
 - Both ports use the same binary framing protocol and auth flow.
@@ -29,38 +26,32 @@
 | Step | Direction | Channel | Message |
 |------|-----------|---------|---------|
 | 1 | Client → Agent | CONTROL (0x00) | `{ type: "auth", token: "<token>" }` |
-| 2a | Agent → Client | CONTROL (0x00) | `{ type: "auth_ok", agentId, version, gitHash, specVersion, minClientSpec?, updateAvailable? }` |
+| 2a | Agent → Client | CONTROL (0x00) | `{ type: "auth_ok", agentId, version, gitHash, updateAvailable? }` |
 | 2b | Agent → Client | CONTROL (0x00) | `{ type: "auth_error", reason }` |
 
 - Token format: `ak_<48 hex chars>` (24 random bytes)
 - Auth timeout: 10 seconds — server closes connection if no auth received
 - One active client at a time — new connection replaces the old one
 
-### Version Compatibility (v0.5.0)
+### Version Info
 
-The `auth_ok` response includes version compatibility metadata:
+The `auth_ok` response includes version metadata:
 
 ```typescript
 {
   type: "auth_ok",
   agentId: string,
-  version: string,           // agent package version (e.g. "0.5.0")
+  version: string,           // unified version (e.g. "1.0.0")
   gitHash: string,           // short git commit hash
-  specVersion: string,       // wire protocol version (e.g. "0.5.0")
-  minClientSpec?: string,    // oldest client spec this agent supports
   updateAvailable?: {        // included if agent knows a newer version exists
     version: string,
-    specVersion: string,
     changelog: string,
     releaseUrl: string,
   }
 }
 ```
 
-**Compatibility rules:**
-- Client SHOULD check `specVersion >= MIN_AGENT_SPEC` — if the agent is too old, show "Agent outdated" banner
-- Agent checks client compatibility via `minClientSpec` — clients older than this get degraded features
-- Both sides remain backward compatible: unknown fields are ignored, unknown message types are dropped
+One unified version number for agent, sidecar, desktop, and CLI. Unknown fields are ignored, unknown message types are dropped.
 
 ## Wire Protocol
 

@@ -26,7 +26,7 @@ import {
   setProviderKey,
   setProviderModels,
 } from '@anton/agent-config'
-import { GIT_HASH, MIN_CLIENT_SPEC, SPEC_VERSION, VERSION } from '@anton/agent-config'
+import { GIT_HASH, VERSION } from '@anton/agent-config'
 import { type Session, createSession, resumeSession } from '@anton/agent-core'
 import { Channel, decodeFrame, encodeFrame, parseJsonPayload } from '@anton/protocol'
 import type { AiMessage, ChannelId, ControlMessage, TerminalMessage } from '@anton/protocol'
@@ -74,12 +74,10 @@ export class AgentServer {
             agentId: this.config.agentId,
             version: VERSION,
             gitHash: GIT_HASH,
-            specVersion: SPEC_VERSION,
             ...(updateInfo
               ? {
                   updateAvailable: {
                     version: updateInfo.version,
-                    specVersion: updateInfo.specVersion,
                   },
                 }
               : {}),
@@ -160,8 +158,6 @@ export class AgentServer {
                 agentId: this.config.agentId,
                 version: VERSION,
                 gitHash: GIT_HASH,
-                specVersion: SPEC_VERSION,
-                minClientSpec: MIN_CLIENT_SPEC,
               }
 
               // Include update info if available
@@ -169,7 +165,6 @@ export class AgentServer {
               if (updateManifest) {
                 authOk.updateAvailable = {
                   version: updateManifest.version,
-                  specVersion: updateManifest.specVersion,
                   changelog: updateManifest.changelog,
                   releaseUrl: updateManifest.releaseUrl,
                 }
@@ -331,7 +326,6 @@ export class AgentServer {
         type: 'update_available',
         currentVersion: VERSION,
         latestVersion: result.manifest.version,
-        latestSpecVersion: result.manifest.specVersion,
         changelog: result.manifest.changelog,
         releaseUrl: result.manifest.releaseUrl,
       })

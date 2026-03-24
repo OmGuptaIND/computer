@@ -2,11 +2,7 @@
  * Version info for the anton.computer agent.
  * Git hash is resolved at runtime from the repo or falls back to "dev".
  *
- * Version compatibility:
- *   - SPEC_VERSION:     Wire protocol version (bumped on protocol changes)
- *   - MIN_CLIENT_SPEC:  Oldest client spec version this agent supports
- *   - MIN_AGENT_SPEC:   Oldest agent spec version the desktop client supports
- *                        (exported for the desktop app to check against auth_ok.specVersion)
+ * Single unified version for agent, sidecar, desktop, and CLI.
  */
 
 import { execSync } from 'node:child_process'
@@ -14,25 +10,9 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const SPEC_VERSION = '0.5.0'
-
-/**
- * Minimum client spec version this agent will accept.
- * Clients older than this get a compatibility warning in auth_ok.
- */
-export const MIN_CLIENT_SPEC = '0.3.0'
-
-/**
- * Minimum agent spec version the desktop client needs.
- * If the agent reports a specVersion older than this, the desktop shows
- * "Agent outdated — please update" banner.
- */
-export const MIN_AGENT_SPEC = '0.4.0'
-
 /**
  * URL where the latest release manifest lives.
  * The agent checks this periodically for self-update.
- * The manifest is a JSON file: { version, specVersion, gitHash, releaseUrl, changelog }
  */
 export const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/OmGuptaIND/anton.computer/main/manifest.json'
@@ -45,8 +25,6 @@ export const UPDATE_CHECK_INTERVAL = 60 * 60 * 1000
 export interface UpdateManifest {
   /** Latest available version (semver) */
   version: string
-  /** Spec version of the latest release */
-  specVersion: string
   /** Git hash of the latest release */
   gitHash: string
   /** URL to release notes or download */
@@ -57,6 +35,8 @@ export interface UpdateManifest {
   publishedAt: string
   /** Pre-compiled agent binary URLs keyed by platform-arch (e.g. "linux-x64", "linux-arm64") */
   binaries?: Record<string, string>
+  /** Pre-compiled sidecar binary URLs keyed by platform-arch */
+  sidecar_binaries?: Record<string, string>
   /** CLI bundle download URL (single .mjs file, platform-independent) */
   cli?: string
 }

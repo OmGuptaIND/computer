@@ -10,7 +10,6 @@
 import { Channel, decodeFrame, encodeFrame, parseJsonPayload } from '@anton/protocol'
 import type { ChannelId, ControlMessage } from '@anton/protocol'
 import WebSocket from 'ws'
-import { checkAgentCompatibility } from './version.js'
 
 export type ConnectionStatus =
   | 'disconnected'
@@ -37,9 +36,7 @@ export class Connection {
   private _status: ConnectionStatus = 'disconnected'
   private _agentId = ''
   private _agentVersion = ''
-  private _agentSpecVersion = ''
   private _agentGitHash = ''
-  private _agentMinClientSpec = ''
 
   get status() {
     return this._status
@@ -50,14 +47,8 @@ export class Connection {
   get agentVersion() {
     return this._agentVersion
   }
-  get agentSpecVersion() {
-    return this._agentSpecVersion
-  }
   get agentGitHash() {
     return this._agentGitHash
-  }
-  get agentMinClientSpec() {
-    return this._agentMinClientSpec
   }
 
   onMessage(handler: MessageHandler) {
@@ -109,17 +100,7 @@ export class Connection {
             const p = payload as unknown as Record<string, unknown>
             this._agentId = payload.agentId
             this._agentVersion = payload.version
-            this._agentSpecVersion = (p.specVersion as string) ?? ''
             this._agentGitHash = (p.gitHash as string) ?? ''
-            this._agentMinClientSpec = (p.minClientSpec as string) ?? ''
-
-            // Check spec version compatibility
-            if (this._agentSpecVersion) {
-              const compat = checkAgentCompatibility(this._agentSpecVersion)
-              if (compat) {
-                console.warn(`  Warning: ${compat}`)
-              }
-            }
 
             this.setStatus('connected', `Agent: ${this._agentId}`)
             resolve()

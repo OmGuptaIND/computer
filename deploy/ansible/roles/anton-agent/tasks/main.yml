@@ -173,20 +173,12 @@
   register: pkg_version
   changed_when: false
 
-- name: Get spec version
-  shell: "grep \"SPEC_VERSION\" packages/agent-config/src/version.ts | head -1 | sed \"s/.*= '//;s/'.*//\""
-  args:
-    chdir: "{{ anton_repo_dir }}"
-  register: spec_version
-  changed_when: false
-
 - name: Write version manifest
   copy:
     content: |
       {
         "version": "{{ pkg_version.stdout }}",
         "gitHash": "{{ git_hash.stdout }}",
-        "specVersion": "{{ spec_version.stdout }}",
         "branch": "{{ anton_branch }}",
         "deployedAt": "{{ ansible_date_time.iso8601 }}",
         "deployedBy": "ansible"
@@ -273,7 +265,6 @@
       ✓ Anton Agent deployed successfully!
 
       Version: {{ pkg_version.stdout }} ({{ git_hash.stdout }})
-      Spec:    {{ spec_version.stdout }}
       Branch:  {{ anton_branch }}
 
       Host:  {{ ansible_host | default(inventory_hostname) }}

@@ -62,9 +62,7 @@ export type AgentStatus = 'idle' | 'working' | 'error' | 'unknown'
 
 export interface UpdateInfo {
   currentVersion: string
-  currentSpecVersion: string
   latestVersion: string | null
-  latestSpecVersion: string | null
   updateAvailable: boolean
   changelog: string | null
   releaseUrl: string | null
@@ -170,7 +168,6 @@ interface AppState {
 
   // Version & updates
   agentVersion: string | null
-  agentSpecVersion: string | null
   agentGitHash: string | null
   updateInfo: UpdateInfo | null
   updateStage: UpdateStage
@@ -237,7 +234,7 @@ interface AppState {
   setPendingAskUser: (ask: { id: string; questions: AskUserQuestion[] } | null) => void
 
   // Update actions
-  setAgentVersionInfo: (version: string, specVersion: string, gitHash: string) => void
+  setAgentVersionInfo: (version: string, gitHash: string) => void
   setUpdateInfo: (info: UpdateInfo | null) => void
   setUpdateProgress: (stage: UpdateStage, message: string | null) => void
   dismissUpdate: () => void
@@ -283,7 +280,6 @@ export const useStore = create<AppState>((set, get) => {
     sidePanelView: 'artifacts' as const,
     pendingAskUser: null,
     agentVersion: null,
-    agentSpecVersion: null,
     agentGitHash: null,
     updateInfo: null,
     updateStage: null,
@@ -503,8 +499,8 @@ export const useStore = create<AppState>((set, get) => {
     setSidePanelView: (view) => set({ sidePanelView: view }),
     setPendingAskUser: (ask) => set({ pendingAskUser: ask }),
 
-    setAgentVersionInfo: (version, specVersion, gitHash) =>
-      set({ agentVersion: version, agentSpecVersion: specVersion, agentGitHash: gitHash }),
+    setAgentVersionInfo: (version, gitHash) =>
+      set({ agentVersion: version, agentGitHash: gitHash }),
 
     setUpdateInfo: (info) => set({ updateInfo: info, updateDismissed: false }),
 
@@ -529,14 +525,12 @@ connection.onMessage((channel, msg) => {
   // ── CONTROL channel: auth_ok version info + update messages ──
   if (channel === Channel.CONTROL) {
     if (msg.type === 'auth_ok') {
-      store.setAgentVersionInfo(msg.version || '', msg.specVersion || '', msg.gitHash || '')
+      store.setAgentVersionInfo(msg.version || '', msg.gitHash || '')
       // If agent already knows about an update, store it
       if (msg.updateAvailable) {
         store.setUpdateInfo({
           currentVersion: msg.version,
-          currentSpecVersion: msg.specVersion,
           latestVersion: msg.updateAvailable.version,
-          latestSpecVersion: msg.updateAvailable.specVersion,
           updateAvailable: true,
           changelog: msg.updateAvailable.changelog,
           releaseUrl: msg.updateAvailable.releaseUrl,
@@ -545,9 +539,7 @@ connection.onMessage((channel, msg) => {
     } else if (msg.type === 'update_check_response') {
       store.setUpdateInfo({
         currentVersion: msg.currentVersion,
-        currentSpecVersion: msg.currentSpecVersion,
         latestVersion: msg.latestVersion,
-        latestSpecVersion: msg.latestSpecVersion,
         updateAvailable: msg.updateAvailable,
         changelog: msg.changelog,
         releaseUrl: msg.releaseUrl,
@@ -562,9 +554,7 @@ connection.onMessage((channel, msg) => {
   if (channel === Channel.EVENTS && msg.type === 'update_available') {
     store.setUpdateInfo({
       currentVersion: msg.currentVersion,
-      currentSpecVersion: store.agentSpecVersion || '',
       latestVersion: msg.latestVersion,
-      latestSpecVersion: msg.latestSpecVersion,
       updateAvailable: true,
       changelog: msg.changelog,
       releaseUrl: msg.releaseUrl,

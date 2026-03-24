@@ -10,13 +10,9 @@ export interface AuthOkMessage {
   agentId: string
   version: string
   gitHash: string
-  specVersion: string
-  /** Minimum client spec version the agent supports. Clients older than this should warn. */
-  minClientSpec?: string
   /** If the agent knows a newer version is available, include it here. */
   updateAvailable?: {
     version: string
-    specVersion: string
     changelog: string
     releaseUrl: string
   }
@@ -69,9 +65,7 @@ export interface UpdateCheckMessage {
 export interface UpdateCheckResponse {
   type: 'update_check_response'
   currentVersion: string
-  currentSpecVersion: string
   latestVersion: string | null
-  latestSpecVersion: string | null
   updateAvailable: boolean
   changelog: string | null
   releaseUrl: string | null

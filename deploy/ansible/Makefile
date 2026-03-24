@@ -48,7 +48,6 @@ sync: _check-ansible
 	@echo ""
 	@GIT_HASH=$$(cd "$(REPO_ROOT)" && git rev-parse --short HEAD 2>/dev/null || echo "dev"); \
 	PKG_VERSION=$$(node -e "console.log(JSON.parse(require('fs').readFileSync('$(REPO_ROOT)/packages/agent-config/package.json','utf8')).version)" 2>/dev/null || echo "0.1.0"); \
-	SPEC_VERSION=$$(grep "SPEC_VERSION" "$(REPO_ROOT)/packages/agent-config/src/version.ts" 2>/dev/null | head -1 | sed "s/.*= '//;s/'.*//" || echo "0.1.0"); \
 	ansible all -i $(INVENTORY) $(LIMIT) --list-hosts 2>/dev/null | tail -n +2 | sed 's/^ *//' | while read host; do \
 		IP=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_host','$$host'))" 2>/dev/null || echo "$$host"); \
 		USER=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_user','anton'))" 2>/dev/null || echo "anton"); \
@@ -87,7 +86,7 @@ sync: _check-ansible
 				echo $$GIT_HASH build done'"; \
 		echo "  → Writing version.json..."; \
 		ssh $$SSH_OPTS "$$USER@$$IP" "\
-			sudo -u anton bash -c \"echo '{\\\"version\\\": \\\"$$PKG_VERSION\\\", \\\"gitHash\\\": \\\"$$GIT_HASH\\\", \\\"specVersion\\\": \\\"$$SPEC_VERSION\\\", \\\"branch\\\": \\\"local-sync\\\", \\\"deployedAt\\\": \\\"$$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\", \\\"deployedBy\\\": \\\"sync\\\"}' > /home/anton/.anton/version.json\""; \
+			sudo -u anton bash -c \"echo '{\\\"version\\\": \\\"$$PKG_VERSION\\\", \\\"gitHash\\\": \\\"$$GIT_HASH\\\", \\\"branch\\\": \\\"local-sync\\\", \\\"deployedAt\\\": \\\"$$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\", \\\"deployedBy\\\": \\\"sync\\\"}' > /home/anton/.anton/version.json\""; \
 		echo "  → Restarting anton-agent on $$host..."; \
 		ssh $$SSH_OPTS "$$USER@$$IP" "sudo systemctl restart anton-agent 2>/dev/null || true"; \
 		echo "  → $$host done ✓"; \
@@ -128,12 +127,11 @@ verify: _check-ansible
 			PORT9876="✗"; PORT9877="✗"; \
 			ss -tlnp 2>/dev/null | grep -q ":9876" && PORT9876="✓"; \
 			ss -tlnp 2>/dev/null | grep -q ":9877" && PORT9877="✓"; \
-			VER="-"; HASH="-"; SPEC="-"; AGENTID="-"; \
+			VER="-"; HASH="-"; AGENTID="-"; \
 			HEALTH=$$(curl -s --connect-timeout 2 http://127.0.0.1:9876/health 2>/dev/null); \
 			if [ -n "$$HEALTH" ]; then \
 				VER=$$(echo "$$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get(\"version\",\"-\"))" 2>/dev/null || echo "-"); \
 				HASH=$$(echo "$$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get(\"gitHash\",\"-\"))" 2>/dev/null || echo "-"); \
-				SPEC=$$(echo "$$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get(\"specVersion\",\"-\"))" 2>/dev/null || echo "-"); \
 				AGENTID=$$(echo "$$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get(\"agentId\",\"-\"))" 2>/dev/null || echo "-"); \
 			fi; \
 			TOKEN="-"; \
@@ -141,9 +139,9 @@ verify: _check-ansible
 				TOKEN=$$(grep "^token:" /home/anton/.anton/config.yaml | awk "{print \$$2}"); \
 			fi; \
 			NODE_VER=$$(node --version 2>/dev/null || echo "missing"); \
-			echo "$$STATUS|$$PID|$$MEM|$$UPTIME|$$PORT9876|$$PORT9877|$$VER|$$HASH|$$SPEC|$$AGENTID|$$TOKEN|$$NODE_VER" \
+			echo "$$STATUS|$$PID|$$MEM|$$UPTIME|$$PORT9876|$$PORT9877|$$VER|$$HASH|$$AGENTID|$$TOKEN|$$NODE_VER" \
 		' 2>/dev/null) || REMOTE="? UNREACHABLE via SSH|||||||||||"; \
-		IFS="|" read -r R_STATUS R_PID R_MEM R_UPTIME R_P9876 R_P9877 R_VER R_HASH R_SPEC R_AID R_TOKEN R_NODE <<< "$$REMOTE"; \
+		IFS="|" read -r R_STATUS R_PID R_MEM R_UPTIME R_P9876 R_P9877 R_VER R_HASH R_AID R_TOKEN R_NODE <<< "$$REMOTE"; \
 		printf "  │  %-18s %-40s│\n" "Service:" "$$R_STATUS"; \
 		printf "  │  %-18s %-40s│\n" "PID / Memory:" "$$R_PID / $$R_MEM"; \
 		printf "  │  %-18s %-40s│\n" "Uptime:" "$$R_UPTIME"; \
@@ -151,7 +149,6 @@ verify: _check-ansible
 		printf "  │  %-18s %-40s│\n" "Node.js:" "$$R_NODE"; \
 		echo "  │                                                              │"; \
 		printf "  │  %-18s %-40s│\n" "Version:" "$$R_VER ($$R_HASH)"; \
-		printf "  │  %-18s %-40s│\n" "Spec:" "$$R_SPEC"; \
 		echo "  │                                                              │"; \
 		printf "  │  %-18s %-40s│\n" "Agent ID:" "$$R_AID"; \
 		printf "  │  %-18s %-40s│\n" "Token:" "$$R_TOKEN"; \

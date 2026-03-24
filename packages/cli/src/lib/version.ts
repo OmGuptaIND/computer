@@ -1,14 +1,7 @@
 /**
- * CLI version info, compatibility checks, and self-update.
+ * CLI version info and self-update.
  *
- * Version model (same as desktop + agent):
- *   - CLI_VERSION:     This CLI's release version
- *   - SPEC_VERSION:    Wire protocol version this CLI speaks
- *   - MIN_AGENT_SPEC:  Oldest agent spec this CLI can talk to
- *
- * Self-update:
- *   CLI checks manifest.json for a newer version.
- *   If available, downloads the binary and replaces itself.
+ * Single unified version for agent, sidecar, desktop, and CLI.
  */
 
 import {
@@ -24,19 +17,12 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 
-/** Wire protocol version this CLI speaks */
-export const SPEC_VERSION = '0.5.0'
-
-/** Minimum agent spec version this CLI requires */
-export const MIN_AGENT_SPEC = '0.4.0'
-
 /** Manifest URL — same one the agent uses */
 export const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/OmGuptaIND/anton.computer/main/manifest.json'
 
 export interface CLIManifest {
   version: string
-  specVersion: string
   gitHash: string
   changelog: string
   publishedAt: string
@@ -82,19 +68,6 @@ export function semverGt(a: string, b: string): boolean {
 
 export function semverGte(a: string, b: string): boolean {
   return a === b || semverGt(a, b)
-}
-
-// ── Compatibility check ─────────────────────────────────────────
-
-/**
- * Check if the agent's spec version is compatible with this CLI.
- * Returns null if compatible, or an error message if not.
- */
-export function checkAgentCompatibility(agentSpecVersion: string): string | null {
-  if (!semverGte(agentSpecVersion, MIN_AGENT_SPEC)) {
-    return `Agent spec ${agentSpecVersion} is too old (CLI requires >= ${MIN_AGENT_SPEC}). Ask the agent owner to update.`
-  }
-  return null
 }
 
 // ── Self-update ─────────────────────────────────────────────────

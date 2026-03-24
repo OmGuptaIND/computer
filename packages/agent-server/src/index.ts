@@ -15,7 +15,7 @@
  */
 
 import { loadConfig, loadSkills } from '@anton/agent-config'
-import { GIT_HASH, SPEC_VERSION, VERSION } from '@anton/agent-config'
+import { GIT_HASH, VERSION } from '@anton/agent-config'
 import { Scheduler } from './scheduler.js'
 import { AgentServer } from './server.js'
 
@@ -25,7 +25,6 @@ async function main() {
    │  anton.computer agent v${VERSION}         │
    │  Your personal cloud computer.      │
    │  commit: ${GIT_HASH.padEnd(28)}│
-   │  spec:   ${SPEC_VERSION.padEnd(28)}│
    └─────────────────────────────────────┘
   `)
 

@@ -53,7 +53,6 @@ sync: _check-ansible
 	@echo ""
 	@GIT_HASH=$$(cd "$(REPO_ROOT)" && git rev-parse --short HEAD 2>/dev/null || echo "dev"); \
 	PKG_VERSION=$$(node -e "console.log(JSON.parse(require('fs').readFileSync('$(REPO_ROOT)/packages/agent/package.json','utf8')).version)" 2>/dev/null || echo "0.1.0"); \
-	SPEC_VERSION=$$(grep 'Spec Version:' "$(REPO_ROOT)/SPEC.md" 2>/dev/null | head -1 | sed 's/.*Spec Version: //;s/\*\*.*//' | tr -d ' ' || echo "0.1.0"); \
 	ansible all -i $(INVENTORY) $(LIMIT) --list-hosts 2>/dev/null | tail -n +2 | sed 's/^ *//' | while read host; do \
 		IP=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_host','$$host'))" 2>/dev/null || echo "$$host"); \
 		USER=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_user','anton'))" 2>/dev/null || echo "anton"); \
@@ -63,7 +62,8 @@ sync: _check-ansible
 		echo "  → $$host ($$IP) as $$USER"; \
 		RSYNC_RSH="ssh -o StrictHostKeyChecking=no"; \
 		SSH_OPTS="-o StrictHostKeyChecking=no"; \
-		if [ -n "$$KEY" ]; then RSYNC_RSH="$$RSYNC_RSH -i $$KEY"; SSH_OPTS="$$SSH_OPTS -i $$KEY"; fi; \
+		SCP_OPTS="-o StrictHostKeyChecking=no"; \
+		if [ -n "$$KEY" ]; then RSYNC_RSH="$$RSYNC_RSH -i $$KEY"; SSH_OPTS="$$SSH_OPTS -i $$KEY"; SCP_OPTS="$$SCP_OPTS -i $$KEY"; fi; \
 		rsync -az --delete \
 			--exclude node_modules \
 			--exclude .git \
@@ -79,7 +79,7 @@ sync: _check-ansible
 				$$STAGING_DIR/ $$REMOTE_DIR/ && \
 			sudo chown -R anton:anton $$REMOTE_DIR && \
 			rm -rf $$STAGING_DIR"; \
-		echo "  → Building on $$host..."; \
+		echo "  → Building agent on $$host..."; \
 		ssh $$SSH_OPTS "$$USER@$$IP" "\
 			sudo -u anton bash -c '\
 				cd $$REMOTE_DIR && \
@@ -90,11 +90,36 @@ sync: _check-ansible
 				pnpm --filter @anton/agent-server build && \
 				pnpm --filter @anton/agent build && \
 				echo $$GIT_HASH build done'"; \
+		echo "  → Building sidecar (linux-amd64)..."; \
+		cd "$(REPO_ROOT)/sidecar" && GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.version=$$PKG_VERSION" -o /tmp/anton-sidecar . && cd "$(REPO_ROOT)"; \
+		echo "  → Uploading sidecar to $$host..."; \
+		scp $$SCP_OPTS /tmp/anton-sidecar "$$USER@$$IP:/tmp/anton-sidecar"; \
+		ssh $$SSH_OPTS "$$USER@$$IP" "\
+			sudo mv /tmp/anton-sidecar /usr/local/bin/anton-sidecar && \
+			sudo chmod +x /usr/local/bin/anton-sidecar && \
+			if [ ! -f /etc/anton-agent.env ]; then \
+				TOKEN=\$$(grep '^token:' /home/anton/.anton/config.yaml 2>/dev/null | awk '{print \$$2}'); \
+				printf 'ANTON_TOKEN=%s\nANTON_DIR=/home/anton/.anton\n' \"\$$TOKEN\" | sudo tee /etc/anton-agent.env > /dev/null; \
+				sudo chmod 600 /etc/anton-agent.env; \
+				echo '    Created /etc/anton-agent.env'; \
+			fi && \
+			if [ ! -f /etc/systemd/system/anton-sidecar.service ]; then \
+				printf '[Unit]\nDescription=Anton Sidecar (Health & Status)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nEnvironmentFile=/etc/anton-agent.env\nEnvironment=SIDECAR_PORT=9878\nEnvironment=AGENT_PORT=9876\nExecStart=/usr/local/bin/anton-sidecar\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\n' | sudo tee /etc/systemd/system/anton-sidecar.service > /dev/null && \
+				sudo systemctl daemon-reload && sudo systemctl enable anton-sidecar; \
+			fi && \
+			sudo systemctl restart anton-sidecar 2>/dev/null || true"; \
 		echo "  → Writing version.json..."; \
 		ssh $$SSH_OPTS "$$USER@$$IP" "\
-			sudo -u anton bash -c \"echo '{\\\"version\\\": \\\"$$PKG_VERSION\\\", \\\"gitHash\\\": \\\"$$GIT_HASH\\\", \\\"specVersion\\\": \\\"$$SPEC_VERSION\\\", \\\"branch\\\": \\\"local-sync\\\", \\\"deployedAt\\\": \\\"$$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\", \\\"deployedBy\\\": \\\"sync\\\"}' > /home/anton/.anton/version.json\""; \
-		echo "  → Restarting anton-agent on $$host..."; \
-		ssh $$SSH_OPTS "$$USER@$$IP" "sudo systemctl restart anton-agent 2>/dev/null || true"; \
+			sudo -u anton bash -c \"echo '{\\\"version\\\": \\\"$$PKG_VERSION\\\", \\\"gitHash\\\": \\\"$$GIT_HASH\\\", \\\"branch\\\": \\\"local-sync\\\", \\\"deployedAt\\\": \\\"$$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\", \\\"deployedBy\\\": \\\"sync\\\"}' > /home/anton/.anton/version.json\""; \
+		echo "  → Ensuring Caddy sidecar route..."; \
+		ssh $$SSH_OPTS "$$USER@$$IP" "\
+			if [ -f /etc/caddy/Caddyfile ] && ! grep -q '_anton' /etc/caddy/Caddyfile; then \
+				sudo sed -i 's|reverse_proxy localhost:9876|handle_path /_anton/* {\n        reverse_proxy localhost:9878\n    }\n    reverse_proxy localhost:9876|' /etc/caddy/Caddyfile && \
+				sudo systemctl reload caddy 2>/dev/null || true; \
+				echo '    Caddyfile updated with sidecar route'; \
+			fi"; \
+		echo "  → Restarting services on $$host..."; \
+		ssh $$SSH_OPTS "$$USER@$$IP" "sudo systemctl restart anton-agent 2>/dev/null || true; sudo systemctl restart anton-sidecar 2>/dev/null || true"; \
 		echo "  → $$host done ✓"; \
 		echo ""; \
 	done
@@ -111,7 +136,6 @@ push: _check-ansible
 	@BUNDLE="dist/anton-agent.mjs"; \
 	GIT_HASH=$$(git rev-parse --short HEAD 2>/dev/null || echo "dev"); \
 	PKG_VERSION=$$(node -e "console.log(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)" 2>/dev/null || echo "0.1.0"); \
-	SPEC_VERSION=$$(grep "SPEC_VERSION = " packages/agent-config/src/version.ts | sed "s/.*'\(.*\)'/\1/"); \
 	ansible all -i $(INVENTORY) $(LIMIT) --list-hosts 2>/dev/null | tail -n +2 | sed 's/^ *//' | while read host; do \
 		IP=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_host','$$host'))" 2>/dev/null || echo "$$host"); \
 		USER=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_user','anton'))" 2>/dev/null || echo "anton"); \
@@ -127,7 +151,7 @@ push: _check-ansible
 			sudo mv /tmp/anton-agent.mjs /home/anton/.anton/anton-agent.mjs && \
 			sudo chmod +x /home/anton/.anton/anton-agent.mjs && \
 			sudo chown anton:anton /home/anton/.anton/anton-agent.mjs && \
-			sudo -u anton bash -c \"echo '{\\\"version\\\": \\\"$$PKG_VERSION\\\", \\\"gitHash\\\": \\\"$$GIT_HASH\\\", \\\"specVersion\\\": \\\"$$SPEC_VERSION\\\", \\\"deployedAt\\\": \\\"$$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)\\\", \\\"deployedBy\\\": \\\"push\\\"}' > /home/anton/.anton/version.json\" && \
+			sudo -u anton bash -c \"echo '{\\\"version\\\": \\\"$$PKG_VERSION\\\", \\\"gitHash\\\": \\\"$$GIT_HASH\\\", \\\"deployedAt\\\": \\\"$$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)\\\", \\\"deployedBy\\\": \\\"push\\\"}' > /home/anton/.anton/version.json\" && \
 			sudo systemctl restart anton-agent 2>/dev/null || true"; \
 		echo "    $$host done ✓"; \
 		echo ""; \
@@ -164,18 +188,17 @@ verify: _check-ansible
 					else UPTIME="$${MINS}m"; fi; \
 				fi; \
 			fi; \
-			PORT9876="✗"; PORT9877="✗"; \
+			PORT9876="✗"; PORT9877="✗"; SIDECAR="✗ DOWN"; \
 			ss -tlnp 2>/dev/null | grep -q ":9876" && PORT9876="✓"; \
 			ss -tlnp 2>/dev/null | grep -q ":9877" && PORT9877="✓"; \
-			VER="-"; HASH="-"; SPEC="-"; BRANCH="-"; DEPLOYED="-"; VIA="-"; \
-			if [ -f /home/anton/.anton/version.json ]; then \
-				eval $$(python3 -c "import json; d=json.load(open(\"/home/anton/.anton/version.json\")); \
-					print(f\"VER={d.get(\"version\",\"-\")}\"); \
-					print(f\"HASH={d.get(\"gitHash\",\"-\")}\"); \
-					print(f\"SPEC={d.get(\"specVersion\",\"-\")}\"); \
-					print(f\"BRANCH={d.get(\"branch\",\"-\")}\"); \
-					print(f\"DEPLOYED={d.get(\"deployedAt\",\"-\")}\"); \
-					print(f\"VIA={d.get(\"deployedBy\",\"-\")}\")" 2>/dev/null); \
+			if systemctl is-active anton-sidecar >/dev/null 2>&1; then SIDECAR="✓ RUNNING"; fi; \
+			VER="-"; HASH="-"; BRANCH="-"; DEPLOYED="-"; VIA="-"; \
+			if [ -f /home/anton/.anton/version.json ] && command -v jq >/dev/null 2>&1; then \
+				VER=$$(jq -r ".version // \"-\"" /home/anton/.anton/version.json); \
+				HASH=$$(jq -r ".gitHash // \"-\"" /home/anton/.anton/version.json); \
+				BRANCH=$$(jq -r ".branch // \"-\"" /home/anton/.anton/version.json); \
+				DEPLOYED=$$(jq -r ".deployedAt // \"-\"" /home/anton/.anton/version.json); \
+				VIA=$$(jq -r ".deployedBy // \"-\"" /home/anton/.anton/version.json); \
 			fi; \
 			AGENTID="-"; TOKEN="-"; \
 			if [ -f /home/anton/.anton/config.yaml ]; then \
@@ -183,17 +206,17 @@ verify: _check-ansible
 				TOKEN=$$(grep "^token:" /home/anton/.anton/config.yaml | awk "{print \$$2}"); \
 			fi; \
 			NODE_VER=$$(node --version 2>/dev/null || echo "missing"); \
-			echo "$$STATUS|$$PID|$$MEM|$$UPTIME|$$PORT9876|$$PORT9877|$$VER|$$HASH|$$SPEC|$$BRANCH|$$DEPLOYED|$$VIA|$$AGENTID|$$TOKEN|$$NODE_VER" \
-		' 2>/dev/null) || REMOTE="? UNREACHABLE via SSH|||||||||||||"; \
-		IFS="|" read -r R_STATUS R_PID R_MEM R_UPTIME R_P9876 R_P9877 R_VER R_HASH R_SPEC R_BRANCH R_DEPLOYED R_VIA R_AID R_TOKEN R_NODE <<< "$$REMOTE"; \
+			echo "$$STATUS|$$PID|$$MEM|$$UPTIME|$$PORT9876|$$PORT9877|$$SIDECAR|$$VER|$$HASH|$$BRANCH|$$DEPLOYED|$$VIA|$$AGENTID|$$TOKEN|$$NODE_VER" \
+		' 2>/dev/null) || REMOTE="? UNREACHABLE via SSH||||||||||||||"; \
+		IFS="|" read -r R_STATUS R_PID R_MEM R_UPTIME R_P9876 R_P9877 R_SIDECAR R_VER R_HASH R_BRANCH R_DEPLOYED R_VIA R_AID R_TOKEN R_NODE <<< "$$REMOTE"; \
 		printf "  │  %-18s %-40s│\n" "Service:" "$$R_STATUS"; \
 		printf "  │  %-18s %-40s│\n" "PID / Memory:" "$$R_PID / $$R_MEM"; \
 		printf "  │  %-18s %-40s│\n" "Uptime:" "$$R_UPTIME"; \
 		printf "  │  %-18s %-40s│\n" "Ports:" "9876 $$R_P9876  9877 $$R_P9877"; \
+		printf "  │  %-18s %-40s│\n" "Sidecar:" "$$R_SIDECAR"; \
 		printf "  │  %-18s %-40s│\n" "Node.js:" "$$R_NODE"; \
 		echo "  │                                                              │"; \
 		printf "  │  %-18s %-40s│\n" "Version:" "$$R_VER ($$R_HASH)"; \
-		printf "  │  %-18s %-40s│\n" "Spec:" "$$R_SPEC"; \
 		printf "  │  %-18s %-40s│\n" "Branch:" "$$R_BRANCH"; \
 		printf "  │  %-18s %-40s│\n" "Deployed:" "$$R_DEPLOYED via $$R_VIA"; \
 		echo "  │                                                              │"; \

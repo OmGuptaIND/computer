@@ -14,7 +14,6 @@ import { execSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  SPEC_VERSION,
   UPDATE_CHECK_INTERVAL,
   UPDATE_MANIFEST_URL,
   type UpdateManifest,
@@ -232,7 +231,6 @@ export class Updater {
       JSON.stringify({
         version: manifest.version,
         gitHash: manifest.gitHash,
-        specVersion: manifest.specVersion,
         deployedAt: new Date().toISOString(),
         deployedBy: 'self-update-binary',
       }),
@@ -300,7 +298,6 @@ export class Updater {
       JSON.stringify({
         version: manifest.version,
         gitHash: newHash,
-        specVersion: manifest.specVersion,
         branch: 'main',
         deployedAt: new Date().toISOString(),
         deployedBy: 'self-update-source',
@@ -346,9 +343,7 @@ export class Updater {
     const manifest = this.getUpdateAvailable()
     return {
       currentVersion: VERSION,
-      currentSpecVersion: SPEC_VERSION,
       latestVersion: manifest?.version ?? null,
-      latestSpecVersion: manifest?.specVersion ?? null,
       updateAvailable: manifest !== null,
       changelog: manifest?.changelog ?? null,
       releaseUrl: manifest?.releaseUrl ?? null,

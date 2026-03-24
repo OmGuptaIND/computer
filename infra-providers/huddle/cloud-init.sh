@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────
-# Huddle Cloud-Init Script
+# Huddle Cloud-Init Script for Anton Computer
 #
 # This script is injected by Huddle when spinning up agent machines.
-# It downloads the anton agent binary, installs Caddy, and configures
-# Caddy to reverse-proxy wss:// traffic to the agent.
-#
-# Usage:  Paste into your cloud provider's user-data / cloud-init field,
-#         or run manually on a fresh Ubuntu 22.04+ / Debian 12+ machine.
+# It downloads the anton agent binary (latest from manifest), installs
+# Caddy, waits for DNS propagation, and configures Caddy to
+# reverse-proxy wss:// traffic to the agent.
 #
 # Required env vars (set in Huddle's infra config):
-#   DOMAIN           — e.g. "agent-42.huddle.computer"
+#   DOMAIN           — e.g. "ac-abc1234.anton.computer"
 #   ANTHROPIC_API_KEY
 #
 # Optional:
 #   AGENT_PORT       — override default 9876
-#   AGENT_ARCH       — "x64" (default) or "arm64"
-#   ANTON_TOKEN      — force a specific auth token (skips random generation)
+#   AGENT_ARCH       — "x64" or "arm64" (default)
+#   ANTON_TOKEN      — force a specific auth token
+#   CALLBACK_URL     — URL to POST status when init completes
+#   USERNAME         — SSH login username to create
+#   PASSWORD         — SSH login password for the user
 # ─────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -24,42 +25,106 @@ set -euo pipefail
 AGENT_PORT="${AGENT_PORT:-9876}"
 AGENT_ARCH="${AGENT_ARCH:-arm64}"
 ANTON_DIR="/home/anton/.anton"
-BINARY_URL="https://github.com/OmGuptaIND/anton.computer/releases/latest/download/anton-agent-linux-${AGENT_ARCH}"
+MANIFEST_URL="https://raw.githubusercontent.com/OmGuptaIND/anton.computer/main/manifest.json"
+INIT_LOG="/var/log/anton-init.log"
+INIT_START=$(date +%s)
 
-echo ">>> Huddle agent provisioner"
-echo "    Domain  : ${DOMAIN}"
-echo "    Port    : ${AGENT_PORT}"
-echo "    Arch    : ${AGENT_ARCH}"
+# ─────────────────────────────────────────────────────────────────
+# Logging
+# ─────────────────────────────────────────────────────────────────
+log() {
+    local elapsed=$(( $(date +%s) - INIT_START ))
+    echo "[+${elapsed}s] $1" | tee -a "$INIT_LOG"
+}
 
-# ── 1. System deps ──
+echo "" > "$INIT_LOG"
+log "INIT: started for ${DOMAIN}"
+log "INIT: port=${AGENT_PORT} arch=${AGENT_ARCH}"
+
+# ─────────────────────────────────────────────────────────────────
+# 1. Wait for network
+# ─────────────────────────────────────────────────────────────────
+until ping -c1 8.8.8.8 &>/dev/null; do sleep 2; done
+log "NETWORK: ready"
+
+# ─────────────────────────────────────────────────────────────────
+# 2. System deps
+# ─────────────────────────────────────────────────────────────────
 apt-get update -qq
-apt-get install -y -qq curl debian-keyring debian-archive-keyring apt-transport-https
+apt-get install -y -qq curl jq dnsutils debian-keyring debian-archive-keyring apt-transport-https
+log "DEPS: system packages installed"
 
-# ── 2. Create dedicated user ──
+# ─────────────────────────────────────────────────────────────────
+# 3. Create SSH user (if USERNAME + PASSWORD provided)
+# ─────────────────────────────────────────────────────────────────
+if [ -n "${USERNAME:-}" ] && [ -n "${PASSWORD:-}" ]; then
+    if ! id "$USERNAME" &>/dev/null; then
+        useradd --create-home --shell /bin/bash "$USERNAME"
+        log "USER: created $USERNAME"
+    fi
+    echo "${USERNAME}:${PASSWORD}" | chpasswd
+    # Ensure password auth is enabled for SSH
+    mkdir -p /etc/ssh/sshd_config.d
+    cat > /etc/ssh/sshd_config.d/99-anton-password.conf <<SSHCFG
+PasswordAuthentication yes
+SSHCFG
+    systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null || true
+    log "USER: password auth configured for $USERNAME"
+fi
+
+# ─────────────────────────────────────────────────────────────────
+# 4. Create dedicated agent user
+# ─────────────────────────────────────────────────────────────────
 if ! id anton &>/dev/null; then
     useradd --system --create-home --shell /usr/sbin/nologin anton
 fi
 mkdir -p "${ANTON_DIR}"
+log "USER: anton system user ready"
 
-# ── 3. Download agent binary ──
-echo ">>> Downloading agent binary from ${BINARY_URL}"
+# ─────────────────────────────────────────────────────────────────
+# 5. Download latest agent binary from manifest
+# ─────────────────────────────────────────────────────────────────
+log "BINARY: fetching manifest from ${MANIFEST_URL}"
+MANIFEST=$(curl -fsSL "$MANIFEST_URL" 2>/dev/null || echo "")
+
+if [ -n "$MANIFEST" ]; then
+    BINARY_URL=$(echo "$MANIFEST" | jq -r ".binaries.\"linux-${AGENT_ARCH}\"" 2>/dev/null || echo "")
+    AGENT_VERSION=$(echo "$MANIFEST" | jq -r ".version" 2>/dev/null || echo "unknown")
+    log "BINARY: manifest version=${AGENT_VERSION}"
+fi
+
+# Fallback to latest release URL if manifest parsing fails
+if [ -z "${BINARY_URL:-}" ] || [ "$BINARY_URL" = "null" ]; then
+    BINARY_URL="https://github.com/OmGuptaIND/anton.computer/releases/latest/download/anton-agent-linux-${AGENT_ARCH}"
+    log "BINARY: falling back to latest release URL"
+fi
+
+log "BINARY: downloading from ${BINARY_URL}"
 curl -fSL -o /usr/local/bin/anton-agent "${BINARY_URL}"
 chmod +x /usr/local/bin/anton-agent
+log "BINARY: installed to /usr/local/bin/anton-agent"
 
-# ── 4. Write agent config ──
+# ─────────────────────────────────────────────────────────────────
+# 6. Write agent config
+# ─────────────────────────────────────────────────────────────────
 cat > "${ANTON_DIR}/config.yaml" <<YAML
 port: ${AGENT_PORT}
 YAML
 
-# ── 5. Set up environment file (API keys) ──
+# ─────────────────────────────────────────────────────────────────
+# 7. Set up environment file (API keys)
+# ─────────────────────────────────────────────────────────────────
 cat > /etc/anton-agent.env <<ENV
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 ANTON_DIR=${ANTON_DIR}
 ${ANTON_TOKEN:+ANTON_TOKEN=${ANTON_TOKEN}}
 ENV
 chmod 600 /etc/anton-agent.env
+log "CONFIG: agent env + config written"
 
-# ── 6. Create systemd service for the agent ──
+# ─────────────────────────────────────────────────────────────────
+# 8. Create systemd service for the agent
+# ─────────────────────────────────────────────────────────────────
 cat > /etc/systemd/system/anton-agent.service <<UNIT
 [Unit]
 Description=Anton Agent
@@ -86,43 +151,162 @@ PrivateTmp=true
 WantedBy=multi-user.target
 UNIT
 
-# Fix ownership
 chown -R anton:anton "${ANTON_DIR}"
+log "SERVICE: systemd unit created"
 
-# Start the agent
-systemctl daemon-reload
-systemctl enable --now anton-agent
-
-echo ">>> Agent running on ws://127.0.0.1:${AGENT_PORT}"
-
-# ── 7. Install Caddy ──
-echo ">>> Installing Caddy"
+# ─────────────────────────────────────────────────────────────────
+# 9. Install Caddy
+# ─────────────────────────────────────────────────────────────────
+log "CADDY: installing"
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
 apt-get update -qq
 apt-get install -y -qq caddy
+systemctl stop caddy 2>/dev/null || true
+log "CADDY: installed"
 
-# ── 8. Configure Caddy as reverse proxy ──
-#
-# Caddy auto-provisions TLS via Let's Encrypt — no cert management needed.
-# It terminates wss:// and proxies plain ws:// to the agent on localhost.
-#
+# ─────────────────────────────────────────────────────────────────
+# 10. Write Caddyfile
+# ─────────────────────────────────────────────────────────────────
 cat > /etc/caddy/Caddyfile <<CADDY
 ${DOMAIN} {
-    # Reverse proxy WebSocket traffic to the agent
     reverse_proxy localhost:${AGENT_PORT}
-
-    # Optional: restrict to WebSocket upgrades only
-    # @websocket {
-    #     header Connection *Upgrade*
-    #     header Upgrade    websocket
-    # }
-    # reverse_proxy @websocket localhost:${AGENT_PORT}
 }
 CADDY
+log "CADDY: Caddyfile written for ${DOMAIN}"
 
-# Restart Caddy to pick up the new config
-systemctl restart caddy
+# ─────────────────────────────────────────────────────────────────
+# 11. DNS + Caddy + TLS setup (background)
+#     Runs in parallel with agent startup to save time.
+# ─────────────────────────────────────────────────────────────────
+caddy_setup() {
+    # Wait for DNS to resolve
+    local dns_ok=false
+    for i in $(seq 1 120); do
+        local result
+        result=$(dig +short "$DOMAIN" @8.8.8.8 2>/dev/null || true)
+        if echo "$result" | grep -q '[0-9]'; then
+            dns_ok=true
+            log "DNS: ${DOMAIN} -> ${result} (attempt ${i})"
+            break
+        fi
+        sleep 5
+    done
 
-echo ">>> Caddy configured: https://${DOMAIN} → http://127.0.0.1:${AGENT_PORT}"
-echo ">>> Done! Agent is live at https://${DOMAIN} (wss:// also supported)"
+    if [ "$dns_ok" = false ]; then
+        log "DNS: FAILED to resolve ${DOMAIN} after 10 minutes"
+        return 1
+    fi
+
+    # Start Caddy now that DNS is resolving
+    systemctl enable --now caddy
+    sleep 10
+    systemctl reload caddy
+    log "CADDY: started + reloaded"
+
+    # Wait for TLS cert provisioning
+    local tls_ok=false
+    for i in $(seq 1 6); do
+        local code
+        code=$(curl -s -o /dev/null -w "%{http_code}" "https://${DOMAIN}/" 2>/dev/null || echo "000")
+        if [ "$code" != "000" ]; then
+            tls_ok=true
+            log "CADDY: TLS working (http=${code})"
+            break
+        fi
+        sleep 30
+        systemctl reload caddy
+    done
+
+    if [ "$tls_ok" = false ]; then
+        log "CADDY: TLS FAILED after 3 minutes"
+        return 1
+    fi
+
+    return 0
+}
+
+caddy_setup &
+CADDY_PID=$!
+
+# ─────────────────────────────────────────────────────────────────
+# 12. Start agent (runs while Caddy provisions TLS)
+# ─────────────────────────────────────────────────────────────────
+systemctl daemon-reload
+systemctl enable --now anton-agent
+log "AGENT: start requested"
+
+# Wait for agent healthy
+AGENT_HEALTHY=false
+for i in $(seq 1 30); do
+    if curl -sf http://localhost:${AGENT_PORT}/health > /dev/null 2>&1; then
+        AGENT_HEALTHY=true
+        log "AGENT: healthy (attempt ${i})"
+        break
+    fi
+    sleep 2
+done
+
+if [ "$AGENT_HEALTHY" = false ]; then
+    log "AGENT: FAILED health check after 60s"
+fi
+
+# ─────────────────────────────────────────────────────────────────
+# 13. Wait for Caddy background job
+# ─────────────────────────────────────────────────────────────────
+wait $CADDY_PID
+CADDY_OK=$?
+
+# ─────────────────────────────────────────────────────────────────
+# 14. Determine final status
+# ─────────────────────────────────────────────────────────────────
+if [ "$AGENT_HEALTHY" = true ] && [ "$CADDY_OK" -eq 0 ]; then
+    FINAL_STATUS="ready"
+    log "STATUS: ready"
+else
+    FINAL_STATUS="error"
+    log "STATUS: error (agent=${AGENT_HEALTHY} caddy_exit=${CADDY_OK})"
+fi
+
+# ─────────────────────────────────────────────────────────────────
+# 15. Callback to Huddle API (with retry + backoff)
+# ─────────────────────────────────────────────────────────────────
+if [ -n "${CALLBACK_URL:-}" ]; then
+    # Get the machine's public IP
+    PUBLIC_IP=$(curl -sf http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null \
+        || curl -sf https://ifconfig.me 2>/dev/null \
+        || echo "")
+
+    CALLBACK_BODY=$(cat <<CBJSON
+{"status":"${FINAL_STATUS}","domain":"${DOMAIN}","ip":"${PUBLIC_IP}","agentHealthy":${AGENT_HEALTHY},"caddyOk":$([ "$CADDY_OK" -eq 0 ] && echo true || echo false)}
+CBJSON
+    )
+
+    CALLBACK_SENT=false
+    BACKOFF=5
+    for attempt in 1 2 3; do
+        HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "$CALLBACK_BODY" \
+            "$CALLBACK_URL" 2>/dev/null || echo "000")
+
+        if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "204" ]; then
+            CALLBACK_SENT=true
+            log "CALLBACK: sent successfully (attempt ${attempt}, http=${HTTP_CODE})"
+            break
+        fi
+
+        log "CALLBACK: attempt ${attempt} failed (http=${HTTP_CODE}), retrying in ${BACKOFF}s"
+        sleep $BACKOFF
+        BACKOFF=$(( BACKOFF * 3 ))
+    done
+
+    if [ "$CALLBACK_SENT" = false ]; then
+        log "CALLBACK: FAILED after 3 attempts to ${CALLBACK_URL}"
+    fi
+else
+    log "CALLBACK: no CALLBACK_URL set, skipping"
+fi
+
+log "INIT: finished for ${DOMAIN} (status=${FINAL_STATUS})"

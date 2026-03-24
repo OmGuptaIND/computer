@@ -59,7 +59,7 @@ async function main() {
     }
 
     case 'machines':
-      machinesCommand()
+      machinesCommand(args[1], args[2])
       break
 
     case 'chat': {
@@ -96,9 +96,7 @@ async function main() {
     case 'version':
     case '--version':
     case '-v':
-      console.log(
-        `anton CLI v${CLI_VERSION} (spec ${(await import('./lib/version.js')).SPEC_VERSION})`,
-      )
+      console.log(`anton CLI v${CLI_VERSION}`)
       break
 
     case 'computer': {
@@ -111,23 +109,17 @@ async function main() {
           break
         }
         const { Connection } = await import('./lib/connection.js')
-        const { SPEC_VERSION: cliSpec, MIN_AGENT_SPEC: cliMinAgent } = await import(
-          './lib/version.js'
-        )
         const conn = new Connection()
         try {
           await conn.connect({ host: m.host, port: m.port, token: m.token, useTLS: m.useTLS })
           console.log(`\n  ${theme.bold('Agent')}`)
           console.log(`    ID:        ${conn.agentId}`)
           console.log(`    Version:   ${conn.agentVersion}`)
-          console.log(`    Spec:      ${conn.agentSpecVersion}`)
           console.log(`    Commit:    ${conn.agentGitHash}`)
           console.log(`    Host:      ${m.host}:${m.port}`)
           console.log('')
           console.log(`  ${theme.bold('CLI')}`)
           console.log(`    Version:   ${CLI_VERSION}`)
-          console.log(`    Spec:      ${cliSpec}`)
-          console.log(`    Min agent: ${cliMinAgent}`)
           console.log('')
           conn.disconnect()
         } catch (err: unknown) {
@@ -252,6 +244,8 @@ function showHelp() {
   console.log('    --name <name>                     Friendly name')
   console.log('    --tls                             Use TLS (port 9877)')
   console.log(`  ${theme.brand('anton machines')}                      List saved machines`)
+  console.log(`  ${theme.brand('anton machines rm <name>')}              Remove a saved machine`)
+  console.log(`  ${theme.brand('anton machines default <name>')}         Set default machine`)
   console.log(`  ${theme.brand('anton chat')} "message"                One-shot chat`)
   console.log(`  ${theme.brand('anton shell')}                         Remote shell`)
   console.log(`  ${theme.brand('anton skills')} [list|run <name>]      Manage skills`)
