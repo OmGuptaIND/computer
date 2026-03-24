@@ -10,6 +10,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
+## [1.0.1] - 2026-03-25
+
+### Features
+- Introduce a new Go sidecar service for agent health, status, and system checks, removing agent spec version tracking from clients.
+---
+
 ## [1.0.0] - 2026-03-23
 
 ### Fixes
@@ -96,7 +102,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
-[Unreleased]: https://github.com/OmGuptaIND/anton.computer/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/OmGuptaIND/anton.computer/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/OmGuptaIND/anton.computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.1
 [1.0.0]: https://github.com/OmGuptaIND/anton.computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.0
 [0.9.0]: https://github.com/OmGuptaIND/anton.computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v0.9.0
 [0.8.0]: https://github.com/OmGuptaIND/anton.computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v0.8.0
