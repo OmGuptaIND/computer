@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "gitHash": "",
+  "gitHash": "23eb49a",
   "releaseUrl": "https://github.com/OmGuptaIND/anton.computer/releases",
   "changelog": "Fixes:\n- tls issue\n- liniting issue\n\nAdded:\n- init for provider\n- init for provider\n- sidecar health/status service",
   "publishedAt": "2026-03-23T06:49:23.964Z",
