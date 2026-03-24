@@ -1,0 +1,104 @@
+packages/desktop/src/lib/store.ts
+  d5f9029e764b9a30 237,502
+sidecar/main.go
+  d5f9029e764b9a30 1-48
+manifest.json
+  d5f9029e764b9a30 5,11-13
+sidecar/internal/checks/system.go
+  d5f9029e764b9a30 1-72
+.claude/launch.json
+  5160071b84925961 9-14
+sidecar/internal/checks/dns.go
+  d5f9029e764b9a30 1-23
+packages/agent-config/src/version.ts
+  d5f9029e764b9a30 5,38-39
+packages/cli/src/index.ts
+  d5f9029e764b9a30 62,99,247-248
+infra-providers/huddle/cloud-init.sh
+  5160071b84925961 3,6-8,11,16-20,28-38,40-42,44-48,50-52,54-55,57-73,75-77,82-88,90-100,102,105,107-109,114-116,123,125-127,155,157-160,165-166,168-170,176-237,239-269,271-310,312
+packages/cli/src/lib/version.ts
+  d5f9029e764b9a30 2,4
+specs/ARCHITECTURE.md
+  d5f9029e764b9a30 5,12-33,49-53,423-511,517
+specs/SPEC.md
+  d5f9029e764b9a30 5,17,19,29,36,38,44,54
+deploy/ansible/Makefile
+  d5f9029e764b9a30 89,130,142,144
+sidecar/internal/middleware/ratelimit.go
+  d5f9029e764b9a30 1-67
+packages/agent-server/src/index.ts
+  d5f9029e764b9a30 18
+sidecar/internal/config/config.go
+  d5f9029e764b9a30 1-56
+sidecar/internal/checks/caddy.go
+  d5f9029e764b9a30 1-20
+sidecar/internal/middleware/auth.go
+  d5f9029e764b9a30 1-25
+sidecar/internal/checks/tls.go
+  d5f9029e764b9a30 1-32
+packages/agent-server/src/server.ts
+  d5f9029e764b9a30 29
+sidecar/internal/server/server.go
+  d5f9029e764b9a30 1-37
+packages/cli/src/commands/status.ts
+  d5f9029e764b9a30 2-4,11-52,65-67,69-70,72-73,82-83,85-88,91,93-102,104-131
+Makefile
+  d5f9029e764b9a30 65-66,82,93-110,113-122,154,191,194-201,209-211,216
+sidecar/internal/handlers/status.go
+  d5f9029e764b9a30 1-43
+sidecar/internal/checks/agent.go
+  d5f9029e764b9a30 1-40
+packages/cli/src/commands/machines.ts
+  f7df2ed988a236f5 17-18,20-21,23
+  d5f9029e764b9a30 2-6,9,12-16,19,22,24-27,45-81,84-85
+sidecar/Makefile
+  d5f9029e764b9a30 1-19
+sidecar/internal/handlers/health.go
+  d5f9029e764b9a30 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "48be2734806c14c2bd58445f4ca327bb81317c11",
+  "prompts": {
+    "5160071b84925961": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41fa8cf6-4e7a-449e-a22d-928050576579",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 242,
+      "total_deletions": 52,
+      "accepted_lines": 238,
+      "overriden_lines": 0
+    },
+    "d5f9029e764b9a30": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64d1a9d2-aaf6-4bf7-aff6-b36a71757fbe",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 1018,
+      "total_deletions": 380,
+      "accepted_lines": 849,
+      "overriden_lines": 0
+    },
+    "f7df2ed988a236f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "eab3c0b0-85cd-486d-bd0e-48edadd7a2d8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 3,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}
