@@ -1,16 +1,16 @@
 {
-  "version": "1.0.21",
-  "gitHash": "6922a33",
+  "version": "1.0.22",
+  "gitHash": "",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
-  "changelog": "Other:\n- refactor: Implement robust configuration merging with defaults and defensive logging for optional config fields.",
-  "publishedAt": "2026-03-25T06:01:46.712Z",
+  "changelog": "Features:\n- Introduce new `computer` subcommands for setup and lifecycle management, leveraging shared utilities and improving version detection.\n\nFixes:\n- pass AUTO_CHANGELOG via env var to avoid JS template literal syntax error",
+  "publishedAt": "2026-03-25T07:50:02.697Z",
   "binaries": {
-    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.21/anton-agent-linux-x64",
-    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.21/anton-agent-linux-arm64"
+    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.22/anton-agent-linux-x64",
+    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.22/anton-agent-linux-arm64"
   },
   "sidecar_binaries": {
-    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.21/anton-sidecar-linux-amd64",
-    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.21/anton-sidecar-linux-arm64"
+    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.22/anton-sidecar-linux-amd64",
+    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.22/anton-sidecar-linux-arm64"
   },
-  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.21/anton-cli.mjs"
+  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.22/anton-cli.mjs"
 }
