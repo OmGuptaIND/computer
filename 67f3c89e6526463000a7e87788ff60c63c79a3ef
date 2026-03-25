@@ -1,0 +1,25 @@
+packages/cli/src/index.ts
+  be13521025008eb9 26,123-188,250-255,267,358-362
+packages/cli/src/commands/computer-lifecycle.ts
+  be13521025008eb9 7,295-318,320-367
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.19",
+  "base_commit_sha": "67f3c89e6526463000a7e87788ff60c63c79a3ef",
+  "prompts": {
+    "be13521025008eb9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "659c8e9f-d504-4500-8919-ec7a8d58b354",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 154,
+      "total_deletions": 22,
+      "accepted_lines": 152,
+      "overriden_lines": 1
+    }
+  }
+}
