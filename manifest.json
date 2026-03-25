@@ -1,6 +1,6 @@
 {
   "version": "1.0.23",
-  "gitHash": "",
+  "gitHash": "6f18e14",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
   "changelog": "Features:\n- Implement `computer logs` command for viewing service and deployment logs, and refine `computer version` to prioritize local agent connections.",
   "publishedAt": "2026-03-25T08:13:26.558Z",
