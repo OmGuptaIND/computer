@@ -10,6 +10,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
+## [1.0.21] - 2026-03-25
+
+### Other
+- refactor: Implement robust configuration merging with defaults and defensive logging for optional config fields.
+---
+
 ## [1.0.2] - 2026-03-25
 
 ### Chores
@@ -108,7 +114,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
-[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.21...HEAD
+[1.0.21]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.21
 [1.0.2]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.2
 [1.0.1]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.1
 [1.0.0]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.0
