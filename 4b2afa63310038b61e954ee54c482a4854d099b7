@@ -1,0 +1,23 @@
+scripts/release.sh
+  f001c9d5520cd6f4 115,120-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.19",
+  "base_commit_sha": "4b2afa63310038b61e954ee54c482a4854d099b7",
+  "prompts": {
+    "f001c9d5520cd6f4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "802f55b5-b519-4509-adc2-43fe539a7017",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 2,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}
