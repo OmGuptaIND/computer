@@ -6,7 +6,7 @@
  */
 
 import { execSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -66,13 +66,25 @@ export function semverGt(a: string, b: string): boolean {
 // ── Runtime version resolution ────────────────────────────────────
 
 function getPackageVersion(): string {
+  // In bundled SEA binary, esbuild injects this via --define
   try {
-    const __dirname = dirname(fileURLToPath(import.meta.url))
-    const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'))
-    return pkg.version ?? '0.1.0'
-  } catch {
-    return '0.1.0'
-  }
+    // @ts-expect-error -- injected at bundle time by esbuild --define
+    if (typeof __AGENT_VERSION__ !== 'undefined') return __AGENT_VERSION__
+  } catch {}
+
+  // Dev mode: walk up from compiled JS to find package.json
+  try {
+    let dir = dirname(fileURLToPath(import.meta.url))
+    for (let i = 0; i < 5; i++) {
+      const candidate = join(dir, 'package.json')
+      if (existsSync(candidate)) {
+        const pkg = JSON.parse(readFileSync(candidate, 'utf-8'))
+        if (pkg.name && pkg.version) return pkg.version
+      }
+      dir = dirname(dir)
+    }
+  } catch {}
+  return '0.1.0'
 }
 
 function getGitHash(): string {

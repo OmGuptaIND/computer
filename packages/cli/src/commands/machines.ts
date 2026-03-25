@@ -42,7 +42,9 @@ function listMachines(): void {
     console.log(`    ${theme.dim(`token: ${m.token.slice(0, 8)}...`)}`)
   }
 
-  console.log(`\n  ${theme.dim('Commands: anton machines rm <name>, anton machines default <name>')}\n`)
+  console.log(
+    `\n  ${theme.dim('Commands: anton machines rm <name>, anton machines default <name>')}\n`,
+  )
 }
 
 function removeMachineCommand(name?: string): void {

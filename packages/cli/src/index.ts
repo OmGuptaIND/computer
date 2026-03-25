@@ -21,13 +21,21 @@
 import { render } from 'ink'
 import React from 'react'
 import { chatCommand } from './commands/chat.js'
+import {
+  computerStartCommand,
+  computerStatusCommand,
+  computerStopCommand,
+  computerRestartCommand,
+  computerUninstallCommand,
+} from './commands/computer-lifecycle.js'
+import { computerSetupCommand } from './commands/computer-setup.js'
 import { connectCommand } from './commands/connect.js'
 import { machinesCommand } from './commands/machines.js'
 import { shellCommand } from './commands/shell.js'
 import { skillsCommand } from './commands/skills.js'
 import { statusCommand } from './commands/status.js'
 import { getDefaultMachine } from './lib/machines.js'
-import { LOGO, theme } from './lib/theme.js'
+import { getLogo, theme } from './lib/theme.js'
 import { CLI_VERSION, checkForUpdate, selfUpdate } from './lib/version.js'
 import { App } from './ui/App.js'
 
@@ -101,7 +109,16 @@ async function main() {
 
     case 'computer': {
       const subcommand = args[1]
-      if (subcommand === 'version') {
+      if (subcommand === 'setup') {
+        await computerSetupCommand({
+          token: parseFlag('--token'),
+          port: parseFlag('--port') ? Number(parseFlag('--port')) : undefined,
+          sidecarPort: parseFlag('--sidecar-port')
+            ? Number(parseFlag('--sidecar-port'))
+            : undefined,
+          yes: hasFlag('--yes') || hasFlag('-y'),
+        })
+      } else if (subcommand === 'version') {
         // Connect to agent and show its version
         const m = getDefaultMachine()
         if (!m) {
@@ -177,10 +194,33 @@ async function main() {
         } catch (err: unknown) {
           console.log(`\n  ${theme.error(`Failed: ${(err as Error).message}`)}\n`)
         }
+      } else if (subcommand === 'status') {
+        await computerStatusCommand()
+      } else if (subcommand === 'stop') {
+        await computerStopCommand()
+      } else if (subcommand === 'start') {
+        await computerStartCommand()
+      } else if (subcommand === 'restart') {
+        await computerRestartCommand()
+      } else if (subcommand === 'uninstall') {
+        await computerUninstallCommand({
+          yes: hasFlag('--yes') || hasFlag('-y'),
+          purge: hasFlag('--purge'),
+        })
       } else {
         console.log('\n  Usage:')
-        console.log(`    ${theme.brand('anton computer version')}    Show agent version`)
-        console.log(`    ${theme.brand('anton computer update')}     Update the agent\n`)
+        console.log(
+          `    ${theme.brand('anton computer setup')}        Set up agent on this machine`,
+        )
+        console.log(`    ${theme.brand('anton computer status')}       Show agent + sidecar health`)
+        console.log(`    ${theme.brand('anton computer start')}        Start services`)
+        console.log(`    ${theme.brand('anton computer stop')}         Stop services`)
+        console.log(`    ${theme.brand('anton computer restart')}      Restart services`)
+        console.log(`    ${theme.brand('anton computer update')}       Update agent binary`)
+        console.log(`    ${theme.brand('anton computer version')}      Show agent version`)
+        console.log(
+          `    ${theme.brand('anton computer uninstall')}    Remove agent from this machine\n`,
+        )
       }
       break
     }
@@ -216,7 +256,7 @@ async function main() {
       // Interactive REPL mode
       const machine = getDefaultMachine()
       if (!machine) {
-        console.log(LOGO)
+        console.log(getLogo(CLI_VERSION))
         console.log(`  ${theme.warning('No machines configured.')}`)
         console.log(`  Run ${theme.bold('anton connect')} to get started.\n`)
         process.exit(0)
@@ -235,31 +275,62 @@ async function main() {
 }
 
 function showHelp() {
-  console.log(LOGO)
-  console.log(`  ${theme.bold('Usage:')}`)
+  console.log(getLogo(CLI_VERSION))
+
+  // ── Connect & Use ──
+  console.log(`  ${theme.bold('Connect & Use')}`)
   console.log()
-  console.log(`  ${theme.brand('anton')}                              Interactive REPL`)
-  console.log(`  ${theme.brand('anton connect')} [host]               Connect to an agent`)
-  console.log('    --token <tok>                     Auth token')
-  console.log('    --name <name>                     Friendly name')
-  console.log('    --tls                             Use TLS (port 9877)')
-  console.log(`  ${theme.brand('anton machines')}                      List saved machines`)
-  console.log(`  ${theme.brand('anton machines rm <name>')}              Remove a saved machine`)
-  console.log(`  ${theme.brand('anton machines default <name>')}         Set default machine`)
-  console.log(`  ${theme.brand('anton chat')} "message"                One-shot chat`)
-  console.log(`  ${theme.brand('anton shell')}                         Remote shell`)
-  console.log(`  ${theme.brand('anton skills')} [list|run <name>]      Manage skills`)
-  console.log(`  ${theme.brand('anton status')}                        Check agent status`)
+  console.log(`    ${theme.brand('anton')}                            Interactive REPL`)
   console.log(
-    `  ${theme.brand('anton update')}                        Update CLI to latest version`,
+    `    ${theme.brand('anton connect')} ${theme.dim('[host]')}              Connect to an agent`,
   )
-  console.log(`  ${theme.brand('anton computer version')}              Show agent version`)
-  console.log(`  ${theme.brand('anton computer update')}               Update the agent on your VM`)
-  console.log(`  ${theme.brand('anton help')}                          Show this help`)
+  console.log(`      ${theme.dim('--token <tok>')}                  Auth token`)
+  console.log(`      ${theme.dim('--name <name>')}                  Friendly name`)
+  console.log(`      ${theme.dim('--tls')}                           Use TLS (port 9877)`)
+  console.log(
+    `    ${theme.brand('anton chat')} ${theme.dim('"message"')}              One-shot message`,
+  )
+  console.log(`    ${theme.brand('anton shell')}                       Remote shell`)
   console.log()
-  console.log(`  ${theme.dim('Ports (from SPEC.md):')}`)
-  console.log(`    ${theme.dim('9876')}  ws://   ${theme.dim('plain (default)')}`)
-  console.log(`    ${theme.dim('9877')}  wss://  ${theme.dim('TLS (--tls flag)')}`)
+
+  // ── Server Management ──
+  console.log(`  ${theme.bold('Server Management')}`)
+  console.log()
+  console.log(
+    `    ${theme.brand('anton computer setup')}              Set up agent on this machine`,
+  )
+  console.log(`      ${theme.dim('--token <tok>')}                  Auth token (auto-generated)`)
+  console.log(`      ${theme.dim('--port <n>')}                     Agent port (default: 9876)`)
+  console.log(`      ${theme.dim('--yes')}                           Non-interactive mode`)
+  console.log(`    ${theme.brand('anton computer status')}             Agent + sidecar health`)
+  console.log(`    ${theme.brand('anton computer start')}              Start services`)
+  console.log(`    ${theme.brand('anton computer stop')}               Stop services`)
+  console.log(`    ${theme.brand('anton computer restart')}            Restart services`)
+  console.log(`    ${theme.brand('anton computer update')}             Update agent binary`)
+  console.log(`    ${theme.brand('anton computer version')}            Show agent version`)
+  console.log(`    ${theme.brand('anton computer uninstall')}          Remove agent`)
+  console.log(`      ${theme.dim('--purge')}                         Also delete user + data`)
+  console.log(`    ${theme.brand('anton status')}                      Remote agent health check`)
+  console.log()
+
+  // ── Machines ──
+  console.log(`  ${theme.bold('Saved Machines')}`)
+  console.log()
+  console.log(`    ${theme.brand('anton machines')}                    List saved machines`)
+  console.log(
+    `    ${theme.brand('anton machines rm')} ${theme.dim('<name>')}          Remove a machine`,
+  )
+  console.log(`    ${theme.brand('anton machines default')} ${theme.dim('<name>')}     Set default`)
+  console.log()
+
+  // ── Other ──
+  console.log(`  ${theme.bold('Other')}`)
+  console.log()
+  console.log(
+    `    ${theme.brand('anton skills')} ${theme.dim('[list|run <name>]')}    Manage skills`,
+  )
+  console.log(`    ${theme.brand('anton update')}                      Update CLI`)
+  console.log(`    ${theme.brand('anton help')}                        Show this help`)
   console.log()
 }
 

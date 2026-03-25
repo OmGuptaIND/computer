@@ -39,14 +39,19 @@ function getPackageVersion(): string {
     if (typeof __CLI_VERSION__ !== 'undefined') return __CLI_VERSION__
   } catch {}
 
-  // Dev mode: read from package.json
+  // Dev mode: walk up from compiled JS to find package.json
   try {
-    const __dir = dirname(fileURLToPath(import.meta.url))
-    const pkg = JSON.parse(readFileSync(join(__dir, '..', 'package.json'), 'utf-8'))
-    return pkg.version ?? '0.1.0'
-  } catch {
-    return '0.1.0'
-  }
+    let dir = dirname(fileURLToPath(import.meta.url))
+    for (let i = 0; i < 5; i++) {
+      const candidate = join(dir, 'package.json')
+      if (existsSync(candidate)) {
+        const pkg = JSON.parse(readFileSync(candidate, 'utf-8'))
+        if (pkg.name && pkg.version) return pkg.version
+      }
+      dir = dirname(dir)
+    }
+  } catch {}
+  return '0.1.0'
 }
 
 export const CLI_VERSION = getPackageVersion()

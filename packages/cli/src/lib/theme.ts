@@ -34,17 +34,26 @@ export const theme = {
   toolResult: chalk.dim,
 } as const
 
-export const LOGO = `
-  ${theme.brand('┌─────────────────────┐')}
-  ${theme.brand('│')}  ${theme.brandBold('  ╱╲  ╱╲  ╱╲')}       ${theme.brand('│')}
-  ${theme.brand('│')}  ${theme.brandBold(' ╱  ╲╱  ╲╱  ╲')}      ${theme.brand('│')}
-  ${theme.brand('│')}  ${theme.brandBold(' ╲  ╱╲  ╱╲  ╱')}      ${theme.brand('│')}
-  ${theme.brand('│')}  ${theme.brandBold('  ╲╱  ╲╱  ╲╱')}       ${theme.brand('│')}
-  ${theme.brand('│')}                     ${theme.brand('│')}
-  ${theme.brand('│')}  ${theme.bold('anton.computer')}       ${theme.brand('│')}
-  ${theme.brand('│')}  ${theme.dim('CLI v0.1.0')}           ${theme.brand('│')}
-  ${theme.brand('└─────────────────────┘')}
+export function getLogo(version: string): string {
+  const versionStr = `v${version}`
+  const versionPad = ' '.repeat(Math.max(0, 11 - versionStr.length))
+  return `
+  ${theme.brand('┌───────────────────────────┐')}
+  ${theme.brand('│')}                           ${theme.brand('│')}
+  ${theme.brand('│')}    ${theme.brandBold('╱╲  ╱╲  ╱╲')}             ${theme.brand('│')}
+  ${theme.brand('│')}   ${theme.brandBold('╱  ╲╱  ╲╱  ╲')}            ${theme.brand('│')}
+  ${theme.brand('│')}   ${theme.brandBold('╲  ╱╲  ╱╲  ╱')}            ${theme.brand('│')}
+  ${theme.brand('│')}    ${theme.brandBold('╲╱  ╲╱  ╲╱')}             ${theme.brand('│')}
+  ${theme.brand('│')}                           ${theme.brand('│')}
+  ${theme.brand('│')}    ${theme.bold('anton.computer')}         ${theme.brand('│')}
+  ${theme.brand('│')}    ${theme.dim(versionStr)}${versionPad}            ${theme.brand('│')}
+  ${theme.brand('│')}                           ${theme.brand('│')}
+  ${theme.brand('└───────────────────────────┘')}
 `
+}
+
+/** @deprecated Use getLogo(version) instead */
+export const LOGO = getLogo('0.1.0')
 
 export const ICONS = {
   connected: theme.success('●'),

@@ -52,6 +52,8 @@ pnpm --filter @anton/agent-server build
 echo "  [2/5] Bundling with esbuild..."
 mkdir -p dist
 
+AGENT_VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version)")
+
 npx esbuild packages/agent-server/dist/index.js \
   --bundle \
   --platform=node \
@@ -59,7 +61,8 @@ npx esbuild packages/agent-server/dist/index.js \
   --format=cjs \
   --outfile=dist/agent-bundle.js \
   --external:node-pty \
-  --external:chokidar
+  --external:chokidar \
+  --define:__AGENT_VERSION__=\"${AGENT_VERSION}\"
 
 # ── 3. Create SEA config ──────────────────────────────────────────
 

@@ -101,9 +101,7 @@ export async function statusCommand(host?: string, port?: number): Promise<void>
     // Host might be an IP — try hitting sidecar directly on port 9878
     domain = null
   }
-  const sidecarUrl = domain
-    ? `https://${domain}/_anton/status`
-    : `http://${targetHost}:9878/status`
+  const sidecarUrl = domain ? `https://${domain}/_anton/status` : `http://${targetHost}:9878/status`
 
   {
     console.log(`\n  ${ICONS.connecting} Checking sidecar...`)
@@ -113,8 +111,12 @@ export async function statusCommand(host?: string, port?: number): Promise<void>
       console.log(`  ${check(true)} Sidecar ${theme.success(sidecar.status)}  v${sidecar.version}`)
       console.log()
       console.log(`  ${theme.bold('Services')}`)
-      console.log(`     Agent:    ${check(sidecar.agent.healthy)} ${sidecar.agent.healthy ? 'healthy' : 'unhealthy'}`)
-      console.log(`     Caddy:    ${check(sidecar.caddy.running)} ${sidecar.caddy.running ? 'running' : 'stopped'}`)
+      console.log(
+        `     Agent:    ${check(sidecar.agent.healthy)} ${sidecar.agent.healthy ? 'healthy' : 'unhealthy'}`,
+      )
+      console.log(
+        `     Caddy:    ${check(sidecar.caddy.running)} ${sidecar.caddy.running ? 'running' : 'stopped'}`,
+      )
       console.log()
       console.log(`  ${theme.bold('System')}`)
       console.log(`     Memory:   ${sidecar.system.memUsedMB}MB / ${sidecar.system.memTotalMB}MB`)
