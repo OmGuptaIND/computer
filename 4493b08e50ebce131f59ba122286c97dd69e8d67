@@ -1,0 +1,45 @@
+packages/agent-config/src/version.ts
+  be13521025008eb9 18
+README.md
+  be13521025008eb9 7-9,55,97,206,218,227-228
+manifest.json
+  be13521025008eb9 4,8-9,12-13,15
+packages/desktop/src-tauri/tauri.conf.json
+  be13521025008eb9 45
+infra-providers/huddle/cloud-init.sh
+  be13521025008eb9 28,98
+packages/cli/src/lib/version.ts
+  be13521025008eb9 22
+scripts/release.sh
+  be13521025008eb9 209,228,249-252,285
+scripts/install.sh
+  be13521025008eb9 141,181
+CHANGELOG.md
+  be13521025008eb9 105-115
+package.json
+  be13521025008eb9 45
+packages/desktop/src/lib/desktop-updater.ts
+  be13521025008eb9 14
+.github/workflows/release.yml
+  be13521025008eb9 93-129,240,273-277
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.19",
+  "base_commit_sha": "4493b08e50ebce131f59ba122286c97dd69e8d67",
+  "prompts": {
+    "be13521025008eb9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "659c8e9f-d504-4500-8919-ec7a8d58b354",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 87,
+      "total_deletions": 41,
+      "accepted_lines": 85,
+      "overriden_lines": 0
+    }
+  }
+}
