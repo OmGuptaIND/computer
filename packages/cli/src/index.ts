@@ -23,6 +23,7 @@ import React from 'react'
 import { chatCommand } from './commands/chat.js'
 import {
   computerStartCommand,
+  computerLogsCommand,
   computerStatusCommand,
   computerStopCommand,
   computerRestartCommand,
@@ -119,28 +120,72 @@ async function main() {
           yes: hasFlag('--yes') || hasFlag('-y'),
         })
       } else if (subcommand === 'version') {
-        // Connect to agent and show its version
-        const m = getDefaultMachine()
-        if (!m) {
-          console.log(`\n  No machines configured. Run ${theme.bold('anton connect')} first.\n`)
-          break
-        }
-        const { Connection } = await import('./lib/connection.js')
-        const conn = new Connection()
-        try {
-          await conn.connect({ host: m.host, port: m.port, token: m.token, useTLS: m.useTLS })
-          console.log(`\n  ${theme.bold('Agent')}`)
-          console.log(`    ID:        ${conn.agentId}`)
-          console.log(`    Version:   ${conn.agentVersion}`)
-          console.log(`    Commit:    ${conn.agentGitHash}`)
-          console.log(`    Host:      ${m.host}:${m.port}`)
-          console.log('')
-          console.log(`  ${theme.bold('CLI')}`)
-          console.log(`    Version:   ${CLI_VERSION}`)
-          console.log('')
-          conn.disconnect()
-        } catch (err: unknown) {
-          console.log(`\n  ${theme.error(`Could not connect: ${(err as Error).message}`)}\n`)
+        // Try local agent first (on the VM), then remote
+        const { readTokenFromEnv, readPortFromService } = await import(
+          './commands/computer-common.js'
+        )
+        const localPort = readPortFromService()
+        const localToken = readTokenFromEnv()
+
+        if (localPort && localToken) {
+          // Running on the VM — connect to local agent
+          const { Connection } = await import('./lib/connection.js')
+          const conn = new Connection()
+          try {
+            await conn.connect({
+              host: 'localhost',
+              port: localPort,
+              token: localToken,
+              useTLS: false,
+            })
+            console.log(`\n  ${theme.bold('Agent')}`)
+            console.log(`    ID:        ${conn.agentId}`)
+            console.log(`    Version:   ${conn.agentVersion}`)
+            console.log(`    Commit:    ${conn.agentGitHash}`)
+            console.log(`    Port:      ${localPort}`)
+            console.log('')
+            console.log(`  ${theme.bold('CLI')}`)
+            console.log(`    Version:   ${CLI_VERSION}`)
+            console.log('')
+            conn.disconnect()
+          } catch (err: unknown) {
+            console.log(
+              `\n  ${theme.error(`Could not connect to local agent: ${(err as Error).message}`)}\n`,
+            )
+          }
+        } else {
+          // Remote — use saved machine
+          const m = getDefaultMachine()
+          if (!m) {
+            console.log(
+              `\n  No local agent or saved machines found. Run ${theme.bold('anton computer setup')} or ${theme.bold('anton connect')} first.\n`,
+            )
+            break
+          }
+          const { Connection } = await import('./lib/connection.js')
+          const conn = new Connection()
+          try {
+            await conn.connect({
+              host: m.host,
+              port: m.port,
+              token: m.token,
+              useTLS: m.useTLS,
+            })
+            console.log(`\n  ${theme.bold('Agent')}`)
+            console.log(`    ID:        ${conn.agentId}`)
+            console.log(`    Version:   ${conn.agentVersion}`)
+            console.log(`    Commit:    ${conn.agentGitHash}`)
+            console.log(`    Host:      ${m.host}:${m.port}`)
+            console.log('')
+            console.log(`  ${theme.bold('CLI')}`)
+            console.log(`    Version:   ${CLI_VERSION}`)
+            console.log('')
+            conn.disconnect()
+          } catch (err: unknown) {
+            console.log(
+              `\n  ${theme.error(`Could not connect: ${(err as Error).message}`)}\n`,
+            )
+          }
         }
       } else if (subcommand === 'update') {
         // Trigger agent self-update via the protocol
@@ -202,6 +247,12 @@ async function main() {
         await computerStartCommand()
       } else if (subcommand === 'restart') {
         await computerRestartCommand()
+      } else if (subcommand === 'logs') {
+        await computerLogsCommand({
+          target: args[2] && !args[2].startsWith('-') ? args[2] : 'agent',
+          follow: hasFlag('-f') || hasFlag('--follow'),
+          lines: parseFlag('-n') ? Number(parseFlag('-n')) : undefined,
+        })
       } else if (subcommand === 'uninstall') {
         await computerUninstallCommand({
           yes: hasFlag('--yes') || hasFlag('-y'),
@@ -213,6 +264,7 @@ async function main() {
           `    ${theme.brand('anton computer setup')}        Set up agent on this machine`,
         )
         console.log(`    ${theme.brand('anton computer status')}       Show agent + sidecar health`)
+        console.log(`    ${theme.brand('anton computer logs')}         View logs (agent|sidecar|deploy|all)`)
         console.log(`    ${theme.brand('anton computer start')}        Start services`)
         console.log(`    ${theme.brand('anton computer stop')}         Stop services`)
         console.log(`    ${theme.brand('anton computer restart')}      Restart services`)
@@ -303,6 +355,11 @@ function showHelp() {
   console.log(`      ${theme.dim('--port <n>')}                     Agent port (default: 9876)`)
   console.log(`      ${theme.dim('--yes')}                           Non-interactive mode`)
   console.log(`    ${theme.brand('anton computer status')}             Agent + sidecar health`)
+  console.log(
+    `    ${theme.brand('anton computer logs')} ${theme.dim('[agent|sidecar|deploy]')}  View logs`,
+  )
+  console.log(`      ${theme.dim('-f')}                               Follow mode`)
+  console.log(`      ${theme.dim('-n <lines>')}                       Lines to show (default: 50)`)
   console.log(`    ${theme.brand('anton computer start')}              Start services`)
   console.log(`    ${theme.brand('anton computer stop')}               Stop services`)
   console.log(`    ${theme.brand('anton computer restart')}            Restart services`)

@@ -4,6 +4,7 @@
  * Lifecycle management for the anton agent + sidecar on this machine.
  */
 
+import { execSync } from 'node:child_process'
 import { existsSync, unlinkSync } from 'node:fs'
 import { ICONS, theme } from '../lib/theme.js'
 import {
@@ -223,7 +224,7 @@ export async function computerUninstallCommand(args: {
   console.log()
 
   if (!args.yes) {
-    console.log(`  This will:`)
+    console.log('  This will:')
     console.log(`    ${theme.dim('•')} Stop and disable agent + sidecar services`)
     console.log(`    ${theme.dim('•')} Remove binaries and service files`)
     console.log(`    ${theme.dim('•')} Remove environment config`)
@@ -290,4 +291,77 @@ export async function computerUninstallCommand(args: {
     console.log(`  ${theme.dim('To remove everything: anton computer uninstall --purge')}`)
   }
   console.log()
+}
+
+// ── Logs ────────────────────────────────────────────────────────
+
+export async function computerLogsCommand(args: {
+  target?: string
+  follow?: boolean
+  lines?: number
+}): Promise<void> {
+  const target = args.target ?? 'agent'
+  const lines = args.lines ?? 50
+  const follow = args.follow ?? false
+
+  const validTargets: Record<string, { unit?: string; file?: string; label: string }> = {
+    agent: { unit: AGENT_SERVICE, label: 'Agent' },
+    sidecar: { unit: SIDECAR_SERVICE, label: 'Sidecar' },
+    deploy: { file: '/var/log/anton-init.log', label: 'Deployment' },
+    all: { label: 'All' },
+  }
+
+  const config = validTargets[target]
+  if (!config) {
+    console.log()
+    console.log(`  ${theme.error(`Unknown log target: ${target}`)}`)
+    console.log()
+    console.log('  Usage:')
+    console.log(`    ${theme.brand('anton computer logs')}               Agent logs (default)`)
+    console.log(`    ${theme.brand('anton computer logs sidecar')}       Sidecar logs`)
+    console.log(`    ${theme.brand('anton computer logs deploy')}        Deployment logs`)
+    console.log(`    ${theme.brand('anton computer logs all')}           Agent + sidecar combined`)
+    console.log(`      ${theme.dim('-f')}                               Follow (tail -f)`)
+    console.log(`      ${theme.dim('-n <lines>')}                       Number of lines (default: 50)`)
+    console.log()
+    process.exit(1)
+  }
+
+  // Deploy logs come from a file, not systemd
+  if (config.file) {
+    if (!existsSync(config.file)) {
+      console.log(`\n  ${theme.dim('No deployment logs found.')}\n`)
+      return
+    }
+    const cmd = follow ? `tail -f "${config.file}"` : `tail -n ${lines} "${config.file}"`
+    try {
+      execSync(cmd, { stdio: 'inherit' })
+    } catch {
+      // tail returns non-zero on ctrl+c, that's fine
+    }
+    return
+  }
+
+  // All = agent + sidecar combined
+  if (target === 'all') {
+    const followFlag = follow ? '-f' : ''
+    const cmd = `journalctl -u ${AGENT_SERVICE} -u ${SIDECAR_SERVICE} --no-pager -n ${lines} ${followFlag}`
+    try {
+      execSync(cmd, { stdio: 'inherit' })
+    } catch {
+      // journalctl returns non-zero on ctrl+c
+    }
+    return
+  }
+
+  // Single service logs
+  if (config.unit) {
+    const followFlag = follow ? '-f' : ''
+    const cmd = `journalctl -u ${config.unit} --no-pager -n ${lines} ${followFlag}`
+    try {
+      execSync(cmd, { stdio: 'inherit' })
+    } catch {
+      // journalctl returns non-zero on ctrl+c
+    }
+  }
 }
