@@ -1,0 +1,39 @@
+packages/cli/src/commands/computer-common.ts
+  be13521025008eb9 1-115,117-153
+.github/workflows/release.yml
+  be13521025008eb9 56-59,69-70
+packages/cli/src/commands/computer-lifecycle.ts
+  be13521025008eb9 1-60,62-81,83-104,106-288,291-293
+packages/agent-config/src/version.ts
+  be13521025008eb9 9,69,71-75,77-87
+packages/cli/src/commands/computer-setup.ts
+  be13521025008eb9 1-11,13-15,17-73,75-194,196-231,233-314,316-318,320-380
+scripts/build-binary.sh
+  be13521025008eb9 55-56,64-65
+packages/cli/src/lib/version.ts
+  be13521025008eb9 42,44-54
+packages/cli/src/index.ts
+  be13521025008eb9 24-31,38,112-121,197-209,212,214-221,259,278-281,283,287-289,293,295-297,302-313,315-317,319,323-329,331-333
+packages/cli/src/lib/theme.ts
+  be13521025008eb9 37-51,53-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.19",
+  "base_commit_sha": "d239665e4ee898afc773882238bf4b4a537ff79e",
+  "prompts": {
+    "be13521025008eb9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "659c8e9f-d504-4500-8919-ec7a8d58b354",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 1063,
+      "total_deletions": 140,
+      "accepted_lines": 953,
+      "overriden_lines": 20
+    }
+  }
+}
