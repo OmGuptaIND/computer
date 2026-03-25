@@ -112,12 +112,13 @@ AUTO_CHANGELOG=$(node -e "
 ")
 
 # Write auto-generated changelog into [Unreleased] section
-node -e "
+AUTO_CHANGELOG="$AUTO_CHANGELOG" node -e "
   const fs = require('fs');
   let changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
   const match = changelog.match(/(## \\[Unreleased\\]\\n)([\\s\\S]*?)(\\n---)/);
   if (match) {
-    changelog = changelog.replace(match[0], match[1] + '\n' + \`${AUTO_CHANGELOG}\` + match[3]);
+    const autoChangelog = process.env.AUTO_CHANGELOG;
+    changelog = changelog.replace(match[0], match[1] + '\n' + autoChangelog + match[3]);
     fs.writeFileSync('CHANGELOG.md', changelog);
   }
 "
