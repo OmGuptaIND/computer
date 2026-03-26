@@ -1,0 +1,403 @@
+packages/desktop/src/components/chat/ThinkingIndicator.tsx
+  8d2e2301c4f21f5e 13-18,23,38,50,54-57
+packages/agent-core/src/context.ts
+  38a8a1ca73ecb0c9 1-7,9-222
+packages/desktop/src/components/chat/SubAgentGroup.tsx
+  8d2e2301c4f21f5e 5,12,37,39,41,44,46,49,51-52,57,60-66,68,71,77,87-94
+  eb7d73cbece16467 45
+  2a5de2b0e7611e83 22
+packages/desktop/src/App.tsx
+  a5b6fb34c35d152b 74-75,90-96
+  a378837db68b3de6 11,234-239
+packages/desktop/src/components/connectors/ConnectorsPage.tsx
+  2a5de2b0e7611e83 280,282,438,440,448,450,458,460,655,657,665,667,675,677,685,687,715,717
+packages/desktop/src/components/projects/ProjectList.tsx
+  2a5de2b0e7611e83 156-157
+packages/desktop/src/components/chat/TaskProgressBar.tsx
+  8d2e2301c4f21f5e 69,95
+packages/protocol/src/messages.ts
+  2a5de2b0e7611e83 855
+  8d2e2301c4f21f5e 437-442,784
+  61c37c3deeeeed48 420-436,783
+  38a8a1ca73ecb0c9 166-178,760
+packages/desktop/src/components/chat/MessageList.tsx
+  61c37c3deeeeed48 8,47-52,131
+packages/desktop/src/components/projects/ProjectConfigPanel.tsx
+  2a5de2b0e7611e83 197,199,293,381-382
+specs/TOOL_CALLS_UI.md
+  8d2e2301c4f21f5e 1-132
+packages/desktop/src/components/Skeleton.tsx
+  2a5de2b0e7611e83 41
+packages/desktop/src/components/Sidebar.tsx
+  28c45d13fe59f30b 171-173,185-187,353-356,365-366,408-416
+  37308eb65a58a3b7 406-407,417-418
+  2a5de2b0e7611e83 7,30,44-47,51-59,61-65,195-200,296,332,440
+specs/CONVERSATION_WORKSPACES.md
+  38a8a1ca73ecb0c9 1-182
+packages/agent-core/src/tools/task-tracker.ts
+  61c37c3deeeeed48 1-60
+packages/desktop/src/components/projects/ProjectLanding.tsx
+  2a5de2b0e7611e83 150-151,153
+packages/agent-server/src/index.ts
+  b7bf432fd0ddae37 31
+packages/desktop/src/components/chat/ChatInput.tsx
+  2a5de2b0e7611e83 7,143
+  38a8a1ca73ecb0c9 62,130,276
+packages/agent-core/src/agent.ts
+  61c37c3deeeeed48 38,98-99,443-470
+  eb7d73cbece16467 74
+  b326ee37ae75f4fe 19,21,68-73,75-79,105,122-123,149-150,168-169,184-185,207,210,252,255,285,288,312,315,346,349,377,380,413,416,441,473,492,495,510,513,551,554,575,578,635,638,654,659,743
+  38a8a1ca73ecb0c9 96-97,386-389,403-407,410
+  2a5de2b0e7611e83 716
+packages/desktop/src/components/chat/TaskSection.tsx
+  8d2e2301c4f21f5e 5,9,24,26-27,29,32,35-40,42,44,47,60-67
+packages/desktop/src/components/chat/ContextIndicator.tsx
+  38a8a1ca73ecb0c9 1-2,4-10,12-25,27-40
+  d3d18aba0d9541c9 3,11,26
+packages/agent-core/src/mcp/mcp-manager.ts
+  b326ee37ae75f4fe 166-167
+packages/desktop/src/components/projects/CreateProjectModal.tsx
+  2a5de2b0e7611e83 29-30,46,48,60,64
+packages/desktop/src/lib/store.ts
+  b326ee37ae75f4fe 1417-1420
+  5ccfab2c47971946 562-568,570,592,594-606,608-611,613,622
+  61c37c3deeeeed48 195-197,380,569,1210-1211,1213-1217
+  2a5de2b0e7611e83 211-213,219,222,226,321,324,329,387,980-997,1149,1158,1168,1258-1281
+  38a8a1ca73ecb0c9 189,275,377,510,513,517,519,895,1051,1083,1358-1376,1533-1541
+  e522a1cb9d2dbf8d 203-204,290,292,351-356,362-363,383,527-537,556-557,576-577,590-591,593,607,612,660-677,718-755,898,1007-1028,1040,1045,1058-1062,1064,1095,1107,1118,1173,1227-1230,1285-1288,1320-1322,1328-1334,1337-1338,1349-1354,1356
+  37308eb65a58a3b7 471-484,1197-1204
+  8d2e2301c4f21f5e 1218-1220,1223
+  d3d18aba0d9541c9 223,325-326,872
+  28c45d13fe59f30b 214-217,388-389,614-621,765,767-790,793,1031,1033-1039,1042,1172,1181-1187,1189,1289-1303
+  eb7d73cbece16467 3
+  a5b6fb34c35d152b 1192,1194-1195,1205-1206,1335-1336,1339-1348
+  b7bf432fd0ddae37 1212
+packages/desktop/src/components/AgentChat.tsx
+  9530d40279419a84 1,5
+  38a8a1ca73ecb0c9 8,198
+  b326ee37ae75f4fe 41-43,70-73,90
+  2a5de2b0e7611e83 17-23,25-30,35-39,45,47,64,79,86,88
+packages/desktop/src/index.css
+  28a6b56c659776f8 2264-2265,2268-2270,2273-2274,2276-2279,2284,2286-2288,2291,2293-2296,2299,2307-2311,2317,2321,2325,2331-2332,2337-2338,2340,2343-2345,2349,2359-2377,2380-2385,2413-2414,2421,2424-2425,2428,2440-2443,2446-2448
+  a378837db68b3de6 4950-4953
+  2a5de2b0e7611e83 330-350
+  38a8a1ca73ecb0c9 8206-8210,8212-8241,8244,8248-8249,8255-8256,8258-8262,8264-8265,8268-8269,8276-8277,8282-8283,8295-8296,8305-8306,8308-8309,8321-8323,8326,8337-8338,8347-8348,8350,8353-8354,8362,8378-8379,8381,8392,8398
+  61c37c3deeeeed48 1989-1991,1993-1996,1999,2002,2004,2009-2010,2012-2024,2028-2048,2052,2056-2057,2061,2065,2070-2084
+  d3d18aba0d9541c9 8211,8242-8243,8245-8247,8250-8254,8257,8263,8266-8267,8270-8275,8278-8281,8284-8294,8297-8304,8307,8310-8320,8324-8325,8327-8336,8339-8346,8349,8351-8352,8355-8361,8363-8377,8380,8382-8391,8393-8397
+  8d2e2301c4f21f5e 1645-1648,1651,1657,1659,1662-1663,1665-1667,1669,1673,1676-1677,1680-1682,1685,1691,1698,1707,1715,1719,1723,1728,1730-1733,1736-1739,1741-1749,1752-1754,1757-1759,1762,1764,1767-1768,1771-1772,1775-1779,1783-1790,1794,1797-1807,1810-1811,1824,1828,1835,1838,1846,1850-1872,1987,5877-5878
+  6f48769faf7b21f9 3339,3341
+packages/desktop/src/components/chat/AskUserDialog.tsx
+  28a6b56c659776f8 3,33,38,45-47,66-80,86,90-92,102-103,106,116,129,131-132,134-135,139,141-142,158,162-177,181-201,203-228
+  2a5de2b0e7611e83 48
+packages/agent-config/src/projects.ts
+  38a8a1ca73ecb0c9 39,105,312-323
+  b7bf432fd0ddae37 310-311
+packages/agent-core/src/session.ts
+  a5b6fb34c35d152b 435,438-439
+  38a8a1ca73ecb0c9 13,24,126-128,157-162,1010-1021,1025,1034-1050,1087,1146,1166-1168
+  61c37c3deeeeed48 71-72,104-105,311-315,373-378,1080,1088-1090,1104,1140,1147-1149,1165
+  8d2e2301c4f21f5e 816-817
+packages/agent-config/src/config.ts
+  2a5de2b0e7611e83 8,742
+  b326ee37ae75f4fe 745-753
+  38a8a1ca73ecb0c9 152,155,224,404,407,795,827,829,832-835,850-879
+  b7bf432fd0ddae37 402
+packages/desktop/src/components/context/ContextPanelContent.tsx
+  d3d18aba0d9541c9 1-194
+specs/CONCURRENT_CONVERSATIONS.md
+  2a5de2b0e7611e83 1-114
+packages/desktop/src/components/projects/SessionCard.tsx
+  2a5de2b0e7611e83 63
+packages/desktop/src/components/chat/ActionsGroup.tsx
+  8d2e2301c4f21f5e 5,16,18-62,65-67,71-72,75-76,80-84,88-89,93,98,102,109,111,114-115,118,120-146,148-151,153-156,158-161,164,168-180,182-293,296,320,324,326,328,333,335-336,341,345,347,349-351,354,364-371,379,389-390
+packages/agent-config/prompts/system.md
+  61c37c3deeeeed48 28,108-155
+specs/TASK_TRACKER.md
+  61c37c3deeeeed48 1-245
+packages/desktop/src/lib/conversations.ts
+  38a8a1ca73ecb0c9 3-13,24
+  e522a1cb9d2dbf8d 22-23,53-54,65-66
+packages/desktop/src/components/chat/TaskChecklist.tsx
+  61c37c3deeeeed48 1-79
+packages/desktop/src/components/chat/groupMessages.ts
+  61c37c3deeeeed48 79
+packages/agent-server/src/server.ts
+  a378837db68b3de6 13,78,247-251,269-270,393-459
+  f932a9a80d092524 835-844,858-872
+  2a5de2b0e7611e83 845-851,1290,1349,1356,1363,1435,1475
+  8d2e2301c4f21f5e 1324-1344,1348
+  28c45d13fe59f30b 727,1239
+  61c37c3deeeeed48 1365-1376
+  38a8a1ca73ecb0c9 697-708,775-786,1295-1309
+packages/agent-core/src/mcp/mcp-tool-adapter.ts
+  b326ee37ae75f4fe 21,32
+packages/desktop/src/components/projects/ProjectView.tsx
+  2a5de2b0e7611e83 159-160,239-240
+  b326ee37ae75f4fe 121-122
+  37308eb65a58a3b7 2,22-34,55-56,66-68
+  28c45d13fe59f30b 57-65,105-109,115-116
+packages/agent-core/src/index.ts
+  38a8a1ca73ecb0c9 29
+packages/desktop/src/components/SidePanel.tsx
+  d3d18aba0d9541c9 2,5,9,73,124-138,158
+packages/desktop/src/components/chat/EmptyState.tsx
+  59a4bfb426c25415 3,46-53
+packages/agent-core/src/tools/memory.ts
+  38a8a1ca73ecb0c9 4-6,18,25,28,30-31,34,40,43-53,59,62,67-85,91-121,123-124,129-130,132
+packages/desktop/src/components/SidebarSkillsPanel.tsx
+  2a5de2b0e7611e83 118-119,125,190,192,201,203,212,214,223,225,234,236
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.19",
+  "base_commit_sha": "f67a50b741ccbb5974d42a999988e116a7a7a8ca",
+  "prompts": {
+    "28a6b56c659776f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9688ce47-843f-4e7c-963f-eb648ed08cfb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 194,
+      "total_deletions": 192,
+      "accepted_lines": 192,
+      "overriden_lines": 0
+    },
+    "28c45d13fe59f30b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad2095e4-4751-435a-96a6-bc933607a316",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 113,
+      "total_deletions": 14,
+      "accepted_lines": 113,
+      "overriden_lines": 0
+    },
+    "2a5de2b0e7611e83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4a1102ca-3813-4b90-80f4-6a846d09209e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 339,
+      "total_deletions": 120,
+      "accepted_lines": 322,
+      "overriden_lines": 0
+    },
+    "37308eb65a58a3b7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7fa353a-3151-4b9a-8926-d4f474429efa",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 48,
+      "total_deletions": 1,
+      "accepted_lines": 46,
+      "overriden_lines": 0
+    },
+    "38a8a1ca73ecb0c9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f238172-879a-46e6-b3eb-ef7f03e2d3ca",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 1092,
+      "total_deletions": 90,
+      "accepted_lines": 828,
+      "overriden_lines": 1
+    },
+    "59a4bfb426c25415": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2cf051e4-9028-4bc1-a471-ffdffdb8551f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 9,
+      "total_deletions": 8,
+      "accepted_lines": 9,
+      "overriden_lines": 0
+    },
+    "5ccfab2c47971946": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "06854e7f-c226-4369-8d40-7a7c847faeb2",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 28,
+      "total_deletions": 3,
+      "accepted_lines": 28,
+      "overriden_lines": 0
+    },
+    "61c37c3deeeeed48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae3e5f39-e055-4044-8771-b46de3dbd847",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 642,
+      "total_deletions": 38,
+      "accepted_lines": 639,
+      "overriden_lines": 1
+    },
+    "6f48769faf7b21f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf0bd719-6189-49f0-a941-192c80a6d180",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 1,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "8d2e2301c4f21f5e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c32c0ec7-bcd8-4f0e-9b28-e23dc5602969",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 627,
+      "total_deletions": 515,
+      "accepted_lines": 626,
+      "overriden_lines": 0
+    },
+    "9530d40279419a84": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "35f30ac9-6afe-424b-822e-b57425e9e333",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 9,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "a378837db68b3de6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3e1bc01-5052-4329-8e16-c37c0a161695",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 87,
+      "total_deletions": 5,
+      "accepted_lines": 87,
+      "overriden_lines": 0
+    },
+    "a5b6fb34c35d152b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f938091-daf2-4ca4-be70-d883404334c1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 31,
+      "total_deletions": 8,
+      "accepted_lines": 29,
+      "overriden_lines": 0
+    },
+    "b326ee37ae75f4fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bc03cee-28ca-432b-9959-98b5faf88201",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 101,
+      "total_deletions": 62,
+      "accepted_lines": 84,
+      "overriden_lines": 0
+    },
+    "b7bf432fd0ddae37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d24e01d1-1525-4ef4-be66-9bad9affb6b2",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 356,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    },
+    "d3d18aba0d9541c9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "151eb0fe-9abe-4f79-b28d-d9bc7623d1bf",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 338,
+      "total_deletions": 134,
+      "accepted_lines": 338,
+      "overriden_lines": 0
+    },
+    "e522a1cb9d2dbf8d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fa36aca8-de80-4734-99f1-9ecdd8e3dc01",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 180,
+      "total_deletions": 34,
+      "accepted_lines": 163,
+      "overriden_lines": 0
+    },
+    "eb7d73cbece16467": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3f38501-4535-4052-abe5-34d2a008b5a2",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 3,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "f932a9a80d092524": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c4e5a55a-8837-4fdb-94ed-e246715e7d41",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 26,
+      "total_deletions": 0,
+      "accepted_lines": 26,
+      "overriden_lines": 0
+    }
+  }
+}
