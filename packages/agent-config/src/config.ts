@@ -39,6 +39,13 @@ export interface SessionMeta {
   parentSessionId?: string
   compactionCount?: number
   lastCompactedAt?: number
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+  }
 }
 
 export interface PersistedImageBlock {
@@ -85,6 +92,13 @@ export interface PersistedSession {
     compactionCount: number
   }
   lastTasks?: PersistedTaskItem[]
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+  }
 }
 
 // ── Main config ─────────────────────────────────────────────────────
@@ -171,6 +185,7 @@ const PROJECT_TYPES_DIR = join(PROMPTS_DIR, 'project-types')
 const DEFAULT_WORKSPACE_ROOT = join(homedir(), 'Anton')
 const SYSTEM_PROMPT_PATH = join(PROMPTS_DIR, 'system.md')
 const GLOBAL_MEMORY_DIR = join(ANTON_DIR, 'memory')
+const PUBLISHED_DIR = join(ANTON_DIR, 'published')
 
 // Embedded prompts — baked in at build time by scripts/embed-prompts.js.
 // This works in both source mode and binary mode (no filesystem read needed).
@@ -615,6 +630,7 @@ export function saveSession(session: PersistedSession, basePath?: string): void 
     tags: [],
     compactionCount: session.compactionState?.compactionCount,
     lastCompactedAt: session.compactionState?.lastCompactedAt ?? undefined,
+    usage: session.usage,
   }
   writeFileSync(join(dir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf-8')
 
@@ -797,6 +813,16 @@ export function deleteSession(id: string): boolean {
   const projMatch = id.match(/^proj_(.+?)_sess_/)
   if (projMatch) {
     const projectId = projMatch[1]
+    const projectSessionDir = join(ANTON_DIR, 'projects', projectId, 'conversations', id)
+    if (existsSync(projectSessionDir)) {
+      rmSync(projectSessionDir, { recursive: true, force: true })
+    }
+  }
+
+  // Also handle agent-job sessions: agent-job-{projectId}-{jobId}
+  const agentJobMatch = id.match(/^agent-job-(.+?)-job_/)
+  if (agentJobMatch) {
+    const projectId = agentJobMatch[1]
     const projectSessionDir = join(ANTON_DIR, 'projects', projectId, 'conversations', id)
     if (existsSync(projectSessionDir)) {
       rmSync(projectSessionDir, { recursive: true, force: true })
@@ -988,6 +1014,17 @@ export function getPromptsDir(): string {
   return PROMPTS_DIR
 }
 
+export function getPublishedDir(): string {
+  mkdirSync(PUBLISHED_DIR, { recursive: true })
+  return PUBLISHED_DIR
+}
+
+export function getProjectPublicDir(projectName: string): string {
+  const dir = join(DEFAULT_WORKSPACE_ROOT, projectName, 'public')
+  mkdirSync(dir, { recursive: true })
+  return dir
+}
+
 // ── System prompt loading ───────────────────────────────────────────
 
 /**
@@ -1089,17 +1126,52 @@ export interface ConnectorRegistryEntry {
   args?: string[]
   requiredEnv: string[]
   featured?: boolean
+  setupGuide?: {
+    steps: string[]
+    url: string
+    urlLabel?: string
+  }
 }
 
 export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
   {
-    id: 'brave-search',
-    name: 'Brave Search',
-    description: 'Search the web for current information, research topics, and find resources',
+    id: 'searxng',
+    name: 'Web Search',
+    description: 'Free web search powered by SearXNG. Search the web for current information, research topics, and find resources.',
     icon: '🔍',
     category: 'productivity',
     type: 'api',
+    requiredEnv: ['SEARXNG_URL'],
+    featured: true,
+    setupGuide: {
+      steps: [
+        'You need a running SearXNG instance',
+        'Self-host with Docker: docker run -p 8080:8080 searxng/searxng',
+        'Or use your deployment\'s provided SearXNG URL',
+        'Paste the URL below (e.g. https://search.yourdomain.com)',
+      ],
+      url: 'https://docs.searxng.org/admin/installation.html',
+      urlLabel: 'SearXNG Docs',
+    },
+  },
+  {
+    id: 'brave-search',
+    name: 'Brave Search',
+    description: 'Premium web search powered by Brave. Faster results with better ranking.',
+    icon: '🦁',
+    category: 'productivity',
+    type: 'api',
     requiredEnv: ['BRAVE_SEARCH_API_KEY'],
+    setupGuide: {
+      steps: [
+        'Go to the Brave Search API dashboard',
+        'Sign up or log in to your account',
+        'Create a new API key under "API Keys"',
+        'Copy the key and paste it below',
+      ],
+      url: 'https://api.search.brave.com/app/keys',
+      urlLabel: 'Get API Key',
+    },
   },
   {
     id: 'telegram',
@@ -1111,6 +1183,16 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     command: 'npx',
     args: ['-y', 'telegram-mcp-server'],
     requiredEnv: ['TELEGRAM_BOT_TOKEN'],
+    setupGuide: {
+      steps: [
+        'Open Telegram and search for @BotFather',
+        'Send /newbot and follow the prompts to create a bot',
+        'Copy the bot token provided by BotFather',
+        'Paste the token below',
+      ],
+      url: 'https://core.telegram.org/bots#botfather',
+      urlLabel: 'BotFather Docs',
+    },
   },
   {
     id: 'gmail',
@@ -1123,6 +1205,17 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     args: ['-y', '@anthropic/mcp-server-gmail'],
     requiredEnv: ['GMAIL_CREDENTIALS_PATH'],
     featured: true,
+    setupGuide: {
+      steps: [
+        'Go to Google Cloud Console and create a project',
+        'Enable the Gmail API for your project',
+        'Create OAuth 2.0 credentials (Desktop app type)',
+        'Download the credentials JSON file',
+        'Paste the file path below',
+      ],
+      url: 'https://console.cloud.google.com/apis/credentials',
+      urlLabel: 'Google Cloud Console',
+    },
   },
   {
     id: 'google-calendar',
@@ -1134,6 +1227,17 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     command: 'npx',
     args: ['-y', '@anthropic/mcp-server-google-calendar'],
     requiredEnv: ['GOOGLE_CALENDAR_CREDENTIALS_PATH'],
+    setupGuide: {
+      steps: [
+        'Go to Google Cloud Console and create a project',
+        'Enable the Google Calendar API',
+        'Create OAuth 2.0 credentials (Desktop app type)',
+        'Download the credentials JSON file',
+        'Paste the file path below',
+      ],
+      url: 'https://console.cloud.google.com/apis/credentials',
+      urlLabel: 'Google Cloud Console',
+    },
   },
   {
     id: 'notion',
@@ -1146,6 +1250,17 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     args: ['-y', '@anthropic/mcp-server-notion'],
     requiredEnv: ['NOTION_API_KEY'],
     featured: true,
+    setupGuide: {
+      steps: [
+        'Go to Notion Integrations page',
+        'Click "New integration" and give it a name',
+        'Copy the "Internal Integration Secret"',
+        'Share your Notion pages with the integration',
+        'Paste the secret below',
+      ],
+      url: 'https://www.notion.so/profile/integrations',
+      urlLabel: 'Create Integration',
+    },
   },
   {
     id: 'github',
@@ -1158,6 +1273,16 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     args: ['-y', '@modelcontextprotocol/server-github'],
     requiredEnv: ['GITHUB_TOKEN'],
     featured: true,
+    setupGuide: {
+      steps: [
+        'Go to GitHub Settings > Developer settings > Personal access tokens',
+        'Click "Generate new token" (fine-grained recommended)',
+        'Select the repositories and permissions you need',
+        'Copy the generated token and paste it below',
+      ],
+      url: 'https://github.com/settings/tokens?type=beta',
+      urlLabel: 'Generate Token',
+    },
   },
   {
     id: 'slack',
@@ -1170,6 +1295,17 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     args: ['-y', '@anthropic/mcp-server-slack'],
     requiredEnv: ['SLACK_BOT_TOKEN'],
     featured: true,
+    setupGuide: {
+      steps: [
+        'Go to the Slack API dashboard and create a new app',
+        'Under "OAuth & Permissions", add the required bot scopes',
+        'Install the app to your workspace',
+        'Copy the "Bot User OAuth Token" (starts with xoxb-)',
+        'Paste the token below',
+      ],
+      url: 'https://api.slack.com/apps',
+      urlLabel: 'Slack API Dashboard',
+    },
   },
   {
     id: 'linear',
@@ -1181,6 +1317,16 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     command: 'npx',
     args: ['-y', 'mcp-server-linear'],
     requiredEnv: ['LINEAR_API_KEY'],
+    setupGuide: {
+      steps: [
+        'Go to Linear Settings > API',
+        'Click "Create key" under Personal API keys',
+        'Give the key a label and create it',
+        'Copy the key and paste it below',
+      ],
+      url: 'https://linear.app/settings/api',
+      urlLabel: 'Linear API Settings',
+    },
   },
   {
     id: 'google-drive',
@@ -1192,5 +1338,16 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     command: 'npx',
     args: ['-y', '@anthropic/mcp-server-google-drive'],
     requiredEnv: ['GOOGLE_DRIVE_CREDENTIALS_PATH'],
+    setupGuide: {
+      steps: [
+        'Go to Google Cloud Console and create a project',
+        'Enable the Google Drive API',
+        'Create OAuth 2.0 credentials (Desktop app type)',
+        'Download the credentials JSON file',
+        'Paste the file path below',
+      ],
+      url: 'https://console.cloud.google.com/apis/credentials',
+      urlLabel: 'Google Cloud Console',
+    },
   },
 ]

@@ -42,7 +42,11 @@ function loadMemoriesFromDir(dir: string): MemoryEntry[] {
   for (const file of readdirSync(dir).filter((f) => f.endsWith('.md'))) {
     try {
       const content = readFileSync(join(dir, file), 'utf-8')
-      const firstLine = content.split('\n').find((l) => l.startsWith('# '))?.slice(2) || file.replace('.md', '')
+      const firstLine =
+        content
+          .split('\n')
+          .find((l) => l.startsWith('# '))
+          ?.slice(2) || file.replace('.md', '')
       entries.push({ key: firstLine, content, source: file })
     } catch {
       // skip unreadable files
@@ -56,16 +60,97 @@ function loadMemoriesFromDir(dir: string): MemoryEntry[] {
  */
 function extractKeywords(text: string): string[] {
   const stopWords = new Set([
-    'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
-    'should', 'may', 'might', 'can', 'shall', 'to', 'of', 'in', 'for',
-    'on', 'with', 'at', 'by', 'from', 'as', 'into', 'about', 'like',
-    'through', 'after', 'over', 'between', 'out', 'up', 'down', 'this',
-    'that', 'these', 'those', 'it', 'its', 'i', 'me', 'my', 'we', 'our',
-    'you', 'your', 'he', 'she', 'they', 'them', 'what', 'which', 'who',
-    'how', 'when', 'where', 'why', 'and', 'or', 'but', 'not', 'if', 'then',
-    'so', 'just', 'also', 'very', 'some', 'any', 'all', 'each', 'every',
-    'help', 'please', 'want', 'need', 'make', 'get', 'set', 'use',
+    'the',
+    'a',
+    'an',
+    'is',
+    'are',
+    'was',
+    'were',
+    'be',
+    'been',
+    'being',
+    'have',
+    'has',
+    'had',
+    'do',
+    'does',
+    'did',
+    'will',
+    'would',
+    'could',
+    'should',
+    'may',
+    'might',
+    'can',
+    'shall',
+    'to',
+    'of',
+    'in',
+    'for',
+    'on',
+    'with',
+    'at',
+    'by',
+    'from',
+    'as',
+    'into',
+    'about',
+    'like',
+    'through',
+    'after',
+    'over',
+    'between',
+    'out',
+    'up',
+    'down',
+    'this',
+    'that',
+    'these',
+    'those',
+    'it',
+    'its',
+    'i',
+    'me',
+    'my',
+    'we',
+    'our',
+    'you',
+    'your',
+    'he',
+    'she',
+    'they',
+    'them',
+    'what',
+    'which',
+    'who',
+    'how',
+    'when',
+    'where',
+    'why',
+    'and',
+    'or',
+    'but',
+    'not',
+    'if',
+    'then',
+    'so',
+    'just',
+    'also',
+    'very',
+    'some',
+    'any',
+    'all',
+    'each',
+    'every',
+    'help',
+    'please',
+    'want',
+    'need',
+    'make',
+    'get',
+    'set',
+    'use',
   ])
 
   return text
@@ -116,7 +201,11 @@ function findCrossConversationMemories(
     for (const file of readdirSync(memoryDir).filter((f) => f.endsWith('.md'))) {
       try {
         const content = readFileSync(join(memoryDir, file), 'utf-8')
-        const firstLine = content.split('\n').find((l) => l.startsWith('# '))?.slice(2) || ''
+        const firstLine =
+          content
+            .split('\n')
+            .find((l) => l.startsWith('# '))
+            ?.slice(2) || ''
         const searchText = `${file} ${firstLine} ${convTitle}`.toLowerCase()
 
         let score = 0

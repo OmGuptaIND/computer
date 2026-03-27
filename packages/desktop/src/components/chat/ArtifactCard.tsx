@@ -34,8 +34,11 @@ export function ArtifactCard({ artifact }: Props) {
   const title = artifact.title || artifact.filename || 'Untitled'
   const showPreview = artifact.renderType === 'html' || artifact.renderType === 'svg'
 
+  const setArtifactViewMode = useStore((s) => s.setArtifactViewMode)
+
   const handleClick = () => {
     setActiveArtifact(artifact.id)
+    setArtifactViewMode('detail')
     setSidePanelView('artifacts')
     setArtifactPanelOpen(true)
   }
@@ -69,6 +72,9 @@ export function ArtifactCard({ artifact }: Props) {
           <Icon size={14} strokeWidth={1.5} className="artifact-card__icon" />
           <span className="artifact-card__title">{title}</span>
           <span className="artifact-card__type">{label}</span>
+          {artifact.publishedUrl && (
+            <span className="artifact-card__published-dot" title="Published" />
+          )}
         </div>
         <PanelRight size={14} strokeWidth={1.5} className="artifact-card__open-icon" />
       </div>

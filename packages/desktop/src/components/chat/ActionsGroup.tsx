@@ -337,6 +337,7 @@ interface Props {
 
 export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded)
+  const [showAllItems, setShowAllItems] = useState(false)
   const artifacts = useStore((s) => s.artifacts)
 
   const actionCallIds = useMemo(() => new Set(actions.map((a) => a.call.id)), [actions])
@@ -415,13 +416,33 @@ export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
             style={{ overflow: 'hidden' }}
           >
             <div className="tool-tree__items">
-              {actions.map((action, i) => (
-                <ToolTreeItem
-                  key={action.call.id}
-                  action={action}
-                  isLast={i === actions.length - 1}
-                />
-              ))}
+              {actions.length > 4 && !showAllItems ? (
+                <>
+                  {actions.slice(0, 2).map((action) => (
+                    <ToolTreeItem key={action.call.id} action={action} isLast={false} />
+                  ))}
+                  <button
+                    type="button"
+                    className="tool-tree__show-more-items"
+                    onClick={(e) => { e.stopPropagation(); setShowAllItems(true) }}
+                  >
+                    Show {actions.length - 3} more
+                  </button>
+                  <ToolTreeItem
+                    key={actions[actions.length - 1].call.id}
+                    action={actions[actions.length - 1]}
+                    isLast={true}
+                  />
+                </>
+              ) : (
+                actions.map((action, i) => (
+                  <ToolTreeItem
+                    key={action.call.id}
+                    action={action}
+                    isLast={i === actions.length - 1}
+                  />
+                ))
+              )}
             </div>
           </motion.div>
         )}

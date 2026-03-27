@@ -7,8 +7,8 @@
 
 import type { AgentTool } from '@mariozechner/pi-agent-core'
 import type { TextContent } from '@mariozechner/pi-ai'
-import type { McpClient, McpTool } from './mcp-client.js'
 import { jsonSchemaToTypebox } from './json-schema-to-typebox.js'
+import type { McpClient, McpTool } from './mcp-client.js'
 
 function toolResult(output: string, isError = false) {
   const content: TextContent[] = [{ type: 'text', text: output }]

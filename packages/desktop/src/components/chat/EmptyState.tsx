@@ -1,10 +1,11 @@
 import { motion } from 'framer-motion'
 import { BriefcaseBusiness, Code2, ListChecks, Sparkles } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { connection } from '../../lib/connection.js'
 import type { Skill } from '../../lib/skills.js'
 import type { ChatImageAttachment } from '../../lib/store.js'
 import { useStore } from '../../lib/store.js'
-import { generateSuggestions } from '../../lib/suggestions.js'
+import { generateSuggestions, type PersonalizedSuggestion } from '../../lib/suggestions.js'
 import { AntonLogo } from '../AntonLogo.js'
 import { ChatInput } from './ChatInput.js'
 
@@ -43,16 +44,40 @@ const staticSuggestions: Record<Exclude<Category, 'for-you'>, string[]> = {
 export function EmptyState({ onSend, onSkillSelect }: Props) {
   const [activeCategory, setActiveCategory] = useState<Category>('for-you')
   const [draft, setDraft] = useState('')
+  const setActiveProject = useStore((s) => s.setActiveProject)
+  const setActiveView = useStore((s) => s.setActiveView)
+
   // Generate suggestions once on mount — avoid regenerating every time
   // a new conversation is created (which mutates the conversations array).
-  const forYouRef = useRef<string[] | null>(null)
+  const forYouRef = useRef<PersonalizedSuggestion[] | null>(null)
   if (forYouRef.current === null) {
     const conversations = useStore.getState().conversations
-    forYouRef.current = generateSuggestions(conversations).map((s) => s.text)
+    forYouRef.current = generateSuggestions(conversations)
   }
   const forYouSuggestions = forYouRef.current
 
-  const activeSuggestions =
+  const handleSuggestionClick = useCallback(
+    (suggestion: PersonalizedSuggestion | string) => {
+      const text = typeof suggestion === 'string' ? suggestion : suggestion.text
+      const projectId = typeof suggestion === 'string' ? undefined : suggestion.projectId
+
+      if (projectId) {
+        // Verify project still exists before navigating
+        const projects = useStore.getState().projects
+        if (projects.some((p) => p.id === projectId)) {
+          setActiveProject(projectId)
+          setActiveView('projects')
+          connection.sendProjectSessionsList(projectId)
+          return
+        }
+      }
+      // Fallback: just set the draft text
+      setDraft(text)
+    },
+    [setActiveProject, setActiveView],
+  )
+
+  const activeSuggestions: (PersonalizedSuggestion | string)[] =
     activeCategory === 'for-you' ? forYouSuggestions : staticSuggestions[activeCategory]
 
   return (
@@ -92,16 +117,20 @@ export function EmptyState({ onSend, onSkillSelect }: Props) {
         </div>
 
         <div className="empty-state__suggestions">
-          {activeSuggestions.map((text) => (
-            <button
-              type="button"
-              key={text}
-              onClick={() => setDraft(text)}
-              className="empty-state__suggestion"
-            >
-              {text}
-            </button>
-          ))}
+          {activeSuggestions.map((suggestion) => {
+            const text = typeof suggestion === 'string' ? suggestion : suggestion.text
+            const projectId = typeof suggestion === 'string' ? undefined : suggestion.projectId
+            return (
+              <button
+                type="button"
+                key={text}
+                onClick={() => handleSuggestionClick(suggestion)}
+                className={`empty-state__suggestion${projectId ? ' empty-state__suggestion--project' : ''}`}
+              >
+                {text}
+              </button>
+            )
+          })}
         </div>
       </motion.div>
     </div>

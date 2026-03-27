@@ -1,5 +1,5 @@
 import type { AskUserQuestion } from '@anton/protocol'
-import { ArrowUp, ListChecks, Plus, Square, X } from 'lucide-react'
+import { ListChecks, Plus, Send, Square, X } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Skill } from '../../lib/skills.js'
@@ -7,6 +7,7 @@ import type { ChatImageAttachment } from '../../lib/store.js'
 import { useIsCurrentSessionWorking } from '../../lib/store.js'
 import { AskUserDialog } from './AskUserDialog.js'
 import { ModelSelector } from './ModelSelector.js'
+import { ConnectorPill, ConnectorBanner } from './ConnectorToolbar.js'
 import { SlashCommandMenu } from './SlashCommandMenu.js'
 
 interface Props {
@@ -261,6 +262,7 @@ export function ChatInput({
               >
                 <Plus size={18} strokeWidth={1.5} />
               </button>
+              <ConnectorPill />
               <button
                 type="button"
                 className={`composer__btn composer__btn--plan${planFirst ? ' composer__btn--plan-active' : ''}`}
@@ -289,12 +291,15 @@ export function ChatInput({
                   className="composer__btn composer__btn--send"
                   aria-label="Send"
                 >
-                  <ArrowUp size={18} strokeWidth={1.5} />
+                  <Send size={18} strokeWidth={1.5} />
                 </button>
               )}
             </div>
           </div>
         </div>
+
+        {/* Banner below composer box — Manus style */}
+        <ConnectorBanner />
       </div>
     </div>
   )

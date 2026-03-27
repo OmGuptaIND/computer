@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  BarChart3,
   Check,
   ChevronRight,
   Eye,
@@ -21,7 +22,7 @@ import { type ProviderInfo, useStore } from '../../lib/store.js'
 import { formatModelName, providerIcons } from '../chat/model-utils.js'
 import { ConnectorsPage } from '../connectors/ConnectorsPage.js'
 
-type SettingsPage = 'general' | 'models' | 'connectors'
+type SettingsPage = 'general' | 'models' | 'connectors' | 'usage'
 
 interface Props {
   open: boolean
@@ -33,6 +34,7 @@ const NAV_ITEMS: { key: SettingsPage; label: string; icon: React.ReactNode }[] =
   { key: 'general', label: 'Settings', icon: <Settings size={16} strokeWidth={1.5} /> },
   { key: 'models', label: 'AI Models', icon: <Cpu size={16} strokeWidth={1.5} /> },
   { key: 'connectors', label: 'Connectors', icon: <Plug size={16} strokeWidth={1.5} /> },
+  { key: 'usage', label: 'Usage', icon: <BarChart3 size={16} strokeWidth={1.5} /> },
 ]
 
 type AppearanceMode = 'light' | 'dark' | 'system'
@@ -438,6 +440,149 @@ function ModelsPage({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ── Usage Page ──
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return String(n)
+}
+
+function UsagePage() {
+  const usageStats = useStore((s) => s.usageStats)
+  const usageStatsLoading = useStore((s) => s.usageStatsLoading)
+  const requestUsageStats = useStore((s) => s.requestUsageStats)
+
+  useEffect(() => {
+    requestUsageStats()
+  }, [requestUsageStats])
+
+  if (usageStatsLoading && !usageStats) {
+    return (
+      <div className="settings-page">
+        <div className="usage-loading">Loading usage data...</div>
+      </div>
+    )
+  }
+
+  if (!usageStats || usageStats.totals.totalTokens === 0) {
+    return (
+      <div className="settings-page">
+        <div className="usage-empty">
+          <BarChart3 size={32} strokeWidth={1} />
+          <p>No usage data yet</p>
+          <span>Token usage will appear here after your first conversation.</span>
+        </div>
+      </div>
+    )
+  }
+
+  const { totals, byModel, byDay, sessions } = usageStats
+
+  return (
+    <div className="settings-page usage-page">
+      {/* Totals */}
+      <section className="settings-section">
+        <div className="settings-section__label">Total Usage</div>
+        <div className="usage-totals">
+          <div className="usage-stat-card">
+            <div className="usage-stat-card__value">{formatTokens(totals.totalTokens)}</div>
+            <div className="usage-stat-card__label">Total Tokens</div>
+          </div>
+          <div className="usage-stat-card">
+            <div className="usage-stat-card__value">{formatTokens(totals.inputTokens)}</div>
+            <div className="usage-stat-card__label">Input</div>
+          </div>
+          <div className="usage-stat-card">
+            <div className="usage-stat-card__value">{formatTokens(totals.outputTokens)}</div>
+            <div className="usage-stat-card__label">Output</div>
+          </div>
+          {totals.cacheReadTokens > 0 && (
+            <div className="usage-stat-card">
+              <div className="usage-stat-card__value">{formatTokens(totals.cacheReadTokens)}</div>
+              <div className="usage-stat-card__label">Cache Read</div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <div className="settings-divider" />
+
+      {/* By Model */}
+      {byModel.length > 0 && (
+        <section className="settings-section">
+          <div className="settings-section__label">By Model</div>
+          <div className="usage-table">
+            <div className="usage-table__header">
+              <span>Model</span>
+              <span>Tokens</span>
+              <span>Sessions</span>
+            </div>
+            {byModel.map((m) => (
+              <div key={m.model} className="usage-table__row">
+                <span className="usage-table__model">
+                  <code>{formatModelName(m.model)}</code>
+                  <span className="usage-table__provider">{m.provider}</span>
+                </span>
+                <span className="usage-table__tokens">{formatTokens(m.totalTokens)}</span>
+                <span className="usage-table__count">{m.sessionCount}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="settings-divider" />
+
+      {/* By Day */}
+      {byDay.length > 0 && (
+        <section className="settings-section">
+          <div className="settings-section__label">By Day</div>
+          <div className="usage-table">
+            <div className="usage-table__header">
+              <span>Date</span>
+              <span>Tokens</span>
+              <span>Sessions</span>
+            </div>
+            {byDay.slice(0, 14).map((d) => (
+              <div key={d.date} className="usage-table__row">
+                <span className="usage-table__date">{d.date}</span>
+                <span className="usage-table__tokens">{formatTokens(d.totalTokens)}</span>
+                <span className="usage-table__count">{d.sessionCount}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="settings-divider" />
+
+      {/* Recent Sessions */}
+      {sessions.length > 0 && (
+        <section className="settings-section">
+          <div className="settings-section__label">Recent Sessions</div>
+          <div className="usage-table">
+            <div className="usage-table__header">
+              <span>Session</span>
+              <span>Model</span>
+              <span>Tokens</span>
+            </div>
+            {sessions.slice(0, 20).map((s) => (
+              <div key={s.id} className="usage-table__row">
+                <span className="usage-table__session-title">{s.title || 'Untitled'}</span>
+                <span className="usage-table__model-small">
+                  <code>{formatModelName(s.model)}</code>
+                </span>
+                <span className="usage-table__tokens">{formatTokens(s.totalTokens)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
 // ── Main Settings Modal ──
 
 export function SettingsModal({ open, onClose, initialPage = 'general' }: Props) {
@@ -503,6 +648,7 @@ export function SettingsModal({ open, onClose, initialPage = 'general' }: Props)
                 {activePage === 'general' && <GeneralPage />}
                 {activePage === 'models' && <ModelsPage onClose={onClose} />}
                 {activePage === 'connectors' && <ConnectorsPage />}
+                {activePage === 'usage' && <UsagePage />}
               </div>
             </div>
           </motion.div>

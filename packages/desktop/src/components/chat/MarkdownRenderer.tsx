@@ -4,28 +4,88 @@ import { useCallback, useEffect, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { highlightCode } from '../../lib/shiki.js'
+import type { CitationSource } from '../../lib/store.js'
 
 interface Props {
   content: string
+  citations?: CitationSource[]
 }
 
-export function MarkdownRenderer({ content }: Props) {
+/**
+ * Preprocess markdown to convert [n] citation references into markdown links
+ * with a cite: scheme so we can intercept them in the `a` component override.
+ * Skips code fences and existing markdown links.
+ */
+function injectCitationLinks(text: string, hasCitations: boolean): string {
+  if (!hasCitations) return text
+
+  // Split by code fences to avoid processing inside code blocks
+  const parts = text.split(/(```[\s\S]*?```|`[^`]+`)/g)
+  return parts
+    .map((part, i) => {
+      // Odd indices are code blocks/inline code — leave them alone
+      if (i % 2 === 1) return part
+      // Replace [n] but not [text](url) patterns
+      // Negative lookbehind for ! avoids image syntax ![n]
+      return part.replace(/(?<!!)\[(\d{1,2})\](?!\()/g, '[⁠$1](cite:$1)')
+    })
+    .join('')
+}
+
+function CitationPill({ index, source }: { index: number; source?: CitationSource }) {
+  const [showTooltip, setShowTooltip] = useState(false)
+
+  return (
+    <span className="citation-pill-wrapper">
+      <a
+        href={source?.url || '#'}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="citation-pill"
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        onClick={(e) => {
+          if (!source?.url) e.preventDefault()
+        }}
+      >
+        {index}
+      </a>
+      {showTooltip && source && (
+        <span className="citation-tooltip">
+          <span className="citation-tooltip__title">{source.title}</span>
+          <span className="citation-tooltip__domain">{source.domain}</span>
+        </span>
+      )}
+    </span>
+  )
+}
+
+export function MarkdownRenderer({ content, citations }: Props) {
+  const processedContent = injectCitationLinks(content, !!citations?.length)
+
   return (
     <div className="markdown-body">
       <Markdown
         remarkPlugins={[remarkGfm]}
         components={{
           code: CodeBlock,
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="markdown-body__link"
-            >
-              {children}
-            </a>
-          ),
+          a: ({ href, children }) => {
+            if (href?.startsWith('cite:')) {
+              const index = parseInt(href.slice(5), 10)
+              const source = citations?.find((s) => s.index === index)
+              return <CitationPill index={index} source={source} />
+            }
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="markdown-body__link"
+              >
+                {children}
+              </a>
+            )
+          },
           ul: ({ children }) => <ul className="markdown-body__list">{children}</ul>,
           ol: ({ children }) => (
             <ol className="markdown-body__list markdown-body__list--ordered">{children}</ol>
@@ -53,7 +113,7 @@ export function MarkdownRenderer({ content }: Props) {
           hr: () => <hr className="markdown-body__rule" />,
         }}
       >
-        {content}
+        {processedContent}
       </Markdown>
     </div>
   )

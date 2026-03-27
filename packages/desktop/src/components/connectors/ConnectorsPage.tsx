@@ -1,6 +1,7 @@
 import {
   Check,
   ChevronDown,
+  ExternalLink,
   Loader2,
   Play,
   Plus,
@@ -217,10 +218,17 @@ function AppSetup({
       if (envValues[key]) env[key] = envValues[key]
     }
 
-    // For API-type connectors, map the first requiredEnv value to apiKey
-    const apiKey = entry.type === 'api' && entry.requiredEnv.length > 0
-      ? envValues[entry.requiredEnv[0]]
-      : undefined
+    // For API-type connectors, map env values to apiKey or baseUrl
+    let apiKey: string | undefined
+    let baseUrl: string | undefined
+    if (entry.type === 'api' && entry.requiredEnv.length > 0) {
+      const firstEnv = entry.requiredEnv[0]
+      if (firstEnv.toLowerCase().includes('url')) {
+        baseUrl = envValues[firstEnv]
+      } else {
+        apiKey = envValues[firstEnv]
+      }
+    }
 
     connection.sendConnectorAdd({
       id: entry.id,
@@ -232,6 +240,7 @@ function AppSetup({
       args: entry.args,
       env,
       ...(apiKey ? { apiKey } : {}),
+      ...(baseUrl ? { baseUrl } : {}),
       enabled: true,
     })
 
@@ -319,9 +328,28 @@ function AppSetup({
           </button>
         )}
 
-        {/* Env fields (shown after clicking Connect or Show Details) */}
+        {/* Setup guide + Env fields (shown after clicking Connect or Show Details) */}
         {!isConfigured && showDetails && (
           <div className="app-detail__fields">
+            {entry.setupGuide && (
+              <div className="app-detail__setup-guide">
+                <h4 className="app-detail__setup-guide-title">How to get your credentials</h4>
+                <ol className="app-detail__setup-guide-steps">
+                  {entry.setupGuide.steps.map((step, i) => (
+                    <li key={i}>{step}</li>
+                  ))}
+                </ol>
+                <a
+                  href={entry.setupGuide.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="app-detail__setup-guide-link"
+                >
+                  <ExternalLink size={14} strokeWidth={1.5} />
+                  {entry.setupGuide.urlLabel || 'Open Dashboard'}
+                </a>
+              </div>
+            )}
             {entry.requiredEnv.map((envKey) => (
               <div key={envKey} className="app-detail__field">
                 <label htmlFor={`env-${envKey}`}>{envKey}</label>

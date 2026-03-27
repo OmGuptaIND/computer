@@ -32,7 +32,7 @@ function fetchHtml(url: string, maxBytes = 500_000): string {
  * Convert HTML to clean markdown using Readability + Turndown.
  * Falls back to raw Turndown conversion if Readability fails.
  */
-function htmlToMarkdown(html: string, url: string): string {
+function htmlToMarkdown(html: string, _url: string): string {
   const { document } = parseHTML(html)
 
   // Try Readability first for article extraction

@@ -6,9 +6,10 @@
 
 Three kinds of jobs:
 
-1. **Task job** — Run once, produce output, exit. "python analyze.py"
+1. **Task job** — Run once, produce output, exit. "python analyze.py" (default timeout: 5 min)
 2. **Scheduled job** — Run on a cron schedule. "Every weekday at 9am, run this."
-3. **Long-running job** — Start and keep running. "python polymarket_watcher.py"
+3. **Long-running job** — Start and keep running. "python polymarket_watcher.py" (no timeout)
+4. **Agent job** — Run an AI agent session with a prompt. Full tool access, autonomous execution. (default timeout: 10 min)
 
 Anton manages the full lifecycle: create the job definition, start it, capture its output, restart it if it crashes, stop it when told to. The agent can create jobs, read their output, and make decisions based on results.
 
@@ -97,7 +98,7 @@ interface Job {
   type: 'task' | 'long-running'
   restartPolicy: 'never' | 'on-failure' | 'always'   // for long-running
   maxRestarts: number                                  // default 3
-  timeout: number                                      // seconds, 0 = no limit
+  timeout: number                                      // seconds, 0 = no limit. Defaults: task=300s, agent=600s, long-running=0
 
   // Current state
   status: 'created' | 'active' | 'paused'

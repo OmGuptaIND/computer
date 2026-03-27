@@ -38,6 +38,7 @@ import { executeProcess } from './tools/process.js'
 import { executeShell } from './tools/shell.js'
 import { type TasksUpdateCallback, executeTaskTracker } from './tools/task-tracker.js'
 import { executeTodo } from './tools/todo.js'
+import { executePublish } from './tools/publish.js'
 import { executeWebSearch } from './tools/web-search.js'
 
 // Re-export for session.ts
@@ -109,6 +110,8 @@ export interface ToolCallbacks {
   projectId?: string
   /** Callback for the job management tool. Provided by the server. */
   onJobAction?: JobActionHandler
+  /** Domain for this agent (e.g. "slug.antoncomputer.in"). Used by the publish tool. */
+  domain?: string
 }
 
 export function buildTools(
@@ -268,6 +271,40 @@ export function buildTools(
       }),
       async execute(_toolCallId, params) {
         const output = executeArtifact(params)
+        return toolResult(output)
+      },
+    }),
+
+    // ── Publish ──────────────────────────────────────────────────────
+    defineTool({
+      name: 'publish',
+      label: 'Publish',
+      description:
+        'Publish content to a public URL accessible from the internet. ' +
+        'Converts markdown, HTML, SVG, mermaid diagrams, or code into a standalone web page. ' +
+        'Returns the public URL. Use after creating an artifact when the user wants to share it publicly.',
+      parameters: Type.Object({
+        title: Type.String({ description: 'Page title' }),
+        content: Type.String({ description: 'The content to publish' }),
+        type: Type.Union(
+          [
+            Type.Literal('html'),
+            Type.Literal('markdown'),
+            Type.Literal('svg'),
+            Type.Literal('mermaid'),
+            Type.Literal('code'),
+          ],
+          { description: 'Content type: html, markdown, svg, mermaid, or code' },
+        ),
+        language: Type.Optional(
+          Type.String({ description: 'Language for code syntax (e.g. "typescript")' }),
+        ),
+        slug: Type.Optional(
+          Type.String({ description: 'Custom URL slug (auto-generated if omitted)' }),
+        ),
+      }),
+      async execute(_toolCallId, params) {
+        const output = executePublish(params, callbacks?.domain)
         return toolResult(output)
       },
     }),
@@ -946,19 +983,28 @@ export function buildTools(
     )
   }
 
-  // ── Web search (always registered — returns setup instructions if not configured) ──
+  // ── Web search (always registered — SearXNG free, Brave paid, or setup instructions) ──
   {
-    const braveConnector = config.connectors.find(
+    // Prefer SearXNG (free, self-hosted), fall back to Brave (paid)
+    const searxng = config.connectors.find(
+      (c) => c.id === 'searxng' && c.enabled && c.baseUrl,
+    )
+    const brave = config.connectors.find(
       (c) => c.id === 'brave-search' && c.enabled && c.apiKey,
     )
-    const apiKey = braveConnector?.apiKey
+    const provider: import('./tools/web-search.js').SearchProvider | null = searxng?.baseUrl
+      ? { type: 'searxng', baseUrl: searxng.baseUrl }
+      : brave?.apiKey
+        ? { type: 'brave', apiKey: brave.apiKey }
+        : null
+
     tools.push(
       defineTool({
         name: 'web_search',
         label: 'Web Search',
         description:
-          'Search the web using Brave Search. Returns titles, URLs, and snippets. ' +
-          'Use for finding current information, researching topics, discovering resources, and answering questions that need up-to-date data. ' +
+          'Search the web for current information. Returns titles, URLs, and snippets. ' +
+          'Use for researching topics, discovering resources, and answering questions that need up-to-date data. ' +
           'If not configured, tells the user how to enable it.',
         parameters: Type.Object({
           query: Type.String({ description: 'Search query' }),
@@ -971,27 +1017,31 @@ export function buildTools(
               [Type.Literal('pd'), Type.Literal('pw'), Type.Literal('pm'), Type.Literal('py')],
               {
                 description:
-                  'Filter by freshness: pd=past day, pw=past week, pm=past month, py=past year',
+                  'Filter by freshness: pd=past day, pw=past week, pm=past month, py=past year (Brave only)',
               },
             ),
           ),
           country: Type.Optional(
-            Type.String({ description: 'Country code for results, e.g. "US", "GB", "DE"' }),
+            Type.String({ description: 'Country code for results, e.g. "US", "GB", "DE" (Brave only)' }),
           ),
         }),
         async execute(_toolCallId, params) {
-          if (!apiKey) {
+          if (!provider) {
             return toolResult(
-              'Web search is not configured. To enable it:\n' +
+              'Web search is not configured. To enable it:\n\n' +
+                '**Free (self-hosted):**\n' +
+                '1. Go to Settings → Connectors\n' +
+                '2. Find "Web Search" (SearXNG) and click Connect\n' +
+                '3. Enter your SearXNG instance URL\n\n' +
+                '**Paid ($4/mo):**\n' +
                 '1. Go to Settings → Connectors\n' +
                 '2. Find "Brave Search" and click Connect\n' +
-                '3. Enter your Brave Search API key (get one free at https://brave.com/search/api/)\n' +
-                '4. Once connected, web search will be available.\n\n' +
+                '3. Enter your API key from https://brave.com/search/api/\n\n' +
                 'In the meantime, you can use the browser tool to fetch specific URLs if you have them.',
               true,
             )
           }
-          const output = await executeWebSearch(params, apiKey)
+          const output = await executeWebSearch(params, provider)
           return toolResult(output)
         },
       }),

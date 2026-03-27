@@ -72,9 +72,12 @@ export function executeMemory(input: MemoryInput, conversationId?: string): stri
       }
 
       // Fallback: check the other scope
-      const otherDir = scope === 'global'
-        ? (conversationId ? getConversationMemoryDir(conversationId) : null)
-        : GLOBAL_MEMORY_DIR
+      const otherDir =
+        scope === 'global'
+          ? conversationId
+            ? getConversationMemoryDir(conversationId)
+            : null
+          : GLOBAL_MEMORY_DIR
       if (otherDir) {
         const otherFile = keyToFile(input.key, otherDir)
         if (existsSync(otherFile)) {
@@ -97,7 +100,11 @@ export function executeMemory(input: MemoryInput, conversationId?: string): stri
         if (existsSync(convDir)) {
           for (const f of readdirSync(convDir).filter((f) => f.endsWith('.md'))) {
             const content = readFileSync(join(convDir, f), 'utf-8')
-            const firstLine = content.split('\n').find((l) => l.startsWith('# '))?.slice(2) || f.replace('.md', '')
+            const firstLine =
+              content
+                .split('\n')
+                .find((l) => l.startsWith('# '))
+                ?.slice(2) || f.replace('.md', '')
             if (!query || firstLine.toLowerCase().includes(query)) {
               results.push({ key: firstLine, scope: 'conversation' })
             }
@@ -109,7 +116,11 @@ export function executeMemory(input: MemoryInput, conversationId?: string): stri
       if (existsSync(GLOBAL_MEMORY_DIR)) {
         for (const f of readdirSync(GLOBAL_MEMORY_DIR).filter((f) => f.endsWith('.md'))) {
           const content = readFileSync(join(GLOBAL_MEMORY_DIR, f), 'utf-8')
-          const firstLine = content.split('\n').find((l) => l.startsWith('# '))?.slice(2) || f.replace('.md', '')
+          const firstLine =
+            content
+              .split('\n')
+              .find((l) => l.startsWith('# '))
+              ?.slice(2) || f.replace('.md', '')
           if (!query || firstLine.toLowerCase().includes(query)) {
             results.push({ key: firstLine, scope: 'global' })
           }

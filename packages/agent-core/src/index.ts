@@ -1,5 +1,5 @@
 export { SYSTEM_PROMPT, buildTools, needsConfirmation, type ToolCallbacks } from './agent.js'
-export { type JobActionHandler, type JobToolInput } from './tools/job.js'
+export type { JobActionHandler, JobToolInput } from './tools/job.js'
 export { McpClient, McpManager, type McpServerConfig, type ConnectorStatus } from './mcp/index.js'
 export {
   type CompactionConfig,
@@ -28,4 +28,5 @@ export {
   type SubAgentEventHandler,
 } from './session.js'
 export { type ContextInfo, assembleConversationContext } from './context.js'
+export { executePublish, type PublishInput } from './tools/publish.js'
 export { initTracing, flushTraces } from './tracing.js'

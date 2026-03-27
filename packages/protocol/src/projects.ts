@@ -82,6 +82,12 @@ export interface Job {
   // Runner (extensibility: 'local' | 'modal' | 'daytona')
   runner: string
 
+  // Token budget (for agent jobs)
+  tokenBudgetPerRun: number // max tokens per run (0 = unlimited)
+  tokenBudgetMonthly: number // max tokens per month (0 = unlimited)
+  tokensUsedThisMonth: number // running total, resets monthly
+  tokensUsedLastRun: number // tokens consumed in the most recent run
+
   // Runtime state
   lastRun: JobRunRecord | null
   nextRun: number | null // timestamp for scheduled jobs

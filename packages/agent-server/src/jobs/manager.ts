@@ -32,6 +32,17 @@ function generateId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`
 }
 
+function defaultTimeoutForKind(kind: Job['kind']): number {
+  switch (kind) {
+    case 'task':
+      return 300 // 5 min
+    case 'agent':
+      return 600 // 10 min
+    case 'long-running':
+      return 0 // intentionally unlimited
+  }
+}
+
 export type JobManagerEvent = JobEventMessage | NotificationEventMessage
 
 export class JobManager {
@@ -179,10 +190,14 @@ export class JobManager {
       prompt: spec.prompt,
       workingDirectory,
       env: spec.env ?? {},
-      timeout: spec.timeout ?? 0,
+      timeout: spec.timeout ?? defaultTimeoutForKind(spec.kind),
       restartPolicy: spec.restartPolicy ?? (spec.kind === 'long-running' ? 'on-failure' : 'never'),
       maxRestarts: spec.maxRestarts ?? 3,
       runner: 'local',
+      tokenBudgetPerRun: spec.kind === 'agent' ? 100_000 : 0, // default 100k for agents
+      tokenBudgetMonthly: 0, // unlimited by default
+      tokensUsedThisMonth: 0,
+      tokensUsedLastRun: 0,
       lastRun: null,
       nextRun,
       runCount: 0,
@@ -402,20 +417,73 @@ export class JobManager {
     return job
   }
 
+  /** Build a job action callback so agent jobs can create/manage other jobs */
+  private buildJobActionCallback(): import('@anton/agent-core').JobActionHandler {
+    return async (projectId, input) => {
+      switch (input.operation) {
+        case 'create': {
+          if (!input.name) return 'Error: name is required'
+          const trigger = input.schedule
+            ? { type: 'cron' as const, schedule: input.schedule }
+            : { type: 'manual' as const }
+          const job = this.createJob(projectId, {
+            name: input.name,
+            description: input.description,
+            kind: input.kind ?? 'task',
+            command: input.command,
+            prompt: input.prompt,
+            args: input.args,
+            trigger,
+          })
+          return `Job created: ${job.name} (id: ${job.id})`
+        }
+        case 'list':
+          return (
+            this.listJobs(projectId)
+              .map((j) => `- ${j.name} (${j.id}): ${j.status}`)
+              .join('\n') || 'No jobs.'
+          )
+        case 'start':
+          return this.startJob(input.jobId!)
+            ? `Job started: ${input.jobId}`
+            : `Error: job not found: ${input.jobId}`
+        case 'stop':
+          return this.stopJob(input.jobId!)
+            ? `Job stopped: ${input.jobId}`
+            : `Error: job not found: ${input.jobId}`
+        case 'logs': {
+          const result = this.getJobLogs(input.jobId!, undefined, input.tail ?? 50)
+          return result?.lines.join('\n') || 'No logs.'
+        }
+        case 'status': {
+          const j = this.getJob(input.jobId!)
+          return j ? `${j.name}: ${j.status} (runs: ${j.runCount})` : 'Job not found.'
+        }
+        default:
+          return `Unknown operation: ${input.operation}`
+      }
+    }
+  }
+
   private async runAgentSession(job: Job, sessionId: string, runId: string): Promise<void> {
     // Try to resume existing session (for recurring agent jobs that maintain context)
-    let session: Session | null = resumeSession(sessionId, this.config, {
+    const maxDurationMs = job.timeout > 0 ? job.timeout * 1000 : undefined
+
+    // Build the onJobAction callback so agent jobs can manage other jobs
+    const onJobAction = this.buildJobActionCallback()
+
+    const sessionOpts = {
       projectId: job.projectId,
       projectWorkspacePath: job.workingDirectory,
       mcpManager: this.mcpManager ?? undefined,
-    })
+      onJobAction,
+      maxDurationMs,
+      maxTokenBudget: job.tokenBudgetPerRun > 0 ? job.tokenBudgetPerRun : undefined,
+    }
 
+    let session: Session | null = resumeSession(sessionId, this.config, sessionOpts)
     if (!session) {
-      session = createSession(sessionId, this.config, {
-        projectId: job.projectId,
-        projectWorkspacePath: job.workingDirectory,
-        mcpManager: this.mcpManager ?? undefined,
-      })
+      session = createSession(sessionId, this.config, sessionOpts)
     }
 
     this.agentSessions.set(job.id, session)
@@ -455,6 +523,10 @@ export class JobManager {
       }
       job.lastRun = runRecord
       job.status = job.kind === 'agent' && job.trigger.type === 'cron' ? 'idle' : 'completed'
+      // Track token usage from the session
+      const usage = session.getCumulativeUsage()
+      job.tokensUsedLastRun = usage.totalTokens
+      job.tokensUsedThisMonth += usage.totalTokens
       job.updatedAt = Date.now()
       this.persistJob(job)
       this.persistRunResult(job, runRecord)

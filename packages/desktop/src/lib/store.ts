@@ -1,6 +1,14 @@
-import { type AskUserQuestion, Channel, type Project, type TokenUsage } from '@anton/protocol'
+import {
+  type AskUserQuestion,
+  Channel,
+  type Project,
+  type TokenUsage,
+  type UsageStatsDayBreakdown,
+  type UsageStatsModelBreakdown,
+  type UsageStatsSessionEntry,
+} from '@anton/protocol'
 import { create } from 'zustand'
-import { type Artifact, extractArtifact } from './artifacts.js'
+import { type Artifact, type ArtifactRenderType, extractArtifact } from './artifacts.js'
 import { type ConnectionStatus, connection } from './connection.js'
 import {
   type Conversation,
@@ -28,6 +36,13 @@ export interface ChatMessage {
   toolInput?: Record<string, unknown>
   isError?: boolean
   parentToolCallId?: string // set when this message is from a sub-agent
+}
+
+export interface CitationSource {
+  index: number
+  title: string
+  url: string
+  domain: string
 }
 
 export interface ChatImageAttachment {
@@ -101,6 +116,11 @@ export interface ConnectorRegistryInfo {
   args?: string[]
   requiredEnv: string[]
   featured?: boolean
+  setupGuide?: {
+    steps: string[]
+    url: string
+    urlLabel?: string
+  }
 }
 
 export interface UpdateInfo {
@@ -122,6 +142,23 @@ export type UpdateStage =
 export type SidebarTab = 'history' | 'skills'
 
 // ── Saved machines (localStorage) ───────────────────────────────────
+
+// ── Citation parsing ─────────────────────────────────────────────
+
+function parseCitationSources(output: string): CitationSource[] {
+  const sources: CitationSource[] = []
+  const regex = /\[(\d+)\]\s+(.+?)\s*\|\s*(\S+)\s*—\s*(https?:\/\/\S+)/g
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(output)) !== null) {
+    sources.push({
+      index: Number.parseInt(match[1], 10),
+      title: match[2].trim(),
+      domain: match[3].trim(),
+      url: match[4].trim(),
+    })
+  }
+  return sources
+}
 
 const MACHINES_KEY = 'anton.machines'
 const MODEL_KEY = 'anton.selectedModel'
@@ -209,10 +246,18 @@ interface AppState {
   // so their tool_results can be silently discarded
   _hiddenToolCallIds: Set<string>
 
+  // Citations: maps assistant message ID → sources extracted from web_search
+  citations: Map<string, CitationSource[]>
+  _pendingCitationSources: CitationSource[]
+  _pendingWebSearchToolCallIds: Set<string>
+
   // Artifacts
   artifacts: Artifact[]
   activeArtifactId: string | null
   artifactPanelOpen: boolean
+  artifactSearchQuery: string
+  artifactFilterType: ArtifactRenderType | 'all'
+  artifactViewMode: 'list' | 'detail'
 
   // Per-session status tracking
   sessionStatuses: Map<string, { status: AgentStatus; detail?: string }>
@@ -247,11 +292,20 @@ interface AppState {
   projectSessionsLoading: boolean // true while fetching project sessions
   projectFiles: { name: string; size: number; mimeType: string }[]
   projectFilesLoading: boolean
-  projectJobs: import('@anton/protocol').Job[]
-  projectJobsLoading: boolean
-  selectedJobId: string | null
-  jobLogs: string[]
+  projectAgents: import('@anton/protocol').Job[]
+  projectAgentsLoading: boolean
+  selectedAgentId: string | null
+  agentLogs: string[]
   activeView: 'chat' | 'projects' | 'terminal'
+
+  // Usage stats (server-computed)
+  usageStats: {
+    totals: TokenUsage
+    byModel: UsageStatsModelBreakdown[]
+    byDay: UsageStatsDayBreakdown[]
+    sessions: UsageStatsSessionEntry[]
+  } | null
+  usageStatsLoading: boolean
 
   // Connectors
   connectors: ConnectorStatusInfo[]
@@ -270,9 +324,9 @@ interface AppState {
   removeProject: (id: string) => void
   setProjectSessions: (sessions: SessionMeta[]) => void
   setProjectFiles: (files: { name: string; size: number; mimeType: string }[]) => void
-  setProjectJobs: (jobs: import('@anton/protocol').Job[]) => void
-  setSelectedJob: (id: string | null) => void
-  setJobLogs: (lines: string[]) => void
+  setProjectAgents: (jobs: import('@anton/protocol').Job[]) => void
+  setSelectedAgent: (id: string | null) => void
+  setAgentLogs: (lines: string[]) => void
   setActiveProjectSession: (sessionId: string | null) => void
   setActiveView: (view: 'chat' | 'projects' | 'terminal') => void
 
@@ -314,6 +368,8 @@ interface AppState {
 
   // Usage actions
   setUsage: (turn: TokenUsage | null, session: TokenUsage | null) => void
+  requestUsageStats: () => void
+  setUsageStats: (stats: AppState['usageStats']) => void
 
   // Agent status & steps actions
   setAgentStatusDetail: (detail: string | null) => void
@@ -330,6 +386,10 @@ interface AppState {
   setActiveArtifact: (id: string | null) => void
   setArtifactPanelOpen: (open: boolean) => void
   clearArtifacts: () => void
+  setArtifactSearchQuery: (query: string) => void
+  setArtifactFilterType: (type: ArtifactRenderType | 'all') => void
+  setArtifactViewMode: (mode: 'list' | 'detail') => void
+  updateArtifactPublishStatus: (artifactId: string, url: string, slug: string) => void
 
   // Confirm actions
   setPendingConfirm: (
@@ -401,9 +461,15 @@ export const useStore = create<AppState>((set, get) => {
     _currentAssistantMsgId: null,
     _sessionAssistantMsgIds: new Map(),
     _hiddenToolCallIds: new Set(),
+    citations: new Map(),
+    _pendingCitationSources: [],
+    _pendingWebSearchToolCallIds: new Set(),
     artifacts: [],
     activeArtifactId: null,
     artifactPanelOpen: false,
+    artifactSearchQuery: '',
+    artifactFilterType: 'all' as const,
+    artifactViewMode: 'list' as const,
     sessionStatuses: new Map(),
     _activeStreamingSessions: new Set(),
     _sessionsNeedingHistoryRefresh: new Set(),
@@ -424,11 +490,15 @@ export const useStore = create<AppState>((set, get) => {
     projectSessionsLoading: false,
     projectFiles: [],
     projectFilesLoading: false,
-    projectJobs: [],
-    projectJobsLoading: false,
-    selectedJobId: null,
-    jobLogs: [],
+    projectAgents: [],
+    projectAgentsLoading: false,
+    selectedAgentId: null,
+    agentLogs: [],
     activeView: 'chat',
+
+    // Usage stats
+    usageStats: null,
+    usageStatsLoading: false,
 
     // Connectors
     connectors: [],
@@ -451,10 +521,10 @@ export const useStore = create<AppState>((set, get) => {
         projectSessionsLoading: !!id,
         projectFiles: [],
         projectFilesLoading: !!id,
-        projectJobs: [],
-        projectJobsLoading: !!id,
-        selectedJobId: null,
-        jobLogs: [],
+        projectAgents: [],
+        projectAgentsLoading: !!id,
+        selectedAgentId: null,
+        agentLogs: [],
       })
     },
     addProject: (project) => {
@@ -485,9 +555,9 @@ export const useStore = create<AppState>((set, get) => {
     setProjectSessions: (sessions) =>
       set({ projectSessions: sessions, projectSessionsLoading: false }),
     setProjectFiles: (files) => set({ projectFiles: files, projectFilesLoading: false }),
-    setProjectJobs: (jobs) => set({ projectJobs: jobs, projectJobsLoading: false }),
-    setSelectedJob: (id) => set({ selectedJobId: id }),
-    setJobLogs: (lines) => set({ jobLogs: lines }),
+    setProjectAgents: (jobs) => set({ projectAgents: jobs, projectAgentsLoading: false }),
+    setSelectedAgent: (id) => set({ selectedAgentId: id }),
+    setAgentLogs: (lines) => set({ agentLogs: lines }),
     setActiveProjectSession: (sessionId) => set({ activeProjectSessionId: sessionId }),
     setActiveView: (view) => {
       if (view === 'chat') {
@@ -560,6 +630,7 @@ export const useStore = create<AppState>((set, get) => {
           workingStartedAt: Date.now(),
           lastTurnDurationMs: null,
           turnUsage: null,
+          currentTasks: [], // Clear previous turn's task list
           workingSessionId: sessionId || null,
         })
 
@@ -799,9 +870,18 @@ export const useStore = create<AppState>((set, get) => {
         })
 
         saveConversations(conversations)
+        // Associate pending citation sources with new assistant message
+        const citationUpdate: Record<string, unknown> = {}
+        if (newMsgId && state._pendingCitationSources.length > 0) {
+          const newCitations = new Map(state.citations)
+          newCitations.set(newMsgId, state._pendingCitationSources)
+          citationUpdate.citations = newCitations
+          citationUpdate._pendingCitationSources = []
+        }
         return {
           conversations,
           ...(newMsgId ? { _currentAssistantMsgId: newMsgId } : {}),
+          ...citationUpdate,
         }
       })
     },
@@ -840,7 +920,15 @@ export const useStore = create<AppState>((set, get) => {
         }
 
         saveConversations(conversations)
-        return { conversations }
+        // Associate pending citation sources with new assistant message
+        const citationUpdate: Record<string, unknown> = {}
+        if (newMsgId && state._pendingCitationSources.length > 0) {
+          const newCitations = new Map(state.citations)
+          newCitations.set(newMsgId, state._pendingCitationSources)
+          citationUpdate.citations = newCitations
+          citationUpdate._pendingCitationSources = []
+        }
+        return { conversations, ...citationUpdate }
       })
     },
 
@@ -931,6 +1019,12 @@ export const useStore = create<AppState>((set, get) => {
 
     setUsage: (turn, session) => set({ turnUsage: turn, sessionUsage: session }),
 
+    requestUsageStats: () => {
+      set({ usageStatsLoading: true })
+      connection.send(Channel.AI, { type: 'usage_stats' })
+    },
+    setUsageStats: (stats) => set({ usageStats: stats, usageStatsLoading: false }),
+
     setAgentStatusDetail: (detail) => set({ agentStatusDetail: detail }),
 
     addAgentStep: (step) => set((state) => ({ agentSteps: [...state.agentSteps, step] })),
@@ -982,6 +1076,19 @@ export const useStore = create<AppState>((set, get) => {
     setArtifactPanelOpen: (open) => set({ artifactPanelOpen: open }),
 
     clearArtifacts: () => set({ artifacts: [], activeArtifactId: null, artifactPanelOpen: false }),
+
+    setArtifactSearchQuery: (query) => set({ artifactSearchQuery: query }),
+    setArtifactFilterType: (type) => set({ artifactFilterType: type }),
+    setArtifactViewMode: (mode) => set({ artifactViewMode: mode }),
+
+    updateArtifactPublishStatus: (artifactId, url, slug) =>
+      set((state) => ({
+        artifacts: state.artifacts.map((a) =>
+          a.id === artifactId
+            ? { ...a, publishedUrl: url, publishedSlug: slug, publishedAt: Date.now() }
+            : a,
+        ),
+      })),
 
     setPendingConfirm: (confirm) => set({ pendingConfirm: confirm }),
 
@@ -1035,10 +1142,10 @@ export const useStore = create<AppState>((set, get) => {
         projectSessionsLoading: false,
         projectFiles: [],
         projectFilesLoading: false,
-        projectJobs: [],
-        projectJobsLoading: false,
-        selectedJobId: null,
-        jobLogs: [],
+        projectAgents: [],
+        projectAgentsLoading: false,
+        selectedAgentId: null,
+        agentLogs: [],
       })
       // DO NOT clear conversations or active conversation — preserve chat history
       // On reconnect, session_history will sync the server's persisted state
@@ -1090,7 +1197,7 @@ connection.onMessage((channel, msg) => {
   if (channel === Channel.EVENTS && msg.type === 'job_event') {
     // Refresh job list when a job state changes
     if (msg.projectId === store.activeProjectId) {
-      connection.sendJobsList(msg.projectId)
+      connection.sendAgentsList(msg.projectId)
     }
     return
   }
@@ -1218,6 +1325,10 @@ connection.onMessage((channel, msg) => {
         timestamp: Date.now(),
         parentToolCallId: msg.parentToolCallId,
       })
+      // Track web_search calls for citation extraction
+      if (msg.name === 'web_search') {
+        store._pendingWebSearchToolCallIds.add(msg.id)
+      }
       if (!msg.parentToolCallId) {
         store.addAgentStep({
           id: msg.id,
@@ -1247,6 +1358,16 @@ connection.onMessage((channel, msg) => {
         parentToolCallId: msg.parentToolCallId,
       }
       addMsg(resultMsg)
+      // Extract citation sources from web_search results
+      if (store._pendingWebSearchToolCallIds.has(msg.id)) {
+        store._pendingWebSearchToolCallIds.delete(msg.id)
+        if (!msg.isError) {
+          const sources = parseCitationSources(msg.output)
+          if (sources.length > 0) {
+            store._pendingCitationSources = sources
+          }
+        }
+      }
       if (!msg.parentToolCallId) {
         store.updateAgentStep(msg.id, {
           status: msg.isError ? 'error' : 'complete',
@@ -1279,6 +1400,17 @@ connection.onMessage((channel, msg) => {
       })
       break
 
+    case 'sub_agent_progress':
+      // Live progress text from sub-agent — rendered inside SubAgentGroup pill
+      addMsg({
+        id: `sa_progress_${msg.toolCallId}_${Date.now()}`,
+        role: 'assistant',
+        content: msg.content,
+        timestamp: Date.now(),
+        parentToolCallId: msg.toolCallId,
+      })
+      break
+
     case 'artifact':
       // Server-side artifact detection — add directly to store
       store.addArtifact({
@@ -1292,7 +1424,15 @@ connection.onMessage((channel, msg) => {
         content: msg.content,
         toolCallId: `tc_${msg.toolCallId}`,
         timestamp: Date.now(),
+        conversationId: store.activeConversationId || undefined,
+        projectId: store.activeProjectId || undefined,
       })
+      break
+
+    case 'publish_artifact_response':
+      if (msg.success && msg.artifactId) {
+        store.updateArtifactPublishStatus(msg.artifactId, msg.publicUrl, msg.slug)
+      }
       break
 
     case 'confirm':
@@ -1586,6 +1726,15 @@ connection.onMessage((channel, msg) => {
       store.setSessions(msg.sessions)
       break
 
+    case 'usage_stats_response':
+      store.setUsageStats({
+        totals: msg.totals,
+        byModel: msg.byModel,
+        byDay: msg.byDay,
+        sessions: msg.sessions,
+      })
+      break
+
     case 'session_history_response': {
       // Convert server history entries to ChatMessage format
       type HistoryEntry = {
@@ -1704,6 +1853,28 @@ connection.onMessage((channel, msg) => {
           }
         }
       }
+
+      // Reconstruct citations from web_search tool results in history
+      {
+        const newCitations = new Map(store.citations)
+        let pendingSources: CitationSource[] = []
+        for (const m of allMessages) {
+          if (m.id.startsWith('tr_')) {
+            const baseId = m.id.slice(3)
+            const call = toolCalls.get(baseId)
+            if (call?.toolName === 'web_search' && !m.isError) {
+              const sources = parseCitationSources(m.content)
+              if (sources.length > 0) pendingSources = sources
+            }
+          } else if (m.role === 'assistant' && pendingSources.length > 0) {
+            newCitations.set(m.id, pendingSources)
+            pendingSources = []
+          }
+        }
+        if (newCitations.size > store.citations.size) {
+          useStore.setState({ citations: newCitations })
+        }
+      }
       break
     }
 
@@ -1787,33 +1958,33 @@ connection.onMessage((channel, msg) => {
     // ── Job responses ──────────────────────────────────────────────
     case 'jobs_list_response':
       if (msg.projectId === store.activeProjectId) {
-        store.setProjectJobs(msg.jobs)
+        store.setProjectAgents(msg.jobs)
       }
       break
 
     case 'job_created': {
-      const jobs = [...store.projectJobs]
+      const jobs = [...store.projectAgents]
       const idx = jobs.findIndex((j) => j.id === msg.job.id)
       if (idx >= 0) jobs[idx] = msg.job
       else jobs.push(msg.job)
-      store.setProjectJobs(jobs)
+      store.setProjectAgents(jobs)
       break
     }
 
     case 'job_updated': {
-      const jobs = store.projectJobs.map((j) => (j.id === msg.job.id ? msg.job : j))
-      store.setProjectJobs(jobs)
+      const jobs = store.projectAgents.map((j) => (j.id === msg.job.id ? msg.job : j))
+      store.setProjectAgents(jobs)
       break
     }
 
     case 'job_deleted': {
-      const jobs = store.projectJobs.filter((j) => j.id !== msg.jobId)
-      store.setProjectJobs(jobs)
+      const jobs = store.projectAgents.filter((j) => j.id !== msg.jobId)
+      store.setProjectAgents(jobs)
       break
     }
 
     case 'job_logs_response':
-      store.setJobLogs(msg.lines)
+      store.setAgentLogs(msg.lines)
       break
 
     // ── Connector responses ──────────────────────────────────────

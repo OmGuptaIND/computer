@@ -111,11 +111,11 @@ const TOPIC_PATTERNS: TopicPattern[] = [
 // ── Default suggestions for new users ───────────────────────────────
 
 const DEFAULT_SUGGESTIONS = [
-  'What can you help me with? Show me something cool.',
-  'Check my system — disk space, running processes, and open ports',
-  'Help me set up a new project with best practices',
-  'Analyze this codebase and summarize the architecture',
-  'Build me a personal dashboard as an HTML artifact',
+  'What can you do? Surprise me with something useful.',
+  'Scan my system — disk space, running processes, and open ports',
+  'Set up a new project with best practices and CI/CD',
+  'Read this codebase and explain how it all fits together',
+  'Build me a personal dashboard I can actually use every day',
 ]
 
 // ── Suggestion generation ───────────────────────────────────────────
@@ -123,6 +123,8 @@ const DEFAULT_SUGGESTIONS = [
 export interface PersonalizedSuggestion {
   text: string
   source: 'history' | 'topic' | 'default'
+  /** If this suggestion comes from a project conversation, the project ID to navigate to */
+  projectId?: string
 }
 
 /**
@@ -164,7 +166,7 @@ export function generateSuggestions(conversations: Conversation[]): Personalized
     // Generate a follow-up prompt
     const followUp = generateFollowUp(title || prompt, prompt)
     if (followUp && !results.some((r) => r.text === followUp)) {
-      results.push({ text: followUp, source: 'history' })
+      results.push({ text: followUp, source: 'history', projectId: conv.projectId })
     }
   }
 
@@ -205,29 +207,39 @@ export function generateSuggestions(conversations: Conversation[]): Personalized
 function generateFollowUp(title: string, originalPrompt: string): string | null {
   const lower = originalPrompt.toLowerCase()
 
-  // If the original was about building something, suggest continuing
+  // Building/creating something — suggest continuing the work
   if (/^(build|create|make|set up|implement|design)/i.test(lower)) {
-    return `Continue working on: ${title}`
+    return `Continue building: ${title}`
   }
 
-  // If it was about fixing/debugging
+  // Fixing/debugging — suggest verifying or continuing the fix
   if (/^(fix|debug|solve|investigate|troubleshoot)/i.test(lower)) {
-    return `Check if the fix for "${title}" is still working`
+    return `Continue debugging: ${title}`
   }
 
-  // If it was about analysis/review
+  // Analysis/review
   if (/^(analyze|review|check|audit|inspect|monitor)/i.test(lower)) {
-    return `Run another check on: ${title}`
+    return `Follow up on: ${title}`
   }
 
-  // If it was about deployment
+  // Deployment
   if (/deploy|release|ship|publish/i.test(lower)) {
-    return `Check deployment status for: ${title}`
+    return `Check deployment: ${title}`
   }
 
-  // Generic follow-up
-  if (title.length <= 50) {
-    return `Continue: ${title}`
+  // Refactoring/optimization
+  if (/^(refactor|optimize|improve|clean|update|migrate)/i.test(lower)) {
+    return `Continue improving: ${title}`
+  }
+
+  // Research/learning
+  if (/^(explain|what|how|why|learn|understand|research)/i.test(lower)) {
+    return `Dive deeper into: ${title}`
+  }
+
+  // Generic follow-up — use "Pick up where I left off" style
+  if (title.length <= 60) {
+    return `Pick up: ${title}`
   }
 
   return null

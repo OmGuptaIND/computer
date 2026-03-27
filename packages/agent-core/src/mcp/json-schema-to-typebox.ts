@@ -5,7 +5,7 @@
  * Handles the common subset: object, string, number, boolean, array, enum.
  */
 
-import { Type, type TSchema } from '@sinclair/typebox'
+import { type TSchema, Type } from '@sinclair/typebox'
 
 export function jsonSchemaToTypebox(schema: Record<string, unknown>): TSchema {
   if (!schema || typeof schema !== 'object') {

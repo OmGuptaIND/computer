@@ -1,6 +1,5 @@
 import type { Project } from '@anton/protocol'
 import {
-  Bell,
   Brain,
   ChevronRight,
   FileText,
@@ -10,14 +9,12 @@ import {
   Type,
   Upload,
   X,
-  Zap,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { connection } from '../../lib/connection.js'
 import { useStore } from '../../lib/store.js'
 import { Skeleton, SkeletonLines } from '../Skeleton.js'
 import { Modal } from '../ui/Modal.js'
-import { ProjectJobs } from './ProjectJobs.js'
 
 interface Props {
   project: Project
@@ -447,23 +444,6 @@ export function ProjectConfigPanel({ project, loading }: Props) {
               Add instructions to tailor the agent's responses for this project.
             </p>
           )}
-        </ConfigSection>
-
-        {/* Jobs */}
-        <ConfigSection
-          icon={<Zap size={14} strokeWidth={1.5} />}
-          title="Jobs"
-          defaultOpen={project.stats.activeJobs > 0}
-        >
-          <ProjectJobs projectId={project.id} />
-        </ConfigSection>
-
-        {/* Notifications */}
-        <ConfigSection icon={<Bell size={14} strokeWidth={1.5} />} title="Notifications">
-          <p className="config-section__hint">
-            Activity feed for this project. Job results, errors, and things that need your
-            attention.
-          </p>
         </ConfigSection>
 
         {/* Files */}

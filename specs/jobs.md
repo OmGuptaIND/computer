@@ -1,122 +1,119 @@
-# Jobs System — Spec
+# Agents & Jobs System — Spec
 
 ## Overview
 
-Jobs are managed processes that Anton can create, run, schedule, and monitor. A job is a shell command or script that Anton spawns, captures output from, and manages the lifecycle of. Jobs enable automation like LinkedIn outreach, data pipelines, monitoring bots, and scheduled tasks — replacing $300/seat tools like Starnas.
+Agents are autonomous AI workers that Anton spawns, schedules, and monitors. An agent is a managed AI session (or shell process) with full project + MCP connector access that runs independently — on a schedule, on demand, or continuously. Agents enable automation like LinkedIn outreach, data pipelines, Reddit monitoring, and scheduled tasks — replacing $300/seat tools like Starnas.
+
+The key insight: **an agent IS a sub-agent session, but triggered by a scheduler instead of a chat turn.** The same sub-agent infrastructure (MCP connectors, project files, tool access, sub-agent spawning) powers both interactive sub-agents and autonomous scheduled agents.
 
 ## Architecture
 
 ```
-JobRunner (interface)          ← extensibility point
-  └── LocalJobRunner           ← spawns child processes (current)
-  └── ModalJobRunner           ← future: Modal sandboxes
-  └── DaytonaJobRunner         ← future: Daytona sandboxes
-
-JobManager                     ← CRUD, lifecycle, cron scheduling, log capture
-  ├── uses JobRunner to start/stop processes
-  ├── persists jobs to ~/.anton/projects/{id}/jobs/
-  ├── captures stdout/stderr to per-run log files
-  ├── emits events (started/completed/failed/crashed)
-  └── manages cron tick loop (30s interval)
-
-Agent "job" tool               ← lets the AI create/manage jobs via chat
-Protocol messages              ← desktop UI ↔ server communication
-Desktop UI                     ← job list, start/stop, log viewer
+User (in chat) ──► Main Agent ──► creates agent (job)
+                                      │
+                                      ▼
+                               JobManager stores it
+                                      │
+                               ┌──────┴──────┐
+                               │  Scheduler   │
+                               │  (30s tick)  │
+                               └──────┬──────┘
+                                      │ fires at cron time
+                                      ▼
+                               Agent Session spawns
+                               (full project + MCP powers)
+                                      │
+                               ┌──────┴──────┐
+                               │ Can spawn    │
+                               │ sub-agents   │
+                               │ in parallel  │
+                               └──────┬──────┘
+                                      │
+                                      ▼
+                               Results → logs, notifications,
+                               project memory, MCP actions
 ```
 
-## Job Types
+## Agent Types (JobKind)
 
-### Task Job (`kind: 'task'`)
-Run once, produce output, exit. Re-runnable. Resets to `idle` after completion.
-- Example: "Send today's batch of 40 LinkedIn connection requests"
-- Example: "Run the data export script"
+### Task (`kind: 'task'`)
+Shell process. Run once, produce output, exit. Re-runnable.
+- Example: `python export_data.py`
 
-### Long-Running Job (`kind: 'long-running'`)
-Start and keep running. Has restart policy for crash recovery.
-- Example: "Monitor Polymarket odds via WebSocket"
-- Example: "Watch for new leads in the CRM"
+### Agent (`kind: 'agent'`)
+AI session with a prompt. Gets full tool access (filesystem, shell, browser, MCP connectors). Can spawn sub-agents. Persists session across runs for context continuity.
+- Example: "Find top 5 Reddit quotes and push to Airtable"
+- Default timeout: 600s (10 min)
+- Default token budget: 100k per run
 
-## Job Lifecycle
+### Long-Running (`kind: 'long-running'`)
+Shell process that stays alive. Has restart policy for crash recovery.
+- Example: WebSocket monitor, file watcher
 
-```
-                  create
-                    │
-                    ▼
-    ┌──────────── idle ◄────────────┐
-    │               │               │
-    │            start              │
-    │               │          (task completes
-    │               ▼           successfully)
-    │           running ─────────►──┘
-    │            │    │
-    │          stop   crash/fail
-    │            │    │
-    │            ▼    ▼
-    │          idle  error
-    │                 │
-    │           (if restart policy)
-    │                 │
-    │                 ▼
-    │             running (restart)
-    │
-    └──── delete (from any state)
-```
+## Sub-Agent Powers
 
-### Restart Policy (long-running jobs only)
-- `never` — don't restart on crash (default for task jobs)
-- `on-failure` — restart if exit code != 0 (default for long-running jobs)
-- `always` — always restart on exit
+Sub-agents (spawned by main agent or by agent jobs) have full capabilities:
 
-Max restarts: configurable, default 3. After exceeding, job stays in `error`.
+- **MCP connectors** — same connectors as the project (LinkedIn, Reddit, Airtable, etc.)
+- **Project scope** — projectId, workspace directory, project files
+- **Job management** — can create/start/stop other agents
+- **Shared memory** — project-scoped via `conversationId: 'project-{id}'`
+- **Sub-agent spawning** — up to 2 levels of nesting (sub-agents can spawn sub-sub-agents)
+- **Safety limits** — 100k token budget, 10 min timeout, 50 max turns per sub-agent
 
-## Scheduling
+## MCP Concurrency
 
-Jobs with `trigger: { type: 'cron', schedule: '...' }` are scheduled via a 5-field cron expression (minute hour day-of-month month day-of-week). The JobManager checks every 30 seconds for due jobs.
+MCP requests are serialized per connector via a request queue in `McpClient`. Only one request is in-flight per MCP server process at a time, preventing race conditions in non-thread-safe MCP servers. Responses are matched by JSON-RPC ID.
 
-Cron supports: `*`, `*/N` (step), `N-M` (range), `N,M,O` (list).
+## Session Model
+
+Each agent has its **own persistent session** that builds context over time:
+- Run 1: Fresh session → does work → session persisted
+- Run 2: Resume session → has memory of Run 1 → does work → persisted
+- Compaction automatically manages context window as it grows
+
+Plus **project context** injected into the system prompt (shared across all agents).
+Plus **project memory** via the memory tool (shared, persistent key-value store).
+
+## Token Budget
+
+Each agent tracks token usage:
+- `tokenBudgetPerRun` — max tokens per run (default 100k for agents, enforced by Session)
+- `tokenBudgetMonthly` — max tokens per month (0 = unlimited)
+- `tokensUsedThisMonth` — running total
+- `tokensUsedLastRun` — last run's consumption
+
+Enforcement: Session's `maxTokenBudget` aborts the agent if exceeded mid-run.
+
+## WebSocket Resilience
+
+Sub-agent sessions (`sub_*`) and agent job sessions (`agent-job-*`) survive WebSocket disconnects. They continue running in the background and persist their results. Only interactive parent sessions are cancelled on disconnect.
+
+## MCP Health & Auto-Reconnect
+
+- `McpClient.ping()` — 5s health check
+- Auto-reconnect on disconnect (5s delay)
+- Optional periodic health check loop (60s interval)
+
+## Progress Streaming
+
+Sub-agents emit `sub_agent_progress` events with live text output. The parent agent and UI can see what a sub-agent is doing in real-time. Displayed in the `SubAgentGroup` component as expandable pills with "Agent" label, task description, and tool call summary.
 
 ## Storage
 
 ```
-~/.anton/projects/{projectId}/jobs/{jobId}/
-├── job.json              # Job definition and current state
-└── runs/
-    ├── {runId}.log       # stdout/stderr log (append-only)
-    └── {runId}.json      # Run metadata (start, end, exit code)
-```
-
-Notifications: `~/.anton/projects/{projectId}/notifications/feed.jsonl`
-
-## Job Definition (job.json)
-
-```typescript
-interface Job {
-  id: string              // "job_lxyz_abc123"
-  projectId: string
-  name: string
-  description: string
-  kind: 'task' | 'long-running'
-  status: 'idle' | 'running' | 'paused' | 'error' | 'completed'
-  trigger: { type: 'cron'; schedule: string } | { type: 'manual' } | { type: 'event'; event: string }
-
-  command: string         // shell command to execute
-  args: string[]
-  workingDirectory?: string  // defaults to project workspace
-  env: Record<string, string>
-  timeout: number         // seconds, 0 = no limit
-
-  restartPolicy: 'never' | 'on-failure' | 'always'
-  maxRestarts: number
-
-  runner: string          // 'local' (extensible to 'modal', 'daytona')
-
-  lastRun: JobRunRecord | null
-  nextRun: number | null  // timestamp for cron jobs
-  runCount: number
-
-  createdAt: number
-  updatedAt: number
-}
+~/.anton/projects/{projectId}/
+├── jobs/{jobId}/
+│   ├── job.json              # Agent definition and state
+│   └── runs/
+│       ├── {runId}.log       # stdout/stderr or session event log
+│       └── {runId}.json      # Run metadata (start, end, exit code, tokens)
+├── conversations/
+│   ├── agent-job-{projectId}-{jobId}/  # Agent session (persistent)
+│   └── proj_{projectId}_sess_{id}/     # User sessions
+├── notifications/
+│   └── feed.jsonl            # Notification history
+└── memory/                   # Shared project memory
 ```
 
 ## Protocol Messages
@@ -124,25 +121,25 @@ interface Job {
 ### Client → Server (AI Channel)
 | Message | Purpose |
 |---------|---------|
-| `job_create` | Create a new job |
-| `jobs_list` | List all jobs for a project |
-| `job_action` | Start, stop, or delete a job |
-| `job_logs` | Get log lines for a job run |
+| `job_create` | Create a new agent/job |
+| `jobs_list` | List all agents for a project |
+| `job_action` | Start, stop, or delete an agent |
+| `job_logs` | Get log lines for a run |
 
 ### Server → Client (AI Channel)
 | Message | Purpose |
 |---------|---------|
-| `job_created` | Job was created |
-| `jobs_list_response` | List of jobs |
-| `job_updated` | Job state changed |
-| `job_deleted` | Job was removed |
+| `job_created` | Agent was created |
+| `jobs_list_response` | List of agents |
+| `job_updated` | Agent state changed |
+| `job_deleted` | Agent was removed |
 | `job_logs_response` | Log lines |
 
 ### Server → Client (Events Channel)
 | Message | Purpose |
 |---------|---------|
 | `job_event` | Real-time: started, completed, failed, crashed, stopped |
-| `notification` | Notification: job lifecycle events persisted to JSONL |
+| `notification` | Persistent notification |
 
 ## Agent Tool
 
@@ -150,17 +147,37 @@ The `job` tool is available in project-scoped sessions. Operations:
 
 | Operation | Description |
 |-----------|-------------|
-| `create` | Create a new job (requires name, command, kind) |
-| `list` | Show all jobs in the project |
-| `start` | Start a job by ID |
-| `stop` | Stop a running job |
-| `delete` | Remove a job |
-| `logs` | View recent log output |
-| `status` | Check detailed status of a job |
+| `create` | Create agent (name, kind, command/prompt, schedule) |
+| `list` | Show all agents in the project |
+| `start` | Start an agent by ID |
+| `stop` | Stop a running agent |
+| `delete` | Remove an agent |
+| `logs` | View recent output |
+| `status` | Check detailed status |
+
+## Desktop UI
+
+### Project Landing — Tabbed View
+Main area has two tabs:
+- **Sessions** — user conversations (existing pattern)
+- **Agents** — autonomous agent cards with rich metadata
+
+### Agent Session Card
+Shows: status dot, bot icon, name, description, metadata pills (schedule in human-readable form, tokens used, last run status, run count), token budget bar, Run/Stop/Delete buttons.
+
+### Right Config Panel (settings only)
+- Instructions
+- Files
+- Memory
+
+Agents and Notifications removed from config panel — they're live content, not settings.
+
+### Sub-Agent Activity (in chat)
+Collapsible pill: `▸ ● Agent  [task description]` with tool summary line underneath. Expandable to show full tool call tree. Live progress text streamed via `sub_agent_progress` events.
 
 ## Runner Extensibility
 
-The `JobRunner` interface is the extensibility point:
+The `JobRunner` interface is the extensibility point for shell jobs:
 
 ```typescript
 interface JobRunner {
@@ -170,41 +187,52 @@ interface JobRunner {
 }
 ```
 
-To add a new runner:
-1. Implement `JobRunner` (e.g. `ModalJobRunner`)
-2. Register: `jobManager.registerRunner(new ModalJobRunner())`
-3. Jobs specify `runner: 'modal'` — no other changes needed
+Agent jobs use the Session system directly (not JobRunner).
 
-## Future Considerations
+## Timeout Defaults
 
-- **Job manifests** — Declare inputs/outputs/notifications schema upfront so the agent knows the job's interface before running it
-- **Listener jobs** — Long-running jobs that push events to the agent (e.g. Polymarket monitor). Simple HTTP POST to Anton's API.
-- **Remote jobs** — Jobs running on Modal/Daytona. HTTP replaces stdio as the communication channel.
-- **Live log streaming** — WebSocket push instead of polling for real-time log viewing
-- **Job templates** — Pre-built job definitions for common tasks (LinkedIn bot, Reddit poster, data sync)
-- **Job groups** — Multiple related jobs managed as a unit (e.g. "LinkedIn campaign" = send + monitor + report)
+| Kind | Default Timeout | Rationale |
+|------|----------------|-----------|
+| `task` | 300s (5 min) | Shell tasks should complete quickly |
+| `agent` | 600s (10 min) | AI sessions are heavier but finite |
+| `long-running` | 0 (unlimited) | Intentionally long-lived |
 
 ## Files
 
-### New
+### New files
 - `packages/agent-server/src/jobs/cron.ts` — Shared cron parser
 - `packages/agent-server/src/jobs/runner.ts` — JobRunner interface
 - `packages/agent-server/src/jobs/local-runner.ts` — Local process runner
-- `packages/agent-server/src/jobs/manager.ts` — JobManager class
+- `packages/agent-server/src/jobs/manager.ts` — JobManager (CRUD, lifecycle, scheduling, agent sessions)
 - `packages/agent-server/src/jobs/notifications.ts` — JSONL notification persistence
 - `packages/agent-server/src/jobs/index.ts` — Barrel export
-- `packages/agent-core/src/tools/job.ts` — Agent job tool
+- `packages/agent-core/src/tools/job.ts` — Agent job tool types
+- `packages/desktop/src/components/projects/ProjectAgents.tsx` — Agent cards + config panel section
+- `packages/desktop/src/components/projects/AgentDetailPanel.tsx` — Run history (planned)
 
-### Modified
-- `packages/protocol/src/projects.ts` — Extended Job type
-- `packages/protocol/src/messages.ts` — Job + notification messages
-- `packages/agent-server/src/scheduler.ts` — Imports shared cron
-- `packages/agent-server/src/server.ts` — Job handlers + wiring
-- `packages/agent-server/src/index.ts` — JobManager init
-- `packages/agent-core/src/agent.ts` — Job tool registration
-- `packages/agent-core/src/session.ts` — onJobAction callback passthrough
-- `packages/desktop/src/lib/store.ts` — Job state + message handlers
-- `packages/desktop/src/lib/connection.ts` — Job sender methods
-- `packages/desktop/src/components/projects/ProjectJobs.tsx` — Job list UI
-- `packages/desktop/src/components/projects/ProjectConfigPanel.tsx` — Integrated jobs section
-- `packages/desktop/src/index.css` — Job card + log viewer styles
+### Modified files
+- `packages/protocol/src/projects.ts` — Job/Agent types (JobKind, token budget fields)
+- `packages/protocol/src/messages.ts` — Job messages, progress events
+- `packages/agent-core/src/agent.ts` — Sub-agent powers, depth control, progress streaming, job tool
+- `packages/agent-core/src/session.ts` — Token budget, timeout, max turns enforcement
+- `packages/agent-core/src/mcp/mcp-client.ts` — Request queue, ping health check
+- `packages/agent-core/src/mcp/mcp-manager.ts` — Auto-reconnect, health check loop
+- `packages/agent-server/src/server.ts` — Job handlers, WebSocket resilience, session filtering
+- `packages/agent-server/src/index.ts` — JobManager initialization
+- `packages/agent-server/src/scheduler.ts` — Shared cron import
+- `packages/desktop/src/lib/store.ts` — Agent state (renamed from jobs)
+- `packages/desktop/src/lib/connection.ts` — Agent sender methods
+- `packages/desktop/src/components/projects/ProjectLanding.tsx` — Sessions/Agents tabs
+- `packages/desktop/src/components/projects/ProjectConfigPanel.tsx` — Removed Agents/Notifications sections
+- `packages/desktop/src/components/chat/SubAgentGroup.tsx` — Agent label + progress display
+- `packages/desktop/src/index.css` — Agent card, tab bar, sub-agent styles
+
+## Future Considerations
+
+- **Connector marketplace** — Pre-built MCP connectors for LinkedIn, Reddit, Airtable, etc.
+- **Agent templates** — Pre-built prompt + schedule + connector bundles
+- **Live session view** — Click an agent run to see its full session (tool calls, reasoning)
+- **Notification system** — Badge/dropdown pattern instead of panel section
+- **UI redesign** — Collapsible right panel, stronger visual hierarchy, simplified input area
+- **Agent-to-agent communication** — Agents triggering other agents based on results
+- **Remote execution** — Modal/Daytona runners for sandboxed agent execution

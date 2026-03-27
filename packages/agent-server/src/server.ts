@@ -55,6 +55,7 @@ import {
   type Session,
   type SubAgentEventHandler,
   createSession,
+  executePublish,
   resumeSession,
 } from '@anton/agent-core'
 import { Channel, decodeFrame, encodeFrame, parseJsonPayload } from '@anton/protocol'
@@ -591,6 +592,10 @@ export class AgentServer {
         this.handleSessionsList()
         break
 
+      case 'usage_stats':
+        this.handleUsageStats()
+        break
+
       case 'session_destroy':
         this.handleSessionDestroy(msg)
         break
@@ -694,6 +699,11 @@ export class AgentServer {
         this.handleConnectorRegistryList()
         break
 
+      // ── Publish artifacts ──
+      case 'publish_artifact':
+        this.handlePublishArtifact(msg)
+        break
+
       // ── Chat messages ──
       case 'message':
         await this.handleChatMessage(msg)
@@ -719,6 +729,61 @@ export class AgentServer {
           this.promptResolvers.get(msg.id)!(msg)
         }
         break
+    }
+  }
+
+  // ── Publish handler ─────────────────────────────────────────────
+
+  private handlePublishArtifact(msg: {
+    artifactId: string
+    title: string
+    content: string
+    contentType: 'html' | 'markdown' | 'svg' | 'mermaid' | 'code'
+    language?: string
+    slug?: string
+  }) {
+    try {
+      const result = executePublish(
+        {
+          title: msg.title,
+          content: msg.content,
+          type: msg.contentType,
+          language: msg.language,
+          slug: msg.slug,
+        },
+        process.env.DOMAIN,
+      )
+
+      // Extract slug and URL from the result string
+      const urlMatch = result.match(/→ (.+)$/)
+      const publicUrl = urlMatch?.[1] || ''
+      const slugMatch = publicUrl.match(/\/a\/([^/]+)$/)
+      const slug = slugMatch?.[1] || msg.slug || ''
+
+      this.sendToClient(Channel.AI, {
+        type: 'publish_artifact_response',
+        artifactId: msg.artifactId,
+        publicUrl,
+        slug,
+        success: true,
+      })
+
+      // Also emit as event for real-time UI updates
+      this.sendToClient(Channel.EVENTS, {
+        type: 'artifact_published',
+        artifactId: msg.artifactId,
+        slug,
+        publicUrl,
+      })
+    } catch (err: unknown) {
+      this.sendToClient(Channel.AI, {
+        type: 'publish_artifact_response',
+        artifactId: msg.artifactId,
+        publicUrl: '',
+        slug: '',
+        success: false,
+        error: (err as Error).message,
+      })
     }
   }
 
@@ -756,6 +821,7 @@ export class AgentServer {
         projectType,
         mcpManager: this.mcpManager,
         onJobAction: msg.projectId ? this.buildJobActionHandler() : undefined,
+        domain: process.env.DOMAIN,
       })
 
       this.wireSessionConfirmHandler(session)
@@ -907,6 +973,7 @@ export class AgentServer {
       messageCount: m.messageCount,
       createdAt: m.createdAt,
       lastActiveAt: m.lastActiveAt,
+      usage: m.usage,
     }))
 
     // Add in-memory sessions that aren't persisted yet (exclude project sessions)
@@ -921,6 +988,7 @@ export class AgentServer {
           messageCount: info.messageCount,
           createdAt: info.createdAt,
           lastActiveAt: info.lastActiveAt,
+          usage: info.usage,
         })
       }
     }
@@ -929,6 +997,132 @@ export class AgentServer {
 
     this.sendToClient(Channel.AI, {
       type: 'sessions_list_response',
+      sessions,
+    })
+  }
+
+  private handleUsageStats() {
+    const metas = listSessionMetas()
+
+    // Build a map of in-memory sessions (these have live usage data)
+    const inMemoryMap = new Map<string, ReturnType<Session['getInfo']>>()
+    for (const [id, session] of this.sessions) {
+      if (!id.match(/^proj_/)) {
+        inMemoryMap.set(id, session.getInfo())
+      }
+    }
+
+    type UsageEntry = { id: string; title: string; provider: string; model: string; createdAt: number; lastActiveAt: number; usage?: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number } }
+
+    // Start from persisted metas, but prefer in-memory usage when available
+    const allSessions: UsageEntry[] = metas.map((m) => {
+      const live = inMemoryMap.get(m.id)
+      return {
+        id: m.id,
+        title: live?.title ?? m.title,
+        provider: live?.provider ?? m.provider,
+        model: live?.model ?? m.model,
+        createdAt: m.createdAt,
+        lastActiveAt: live?.lastActiveAt ?? m.lastActiveAt,
+        usage: live?.usage ?? m.usage, // prefer live in-memory usage over persisted
+      }
+    })
+
+    // Add in-memory sessions not yet persisted
+    for (const [id, info] of inMemoryMap) {
+      if (!metas.some((m) => m.id === id)) {
+        allSessions.push({
+          id: info.id,
+          title: info.title,
+          provider: info.provider,
+          model: info.model,
+          createdAt: info.createdAt,
+          lastActiveAt: info.lastActiveAt,
+          usage: info.usage,
+        })
+      }
+    }
+
+    // Compute totals
+    const totals = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
+    const modelMap = new Map<string, { provider: string; inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number; sessionCount: number }>()
+    const dayMap = new Map<string, { inputTokens: number; outputTokens: number; totalTokens: number; sessionCount: number }>()
+
+    for (const s of allSessions) {
+      if (!s.usage) continue
+      totals.inputTokens += s.usage.inputTokens
+      totals.outputTokens += s.usage.outputTokens
+      totals.totalTokens += s.usage.totalTokens
+      totals.cacheReadTokens += s.usage.cacheReadTokens
+      totals.cacheWriteTokens += s.usage.cacheWriteTokens
+
+      // By model
+      const existing = modelMap.get(s.model)
+      if (existing) {
+        existing.inputTokens += s.usage.inputTokens
+        existing.outputTokens += s.usage.outputTokens
+        existing.totalTokens += s.usage.totalTokens
+        existing.cacheReadTokens += s.usage.cacheReadTokens
+        existing.cacheWriteTokens += s.usage.cacheWriteTokens
+        existing.sessionCount++
+      } else {
+        modelMap.set(s.model, {
+          provider: s.provider,
+          inputTokens: s.usage.inputTokens,
+          outputTokens: s.usage.outputTokens,
+          totalTokens: s.usage.totalTokens,
+          cacheReadTokens: s.usage.cacheReadTokens,
+          cacheWriteTokens: s.usage.cacheWriteTokens,
+          sessionCount: 1,
+        })
+      }
+
+      // By day
+      const date = new Date(s.createdAt).toISOString().slice(0, 10)
+      const dayEntry = dayMap.get(date)
+      if (dayEntry) {
+        dayEntry.inputTokens += s.usage.inputTokens
+        dayEntry.outputTokens += s.usage.outputTokens
+        dayEntry.totalTokens += s.usage.totalTokens
+        dayEntry.sessionCount++
+      } else {
+        dayMap.set(date, {
+          inputTokens: s.usage.inputTokens,
+          outputTokens: s.usage.outputTokens,
+          totalTokens: s.usage.totalTokens,
+          sessionCount: 1,
+        })
+      }
+    }
+
+    // Sort sessions by most recent, include only those with usage
+    const sessions = allSessions
+      .filter((s) => s.usage && s.usage.totalTokens > 0)
+      .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
+      .map((s) => ({
+        id: s.id,
+        title: s.title,
+        provider: s.provider,
+        model: s.model,
+        createdAt: s.createdAt,
+        totalTokens: s.usage!.totalTokens,
+        inputTokens: s.usage!.inputTokens,
+        outputTokens: s.usage!.outputTokens,
+      }))
+
+    const byModel = Array.from(modelMap.entries())
+      .map(([model, data]) => ({ model, ...data }))
+      .sort((a, b) => b.totalTokens - a.totalTokens)
+
+    const byDay = Array.from(dayMap.entries())
+      .map(([date, data]) => ({ date, ...data }))
+      .sort((a, b) => b.date.localeCompare(a.date))
+
+    this.sendToClient(Channel.AI, {
+      type: 'usage_stats_response',
+      totals,
+      byModel,
+      byDay,
       sessions,
     })
   }
@@ -942,6 +1136,11 @@ export class AgentServer {
     } else {
       const projMatch = msg.id.match(/^proj_(.+?)_sess_/)
       if (projMatch) projectId = projMatch[1]
+      // Also handle agent-job sessions: agent-job-{projectId}-{jobId}
+      if (!projectId) {
+        const agentJobMatch = msg.id.match(/^agent-job-(.+?)-job_/)
+        if (agentJobMatch) projectId = agentJobMatch[1]
+      }
     }
 
     try {
@@ -1386,7 +1585,10 @@ export class AgentServer {
   }
 
   private handleProjectSessionsList(msg: { projectId: string }) {
-    const persisted = listProjectSessions(msg.projectId)
+    // Filter out agent job sessions — they're internal, not user conversations
+    const persisted = listProjectSessions(msg.projectId).filter(
+      (s) => !s.id.startsWith('agent-job-'),
+    )
     const sessions = persisted.map((s) => ({
       id: s.id,
       title: s.title,
@@ -1532,6 +1734,7 @@ export class AgentServer {
         session = createSession(DEFAULT_SESSION_ID, this.config, {
           onSubAgentEvent: this.makeSubAgentEventHandler(DEFAULT_SESSION_ID),
           mcpManager: this.mcpManager,
+          domain: process.env.DOMAIN,
         })
         this.wireSessionConfirmHandler(session)
         this.wirePlanConfirmHandler(session)
@@ -1967,8 +2170,8 @@ export class AgentServer {
 
   private buildConnectorStatus(c: ConnectorConfig) {
     const mcpStatus = this.mcpManager.getStatus().find((s) => s.id === c.id)
-    // API connectors are "connected" when they have an apiKey configured
-    const isApiConnected = c.type === 'api' && !!c.apiKey && c.enabled
+    // API connectors are "connected" when they have an apiKey or baseUrl configured
+    const isApiConnected = c.type === 'api' && (!!c.apiKey || !!c.baseUrl) && c.enabled
     return {
       id: c.id,
       name: c.name,

@@ -1,15 +1,9 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Circle,
-  Loader2,
-} from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Circle, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { ToolAction } from './groupMessages.js'
 import type { ChatMessage } from '../../lib/store.js'
 import { ToolTreeItem, getGroupHeader } from './ActionsGroup.js'
+import type { ToolAction } from './groupMessages.js'
 
 interface Props {
   toolCallId: string
@@ -41,8 +35,8 @@ export function SubAgentGroup({ task, actions, result, defaultExpanded = false }
     statusIcon = <Check size={14} strokeWidth={1.5} className="tool-tree__status--done" />
   }
 
-  // Build summary: "Agent · Glob · 4 tool calls"
-  const _actionsSummary = actions.length > 0 ? getGroupHeader(actions) : null
+  // Build summary like "Read · Shell · 4 tool calls"
+  const actionsSummary = actions.length > 0 ? getGroupHeader(actions) : null
 
   return (
     <motion.div
@@ -52,27 +46,24 @@ export function SubAgentGroup({ task, actions, result, defaultExpanded = false }
       className="tool-tree tool-tree--sub-agent"
     >
       {/* Header */}
-      <button
-        type="button"
-        className="tool-tree__header"
-        onClick={() => setExpanded(!expanded)}
-      >
+      <button type="button" className="tool-tree__header" onClick={() => setExpanded(!expanded)}>
         {expanded ? (
           <ChevronDown size={14} strokeWidth={1.5} className="tool-tree__chevron" />
         ) : (
           <ChevronRight size={14} strokeWidth={1.5} className="tool-tree__chevron" />
         )}
         <span className="tool-tree__status-icon">{statusIcon}</span>
-        <span className="tool-tree__header-text">{taskPreview}</span>
-        {errorCount > 0 && (
-          <span className="tool-tree__error-badge">{errorCount} failed</span>
-        )}
-        {actions.length > 0 && (
-          <span className="tool-tree__count">
-            {actions.length} step{actions.length !== 1 ? 's' : ''}
-          </span>
-        )}
+        <span className="sub-agent__label">Agent</span>
+        <span className="sub-agent__task">{taskPreview}</span>
       </button>
+
+      {/* Summary line: tool names · N tool calls */}
+      {(actionsSummary || errorCount > 0) && (
+        <div className="sub-agent__summary">
+          {actionsSummary && <span className="sub-agent__tools">{actionsSummary}</span>}
+          {errorCount > 0 && <span className="tool-tree__error-badge">{errorCount} failed</span>}
+        </div>
+      )}
 
       {/* Nested tool call tree */}
       <AnimatePresence>

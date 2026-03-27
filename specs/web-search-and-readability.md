@@ -12,16 +12,28 @@ Two capabilities that bring Anton closer to parity with Claude Code's web featur
 ### How it works
 
 - The `web_search` tool is **always registered** in every session
-- When the Brave Search connector is configured with an API key, it performs real web searches
-- When not configured, it returns a helpful error guiding the user to Settings → Connectors to set it up
+- When a search connector is configured, it performs real web searches
+- When not configured, it returns a helpful error guiding the user to Settings → Connectors
 - This means Anton always *knows* it can search — it just might need the user to enable it first
+- **Priority order**: SearXNG (free) is preferred over Brave (paid) when both are configured
 
-### Brave Search API
+### Search providers
+
+#### SearXNG (free, self-hosted) — recommended for deployments
+
+- Self-hosted meta search engine: aggregates results from Google, Bing, DuckDuckGo
+- No API keys, no per-user cost — you host one instance, all users get search
+- Deploy via Docker: `docker run -p 8080:8080 searxng/searxng`
+- JSON API: `GET /search?q=query&format=json`
+- Connector ID: `searxng`, requires `SEARXNG_URL`
+
+#### Brave Search (paid) — for individual users
 
 - Endpoint: `https://api.search.brave.com/res/v1/web/search`
 - Auth: `X-Subscription-Token` header with API key
-- Free tier: 2,000 queries/month at https://brave.com/search/api/
+- Pricing: starts at $4/month at https://brave.com/search/api/
 - Returns: titles, URLs, description snippets, and age of results
+- Connector ID: `brave-search`, requires `BRAVE_SEARCH_API_KEY`
 
 ### Tool parameters
 
@@ -44,7 +56,15 @@ Brave Search appears in the **Connectors** registry (Settings → Connectors →
 ### Config format
 
 ```yaml
-# ~/.anton/config.yaml
+# ~/.anton/config.yaml — Option A: SearXNG (free)
+connectors:
+  - id: searxng
+    name: Web Search
+    type: api
+    baseUrl: "https://search.yourdomain.com"
+    enabled: true
+
+# Option B: Brave Search (paid)
 connectors:
   - id: brave-search
     name: Brave Search

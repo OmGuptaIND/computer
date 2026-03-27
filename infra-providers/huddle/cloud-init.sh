@@ -117,6 +117,7 @@ YAML
 cat > /etc/anton-agent.env <<ENV
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 ANTON_DIR=${ANTON_DIR}
+DOMAIN=${DOMAIN}
 ${ANTON_TOKEN:+ANTON_TOKEN=${ANTON_TOKEN}}
 ENV
 chmod 600 /etc/anton-agent.env
@@ -144,7 +145,7 @@ RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=${ANTON_DIR}
+ReadWritePaths=${ANTON_DIR} /home/anton/Anton
 PrivateTmp=true
 
 [Install]
@@ -170,6 +171,21 @@ log "CADDY: installed"
 # ─────────────────────────────────────────────────────────────────
 cat > /etc/caddy/Caddyfile <<CADDY
 ${DOMAIN} {
+    # Published artifacts: /a/{slug} → ~/.anton/published/{slug}/
+    handle /a/* {
+        uri strip_prefix /a
+        root * /home/anton/.anton/published
+        file_server
+    }
+
+    # Project public files: /p/{project}/* → ~/Anton/{project}/public/
+    handle /p/* {
+        uri strip_prefix /p
+        root * /home/anton/Anton
+        file_server
+    }
+
+    # Everything else → agent WebSocket
     reverse_proxy localhost:${AGENT_PORT}
 }
 CADDY

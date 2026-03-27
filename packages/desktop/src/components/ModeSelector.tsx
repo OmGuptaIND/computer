@@ -4,7 +4,6 @@ import { connection } from '../lib/connection.js'
 const MODES = [
   { key: 'chat' as const, label: 'Chat' },
   { key: 'projects' as const, label: 'Projects' },
-  { key: 'terminal' as const, label: 'Terminal' },
 ]
 
 export function ModeSelector() {

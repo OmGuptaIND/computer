@@ -20,6 +20,7 @@ export function App() {
   const [connected, setConnected] = useState(false)
   const [showMachineInfo, setShowMachineInfo] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [settingsPage, setSettingsPage] = useState<'general' | 'models' | 'connectors' | 'usage'>('general')
   const status = useConnectionStatus()
   const activeView = useStore((s) => s.activeView)
   const setActiveView = useStore((s) => s.setActiveView)
@@ -132,6 +133,17 @@ export function App() {
     return unsub
   }, [])
 
+  // Listen for 'open-settings' events from ConnectorToolbar
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      setSettingsPage(detail?.tab ?? 'general')
+      setShowSettings(true)
+    }
+    window.addEventListener('open-settings', handler)
+    return () => window.removeEventListener('open-settings', handler)
+  }, [])
+
   const handleDisconnect = () => {
     connection.disconnect()
     useStore.getState().resetForDisconnect()
@@ -162,7 +174,11 @@ export function App() {
         onDisconnect={handleDisconnect}
         activeView={sidebarView}
         onViewChange={handleSidebarViewChange}
-        onOpenSettings={() => setShowSettings(true)}
+        onOpenSettings={(page) => {
+          setSettingsPage(page ?? 'general')
+          setShowSettings(true)
+        }}
+        onOpenMachineInfo={() => setShowMachineInfo(true)}
       />
 
       <div className="workspace-shell">
@@ -253,7 +269,7 @@ export function App() {
       </div>
 
       {showMachineInfo && <MachineInfoPanel onClose={() => setShowMachineInfo(false)} />}
-      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} initialPage={settingsPage} />
       <DebugOverlay />
     </div>
   )

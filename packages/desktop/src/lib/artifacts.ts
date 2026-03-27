@@ -15,6 +15,44 @@ export interface Artifact {
   content: string
   toolCallId: string
   timestamp: number
+  /** Set when artifact has been published to a public URL */
+  publishedUrl?: string
+  publishedSlug?: string
+  publishedAt?: number
+  /** Conversation this artifact belongs to */
+  conversationId?: string
+  /** Project this artifact belongs to */
+  projectId?: string
+}
+
+const TYPE_LABELS: Record<ArtifactRenderType, string> = {
+  html: 'HTML',
+  code: 'Code',
+  markdown: 'Markdown',
+  svg: 'SVG',
+  mermaid: 'Diagram',
+}
+
+const TYPE_EXTENSIONS: Record<ArtifactRenderType, string> = {
+  html: 'html',
+  code: 'txt',
+  markdown: 'md',
+  svg: 'svg',
+  mermaid: 'md',
+}
+
+export function getArtifactTypeLabel(renderType: ArtifactRenderType): string {
+  return TYPE_LABELS[renderType] || renderType
+}
+
+export function getArtifactFileExtension(renderType: ArtifactRenderType, language?: string): string {
+  if (renderType === 'code' && language) {
+    // Reverse lookup from EXT_MAP
+    for (const [ext, lang] of Object.entries(EXT_MAP)) {
+      if (lang === language) return ext
+    }
+  }
+  return TYPE_EXTENSIONS[renderType] || 'txt'
 }
 
 // ── Language detection ──────────────────────────────────────────────

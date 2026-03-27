@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion'
 import { AlertTriangle } from 'lucide-react'
-import type { ChatMessage } from '../../lib/store.js'
+import { type ChatMessage, useStore } from '../../lib/store.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
+import { SourceCards } from './SourceCards.js'
 import { ToolCallBlock } from './ToolCallBlock.js'
 
 interface Props {
@@ -14,6 +15,8 @@ function attachmentSrc(message: ChatMessage, index: number): string | undefined 
 }
 
 export function MessageBubble({ message }: Props) {
+  const citations = useStore((s) => s.citations.get(message.id))
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -48,7 +51,8 @@ export function MessageBubble({ message }: Props) {
 
       {message.role === 'assistant' && (
         <div className="message__surface message__surface--assistant">
-          <MarkdownRenderer content={message.content} />
+          {citations && citations.length > 0 && <SourceCards sources={citations} />}
+          <MarkdownRenderer content={message.content} citations={citations} />
         </div>
       )}
 

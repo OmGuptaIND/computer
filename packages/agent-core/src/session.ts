@@ -92,6 +92,7 @@ export interface SessionInfo {
   createdAt: number
   lastActiveAt: number
   lastTasks?: import('@anton/agent-config').PersistedTaskItem[]
+  usage?: import('@anton/protocol').TokenUsage
 }
 
 /** Fallback max messages if compaction fails */
@@ -655,7 +656,7 @@ export class Session {
     return { ...this.cumulativeUsage }
   }
 
-  private getCumulativeUsage(): TokenUsage {
+  getCumulativeUsage(): TokenUsage {
     return { ...this.cumulativeUsage }
   }
 
@@ -862,6 +863,7 @@ export class Session {
       createdAt: this.createdAt,
       lastActiveAt: this.lastActiveAt,
       lastTasks: this._lastTasks.length > 0 ? this._lastTasks : undefined,
+      usage: this.cumulativeUsage.totalTokens > 0 ? this.getCumulativeUsage() : undefined,
     }
   }
 
@@ -878,6 +880,7 @@ export class Session {
       title: this.title,
       compactionState: this.compactionState,
       lastTasks: this._lastTasks.length > 0 ? this._lastTasks : undefined,
+      usage: this.cumulativeUsage.totalTokens > 0 ? this.getCumulativeUsage() : undefined,
     }
     const basePath = this.projectId ? getProjectSessionsDir(this.projectId) : undefined
     saveSession(persisted, basePath)
@@ -1282,6 +1285,9 @@ export function createSession(
     projectType?: string
     mcpManager?: import('./mcp/mcp-manager.js').McpManager
     onJobAction?: import('./tools/job.js').JobActionHandler
+    maxDurationMs?: number
+    /** Domain for the agent (e.g. "slug.antoncomputer.in"). Passed to publish tool. */
+    domain?: string
   },
 ): Session {
   const provider = opts?.provider || config.defaults.provider
@@ -1304,6 +1310,7 @@ export function createSession(
     defaultWorkingDirectory: opts?.projectWorkspacePath,
     projectId: opts?.projectId,
     onJobAction: opts?.onJobAction,
+    domain: opts?.domain,
   }
 
   const session = new Session({
@@ -1317,6 +1324,7 @@ export function createSession(
     projectId: opts?.projectId,
     projectContext: opts?.projectContext,
     projectType: opts?.projectType,
+    maxDurationMs: opts?.maxDurationMs,
   })
   sessionRef.session = session
   // Wire: when setAskUserHandler is called on session, update the holder
@@ -1349,6 +1357,7 @@ export function resumeSession(
     projectType?: string
     mcpManager?: import('./mcp/mcp-manager.js').McpManager
     onJobAction?: import('./tools/job.js').JobActionHandler
+    maxDurationMs?: number
   },
 ): Session | null {
   const basePath = opts?.projectId ? getProjectSessionsDir(opts.projectId) : undefined
@@ -1386,6 +1395,7 @@ export function resumeSession(
     projectContext: opts?.projectContext,
     projectType: opts?.projectType,
     lastTasks: persisted.lastTasks,
+    maxDurationMs: opts?.maxDurationMs,
   })
   sessionRef.session = session
 

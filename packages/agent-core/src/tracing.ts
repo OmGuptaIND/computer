@@ -6,7 +6,7 @@
  * everything no-ops with zero overhead.
  */
 
-import { initLogger, flush as btFlush, type Span } from 'braintrust'
+import { type Span, flush as btFlush, initLogger } from 'braintrust'
 
 let tracingEnabled = false
 let logger: ReturnType<typeof initLogger> | null = null

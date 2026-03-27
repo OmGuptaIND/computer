@@ -1,9 +1,9 @@
 import { motion } from 'framer-motion'
 import {
+  BarChart3,
   ChevronDown,
   ChevronRight,
   FolderOpen,
-  LayoutGrid,
   Loader2,
   MessageSquareText,
   Monitor,
@@ -12,6 +12,7 @@ import {
   Pencil,
   Plus,
   SlidersHorizontal,
+  TerminalSquare,
   Trash2,
   X,
 } from 'lucide-react'
@@ -24,10 +25,11 @@ interface Props {
   onDisconnect: () => void
   activeView: 'agent' | 'terminal'
   onViewChange: (view: 'agent' | 'terminal') => void
-  onOpenSettings: () => void
+  onOpenSettings: (page?: 'general' | 'models' | 'connectors' | 'usage') => void
+  onOpenMachineInfo: () => void
 }
 
-export function Sidebar({ onViewChange, onOpenSettings }: Props) {
+export function Sidebar({ onViewChange, onOpenSettings, onOpenMachineInfo }: Props) {
   useConnectionStatus()
   const conversations = useStore((s) => s.conversations)
   const activeId = useStore((s) => s.activeConversationId)
@@ -244,21 +246,38 @@ export function Sidebar({ onViewChange, onOpenSettings }: Props) {
               type="button"
               className="sidebar-bottombar__btn"
               aria-label="Settings"
-              onClick={onOpenSettings}
+              data-tooltip="Settings"
+              onClick={() => onOpenSettings()}
             >
               <SlidersHorizontal size={18} strokeWidth={1.5} />
             </button>
             <button
               type="button"
               className="sidebar-bottombar__btn"
-              aria-label="Dashboard"
+              aria-label="Usage"
+              data-tooltip="Usage"
+              onClick={() => onOpenSettings('usage')}
             >
-              <LayoutGrid size={18} strokeWidth={1.5} />
+              <BarChart3 size={18} strokeWidth={1.5} />
+            </button>
+            <button
+              type="button"
+              className={`sidebar-bottombar__btn${currentView === 'terminal' ? ' sidebar-bottombar__btn--active' : ''}`}
+              aria-label="Terminal"
+              data-tooltip="Terminal"
+              onClick={() => {
+                const store = useStore.getState()
+                store.setActiveView(currentView === 'terminal' ? 'chat' : 'terminal')
+              }}
+            >
+              <TerminalSquare size={18} strokeWidth={1.5} />
             </button>
             <button
               type="button"
               className="sidebar-bottombar__btn"
-              aria-label="Machine"
+              aria-label="Server Health"
+              data-tooltip="Server Health"
+              onClick={onOpenMachineInfo}
             >
               <Monitor size={18} strokeWidth={1.5} />
             </button>

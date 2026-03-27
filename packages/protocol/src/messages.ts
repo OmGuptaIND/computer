@@ -754,6 +754,11 @@ export interface ConnectorRegistryEntryPayload {
   args?: string[]
   requiredEnv: string[]
   featured?: boolean
+  setupGuide?: {
+    steps: string[]
+    url: string
+    urlLabel?: string
+  }
 }
 
 // Client → Server
@@ -832,6 +837,71 @@ export interface ConnectorTestResponse {
 export interface ConnectorRegistryListResponse {
   type: 'connector_registry_list_response'
   entries: ConnectorRegistryEntryPayload[]
+}
+
+// ── Usage stats ─────────────────────────────────────────────────────
+
+export interface UsageStatsMessage {
+  type: 'usage_stats'
+}
+
+export interface UsageStatsModelBreakdown {
+  model: string
+  provider: string
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  sessionCount: number
+}
+
+export interface UsageStatsDayBreakdown {
+  date: string // YYYY-MM-DD
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  sessionCount: number
+}
+
+export interface UsageStatsSessionEntry {
+  id: string
+  title: string
+  provider: string
+  model: string
+  createdAt: number
+  totalTokens: number
+  inputTokens: number
+  outputTokens: number
+}
+
+export interface UsageStatsResponse {
+  type: 'usage_stats_response'
+  totals: TokenUsage
+  byModel: UsageStatsModelBreakdown[]
+  byDay: UsageStatsDayBreakdown[]
+  sessions: UsageStatsSessionEntry[]
+}
+
+// ── Publish ──────────────────────────────────────────────────────────
+
+export interface PublishArtifactMessage {
+  type: 'publish_artifact'
+  artifactId: string
+  title: string
+  content: string
+  contentType: 'html' | 'markdown' | 'svg' | 'mermaid' | 'code'
+  language?: string
+  slug?: string
+}
+
+export interface PublishArtifactResponse {
+  type: 'publish_artifact_response'
+  artifactId: string
+  publicUrl: string
+  slug: string
+  success: boolean
+  error?: string
 }
 
 export type AiMessage =
@@ -928,6 +998,12 @@ export type AiMessage =
   | ConnectorTestResponse
   | ConnectorRegistryListMessage
   | ConnectorRegistryListResponse
+  // Publish
+  | PublishArtifactMessage
+  | PublishArtifactResponse
+  // Usage stats
+  | UsageStatsMessage
+  | UsageStatsResponse
 
 // ── Event Channel (0x04) ────────────────────────────────────────────
 
@@ -990,6 +1066,13 @@ export interface NotificationEventMessage {
   }
 }
 
+export interface ArtifactPublishedEvent {
+  type: 'artifact_published'
+  artifactId: string
+  slug: string
+  publicUrl: string
+}
+
 export type EventMessage =
   | FileChangedEvent
   | PortChangedEvent
@@ -998,3 +1081,4 @@ export type EventMessage =
   | UpdateAvailableEvent
   | JobEventMessage
   | NotificationEventMessage
+  | ArtifactPublishedEvent
