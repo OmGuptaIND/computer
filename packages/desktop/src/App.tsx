@@ -6,6 +6,7 @@ import { DebugOverlay } from './components/chat/DebugOverlay.js'
 import { Connect } from './components/Connect.js'
 import { MachineInfoPanel } from './components/MachineInfoPanel.js'
 import { ModeSelector } from './components/ModeSelector.js'
+import { ArtifactRail } from './components/artifacts/ArtifactRail.js'
 import { SidePanel } from './components/SidePanel.js'
 import { Sidebar } from './components/Sidebar.js'
 import { SettingsModal } from './components/settings/SettingsModal.js'
@@ -262,6 +263,7 @@ export function App() {
               <FileBrowser />
             </>
           )}
+          {activeView === 'chat' && <ArtifactRail />}
           <AnimatePresence>
             {activeView === 'chat' && sidePanelOpen && <SidePanel />}
           </AnimatePresence>

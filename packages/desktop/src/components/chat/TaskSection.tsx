@@ -5,8 +5,10 @@ import {
   ChevronRight,
   Loader2,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useStore } from '../../lib/store.js'
 import { ToolTreeItem } from './ActionsGroup.js'
+import { ArtifactCard } from './ArtifactCard.js'
 import type { ToolAction } from './groupMessages.js'
 
 interface Props {
@@ -18,6 +20,13 @@ interface Props {
 
 export function TaskSection({ title, actions, done, defaultExpanded = false }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded)
+  const artifacts = useStore((s) => s.artifacts)
+
+  const actionCallIds = useMemo(() => new Set(actions.map((a) => a.call.id)), [actions])
+  const groupArtifacts = useMemo(
+    () => artifacts.filter((a) => actionCallIds.has(a.toolCallId)),
+    [artifacts, actionCallIds],
+  )
 
   return (
     <motion.div
@@ -69,6 +78,15 @@ export function TaskSection({ title, actions, done, defaultExpanded = false }: P
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Inline artifact cards */}
+      {groupArtifacts.length > 0 && (
+        <div className="tool-tree__artifacts">
+          {groupArtifacts.map((artifact) => (
+            <ArtifactCard key={artifact.id} artifact={artifact} />
+          ))}
+        </div>
+      )}
     </motion.div>
   )
 }

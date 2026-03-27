@@ -17,7 +17,7 @@ interface ViewTab {
 
 const MIN_WIDTH = 320
 const MAX_WIDTH = 1100
-const DEFAULT_WIDTH = 520
+const DEFAULT_WIDTH = 440
 
 export function SidePanel() {
   const artifacts = useStore((s) => s.artifacts)

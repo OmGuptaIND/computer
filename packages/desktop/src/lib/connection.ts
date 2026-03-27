@@ -170,6 +170,10 @@ export class Connection {
     this.send(Channel.AI, { type: 'message', content, sessionId, attachments })
   }
 
+  sendSteerMessage(content: string, sessionId: string) {
+    this.send(Channel.AI, { type: 'steer', content, sessionId })
+  }
+
   // ── Provider management ─────────────────────────────────────────
 
   sendProvidersList() {

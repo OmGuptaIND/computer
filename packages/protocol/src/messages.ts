@@ -305,6 +305,19 @@ export interface AiUserMessage {
   attachments?: ChatImageAttachmentInput[]
 }
 
+// Steering: user sends a message while the agent is actively working
+export interface AiSteerMessage {
+  type: 'steer'
+  content: string
+  sessionId?: string
+}
+
+export interface AiSteerAckMessage {
+  type: 'steer_ack'
+  content: string
+  sessionId?: string
+}
+
 export interface AiThinkingMessage {
   type: 'thinking'
   text: string
@@ -928,6 +941,8 @@ export type AiMessage =
   | ProviderSetModelsResponse
   // Chat
   | AiUserMessage
+  | AiSteerMessage
+  | AiSteerAckMessage
   | AiThinkingMessage
   | AiTextMessage
   | AiToolCallMessage

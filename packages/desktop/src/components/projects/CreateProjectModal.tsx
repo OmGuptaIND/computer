@@ -2,7 +2,16 @@ import { FolderOpen, X } from 'lucide-react'
 import { useState } from 'react'
 import { connection } from '../../lib/connection.js'
 
-const DEFAULT_COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444', '#14b8a6']
+const DEFAULT_COLORS = [
+  '#6366f1',
+  '#ec4899',
+  '#f59e0b',
+  '#10b981',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ef4444',
+  '#14b8a6',
+]
 
 interface Props {
   onClose: () => void
@@ -26,8 +35,16 @@ export function CreateProjectModal({ onClose }: Props) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
-      <div className="modal-card modal-card--create-project" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+    <div
+      className="modal-overlay"
+      onClick={onClose}
+      onKeyDown={(e) => e.key === 'Escape' && onClose()}
+    >
+      <div
+        className="modal-card modal-card--create-project"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
         <div className="modal-card__header">
           <h2>Create project</h2>
           <button type="button" className="modal-card__close" onClick={onClose}>
@@ -43,7 +60,9 @@ export function CreateProjectModal({ onClose }: Props) {
 
           {/* Project name */}
           <div className="form-field">
-            <label className="form-field__label" htmlFor="create-project-name">Project name</label>
+            <label className="form-field__label" htmlFor="create-project-name">
+              Project name
+            </label>
             <input
               id="create-project-name"
               className="form-field__input"

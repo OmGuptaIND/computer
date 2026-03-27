@@ -1,13 +1,13 @@
-import { Code2, FileText, GitBranch, Globe, Image } from 'lucide-react'
+import { Braces, FileCode, Network, Sparkles, SquareCode } from 'lucide-react'
 import type { Artifact, ArtifactRenderType } from '../../lib/artifacts.js'
 import { getArtifactTypeLabel } from '../../lib/artifacts.js'
 
-const TYPE_ICONS: Record<ArtifactRenderType, typeof Globe> = {
-  html: Globe,
-  code: Code2,
-  markdown: FileText,
-  svg: Image,
-  mermaid: GitBranch,
+const TYPE_ICONS: Record<ArtifactRenderType, typeof Sparkles> = {
+  html: Sparkles,
+  code: Braces,
+  markdown: FileCode,
+  svg: SquareCode,
+  mermaid: Network,
 }
 
 function formatTimestamp(ts: number): string {
@@ -28,7 +28,7 @@ export function ArtifactListItem({
   isActive: boolean
   onClick: () => void
 }) {
-  const Icon = TYPE_ICONS[artifact.renderType] || Code2
+  const Icon = TYPE_ICONS[artifact.renderType] || Braces
 
   return (
     <button

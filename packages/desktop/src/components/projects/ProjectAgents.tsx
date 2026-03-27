@@ -91,7 +91,11 @@ function AgentCard({
           </button>
           {showMenu && (
             <>
-              <div className="agent-card__menu-backdrop" onClick={() => setShowMenu(false)} onKeyDown={(e) => e.key === 'Escape' && setShowMenu(false)} />
+              <div
+                className="agent-card__menu-backdrop"
+                onClick={() => setShowMenu(false)}
+                onKeyDown={(e) => e.key === 'Escape' && setShowMenu(false)}
+              />
               <div className="agent-card__menu">
                 <button
                   type="button"

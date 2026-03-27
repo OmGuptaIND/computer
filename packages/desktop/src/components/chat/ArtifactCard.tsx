@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Code2, FileText, GitBranch, Globe, Image as ImageIcon, PanelRight } from 'lucide-react'
+import { Braces, FileCode, Network, PanelRight, Sparkles, SquareCode } from 'lucide-react'
 import type React from 'react'
 import type { Artifact } from '../../lib/artifacts.js'
 import { useStore } from '../../lib/store.js'
@@ -9,11 +9,11 @@ interface Props {
 }
 
 const typeIcons: Record<string, React.ElementType> = {
-  html: Globe,
-  code: Code2,
-  markdown: FileText,
-  svg: ImageIcon,
-  mermaid: GitBranch,
+  html: Sparkles,
+  code: Braces,
+  markdown: FileCode,
+  svg: SquareCode,
+  mermaid: Network,
 }
 
 const typeLabels: Record<string, string> = {
@@ -29,7 +29,7 @@ export function ArtifactCard({ artifact }: Props) {
   const setArtifactPanelOpen = useStore((s) => s.setArtifactPanelOpen)
   const setSidePanelView = useStore((s) => s.setSidePanelView)
 
-  const Icon = typeIcons[artifact.renderType] || Code2
+  const Icon = typeIcons[artifact.renderType] || Braces
   const label = typeLabels[artifact.renderType] || 'File'
   const title = artifact.title || artifact.filename || 'Untitled'
   const showPreview = artifact.renderType === 'html' || artifact.renderType === 'svg'

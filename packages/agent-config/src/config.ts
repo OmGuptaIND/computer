@@ -636,7 +636,11 @@ export function saveSession(session: PersistedSession, basePath?: string): void 
 
   // Write compaction state if present
   if (session.compactionState) {
-    writeFileSync(join(dir, 'compaction.json'), JSON.stringify(session.compactionState, null, 2), 'utf-8')
+    writeFileSync(
+      join(dir, 'compaction.json'),
+      JSON.stringify(session.compactionState, null, 2),
+      'utf-8',
+    )
   }
 
   // Write last tasks if present
@@ -690,20 +694,28 @@ export function loadSession(id: string, basePath?: string): PersistedSession | n
       const meta: SessionMeta = JSON.parse(readFileSync(mPath, 'utf-8'))
       const msgPath = join(dir, 'messages.jsonl')
       const messages = existsSync(msgPath)
-        ? readFileSync(msgPath, 'utf-8').trim().split('\n').filter(Boolean).map((l) => {
-            const parsed = JSON.parse(l)
-            return hydrateSessionContent(id, parsed) || parsed
-          })
+        ? readFileSync(msgPath, 'utf-8')
+            .trim()
+            .split('\n')
+            .filter(Boolean)
+            .map((l) => {
+              const parsed = JSON.parse(l)
+              return hydrateSessionContent(id, parsed) || parsed
+            })
         : []
       let compactionState: PersistedSession['compactionState'] | undefined
       const compPath = join(dir, 'compaction.json')
       if (existsSync(compPath)) {
-        try { compactionState = JSON.parse(readFileSync(compPath, 'utf-8')) } catch {}
+        try {
+          compactionState = JSON.parse(readFileSync(compPath, 'utf-8'))
+        } catch {}
       }
       let lastTasks: PersistedTaskItem[] | undefined
       const tasksPath = join(dir, 'tasks.json')
       if (existsSync(tasksPath)) {
-        try { lastTasks = JSON.parse(readFileSync(tasksPath, 'utf-8')) } catch {}
+        try {
+          lastTasks = JSON.parse(readFileSync(tasksPath, 'utf-8'))
+        } catch {}
       }
       return {
         id: meta.id,
@@ -1137,7 +1149,8 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
   {
     id: 'searxng',
     name: 'Web Search',
-    description: 'Free web search powered by SearXNG. Search the web for current information, research topics, and find resources.',
+    description:
+      'Free web search powered by SearXNG. Search the web for current information, research topics, and find resources.',
     icon: '🔍',
     category: 'productivity',
     type: 'api',
@@ -1147,7 +1160,7 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
       steps: [
         'You need a running SearXNG instance',
         'Self-host with Docker: docker run -p 8080:8080 searxng/searxng',
-        'Or use your deployment\'s provided SearXNG URL',
+        "Or use your deployment's provided SearXNG URL",
         'Paste the URL below (e.g. https://search.yourdomain.com)',
       ],
       url: 'https://docs.searxng.org/admin/installation.html',

@@ -1,13 +1,24 @@
 import type { Job } from '@anton/protocol'
 import type { Project } from '@anton/protocol'
 import { motion } from 'framer-motion'
-import { Bot, Circle, Clock, History, ListChecks, Play, Plus, Send, Square, Trash2 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import {
+  Bot,
+  Circle,
+  Clock,
+  History,
+  ListChecks,
+  Play,
+  Plus,
+  Send,
+  Square,
+  Trash2,
+} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { connection } from '../../lib/connection.js'
 import type { SessionMeta } from '../../lib/store.js'
 import { useStore } from '../../lib/store.js'
 import { Skeleton } from '../Skeleton.js'
-import { ConnectorPill, ConnectorBanner } from '../chat/ConnectorToolbar.js'
+import { ConnectorBanner, ConnectorPill } from '../chat/ConnectorToolbar.js'
 import { ModelSelector } from '../chat/ModelSelector.js'
 import { ProjectConfigPanel } from './ProjectConfigPanel.js'
 import { SessionCard } from './SessionCard.js'
@@ -150,7 +161,7 @@ function AgentSessionCard({ agent, projectId }: { agent: Job; projectId: string 
   )
 }
 
-// ── Tabbed Sessions + Agents ─────────────────────────────────────────
+// ── Sessions + Agents sections ───────────────────────────────────────
 
 function SessionsAndAgents({
   sessions,
@@ -165,52 +176,30 @@ function SessionsAndAgents({
   onOpenSession: (id: string) => void
   onDeleteSession: (id: string) => void
 }) {
-  const [tab, setTab] = useState<'sessions' | 'agents'>('sessions')
   const agents = useStore((s) => s.projectAgents)
-
-  const agentCount = agents.length
   const runningCount = agents.filter((a) => a.status === 'running').length
 
-  return (
-    <div className="project-landing__sessions">
-      {/* Tab bar */}
-      <div className="project-landing__tab-bar">
-        <button
-          type="button"
-          className={`project-landing__tab${tab === 'sessions' ? ' project-landing__tab--active' : ''}`}
-          onClick={() => setTab('sessions')}
-        >
-          Sessions
-          {sessions.length > 0 && (
-            <span className="project-landing__tab-count">{sessions.length}</span>
-          )}
-        </button>
-        <button
-          type="button"
-          className={`project-landing__tab${tab === 'agents' ? ' project-landing__tab--active' : ''}`}
-          onClick={() => setTab('agents')}
-        >
-          <Bot size={13} strokeWidth={1.5} />
-          Agents
-          {agentCount > 0 && (
-            <span
-              className={`project-landing__tab-count${runningCount > 0 ? ' project-landing__tab-count--active' : ''}`}
-            >
-              {runningCount > 0 ? `${runningCount} running` : agentCount}
-            </span>
-          )}
-        </button>
-      </div>
+  // Fetch agents on mount and when projectId changes
+  useEffect(() => {
+    connection.sendAgentsList(projectId)
+  }, [projectId])
 
-      {/* Tab content */}
-      {tab === 'sessions' ? (
-        <>
+  return (
+    <div className="project-landing__sections">
+      {/* Recent sessions */}
+      {(sessionsLoading || sessions.length > 0) && (
+        <div className="project-landing__section">
+          <div className="project-landing__section-header">
+            <span className="project-landing__section-label">Recent</span>
+            {sessions.length > 0 && (
+              <span className="project-landing__section-count">{sessions.length}</span>
+            )}
+          </div>
           {sessionsLoading ? (
             <div className="project-landing__sessions-skeleton">
               {[
                 { id: 'skel-1', w: '60%' },
                 { id: 'skel-2', w: '70%' },
-                { id: 'skel-3', w: '80%' },
               ].map((skel) => (
                 <div key={skel.id} className="session-card session-card--skeleton">
                   <div className="session-card__content">
@@ -223,7 +212,7 @@ function SessionsAndAgents({
                 </div>
               ))}
             </div>
-          ) : sessions.length > 0 ? (
+          ) : (
             <div className="project-landing__sessions-list">
               {sessions.map((session) => (
                 <SessionCard
@@ -237,28 +226,31 @@ function SessionsAndAgents({
                 />
               ))}
             </div>
-          ) : (
-            <div className="project-landing__sessions-empty">
-              <Plus size={16} strokeWidth={1.5} />
-              <span>Create a new session to get started</span>
-            </div>
           )}
-        </>
+        </div>
+      )}
+
+      {/* Agents */}
+      {agents.length > 0 ? (
+        <div className="project-landing__section">
+          <div className="project-landing__section-header">
+            <Bot size={13} strokeWidth={1.5} className="project-landing__section-icon" />
+            <span className="project-landing__section-label">Agents</span>
+            <span className={`project-landing__section-count${runningCount > 0 ? ' project-landing__section-count--active' : ''}`}>
+              {runningCount > 0 ? `${runningCount} running` : agents.length}
+            </span>
+          </div>
+          <div className="project-landing__agents-list">
+            {agents.map((agent) => (
+              <AgentSessionCard key={agent.id} agent={agent} projectId={projectId} />
+            ))}
+          </div>
+        </div>
       ) : (
-        <>
-          {agents.length > 0 ? (
-            <div className="project-landing__agents-list">
-              {agents.map((agent) => (
-                <AgentSessionCard key={agent.id} agent={agent} projectId={projectId} />
-              ))}
-            </div>
-          ) : (
-            <div className="project-landing__sessions-empty">
-              <Bot size={16} strokeWidth={1.5} />
-              <span>Ask Anton to create an agent for you</span>
-            </div>
-          )}
-        </>
+        <div className="project-landing__agent-hint">
+          <Bot size={14} strokeWidth={1.5} />
+          <span>Automate tasks with agents</span>
+        </div>
       )}
     </div>
   )
@@ -338,7 +330,7 @@ export function ProjectLanding({
             <textarea
               ref={inputRef}
               className="project-landing__input"
-              placeholder="Tasks are independent for focus. Use project instructions and files for shared context."
+              placeholder="What would you like to work on?"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}

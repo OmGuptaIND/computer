@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { ArrowRight, FolderOpen, MessageSquare, Plus, Trash2, Zap } from 'lucide-react'
+import { FolderOpen, MessageSquare, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { connection } from '../../lib/connection.js'
 import { useStore } from '../../lib/store.js'
@@ -56,14 +56,9 @@ export function ProjectList() {
           </div>
           <h2 className="projects-empty__title">Projects</h2>
           <p className="projects-empty__desc">
-            Organize your work into projects. Each project has its own
-            sessions, jobs, and notifications.
+            Organize your work into projects. Each project has its own sessions, agents, and context.
           </p>
-          <button
-            type="button"
-            className="projects-empty__cta"
-            onClick={() => setShowCreate(true)}
-          >
+          <button type="button" className="projects-empty__cta" onClick={() => setShowCreate(true)}>
             <Plus size={16} strokeWidth={1.5} />
             <span>Create a project</span>
           </button>
@@ -83,10 +78,7 @@ export function ProjectList() {
       >
         {/* Header */}
         <div className="projects-page__header">
-          <div>
-            <h2 className="projects-page__title">Your Projects</h2>
-            <p className="projects-page__subtitle">{projects.length} project{projects.length !== 1 ? 's' : ''}</p>
-          </div>
+          <h2 className="projects-page__title">Projects</h2>
           <button
             type="button"
             className="projects-page__new-btn"
@@ -97,72 +89,87 @@ export function ProjectList() {
           </button>
         </div>
 
-        {/* Project list */}
-        <div className="projects-page__list">
+        {/* Project grid */}
+        <div className="projects-page__grid">
           {projects.map((project, i) => (
-            <motion.div
+            <motion.button
               key={project.id}
-              className="project-row"
+              type="button"
+              className="project-card"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.25, delay: i * 0.04 }}
+              onClick={() => handleOpenProject(project.id)}
             >
-              <button
-                type="button"
-                className="project-row__main"
-                onClick={() => handleOpenProject(project.id)}
-              >
-                <div className="project-row__icon" style={{ backgroundColor: project.color }}>
+              <div className="project-card__top">
+                <div className="project-card__icon" style={{ backgroundColor: project.color }}>
                   {project.icon}
                 </div>
-                <div className="project-row__info">
-                  <span className="project-row__name">{project.name}</span>
-                  {project.description && (
-                    <span className="project-row__desc">{project.description}</span>
-                  )}
-                </div>
-                <div className="project-row__stats">
-                  <span className="project-row__stat">
-                    <MessageSquare size={12} strokeWidth={1.5} />
-                    {project.stats.sessionCount}
-                  </span>
-                  <span className="project-row__stat">
-                    <Zap size={12} strokeWidth={1.5} />
-                    {project.stats.activeJobs}
-                  </span>
-                </div>
-                <span className="project-row__time">{formatDate(project.stats.lastActive)}</span>
-                <ArrowRight size={14} strokeWidth={1.5} className="project-row__arrow" />
-              </button>
-              <button
-                type="button"
-                className="project-row__delete"
-                title="Delete project"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setDeleteTarget(project.id)
-                }}
-              >
-                <Trash2 size={14} strokeWidth={1.5} />
-              </button>
-            </motion.div>
+                <button
+                  type="button"
+                  className="project-card__delete"
+                  title="Delete project"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setDeleteTarget(project.id)
+                  }}
+                >
+                  <Trash2 size={13} strokeWidth={1.5} />
+                </button>
+              </div>
+              <div className="project-card__body">
+                <span className="project-card__name">{project.name}</span>
+                {project.description && (
+                  <span className="project-card__desc">{project.description}</span>
+                )}
+              </div>
+              <div className="project-card__footer">
+                <span className="project-card__stat">
+                  <MessageSquare size={11} strokeWidth={1.5} />
+                  {project.stats.sessionCount} session{project.stats.sessionCount !== 1 ? 's' : ''}
+                </span>
+                <span className="project-card__time">{formatDate(project.stats.lastActive)}</span>
+              </div>
+            </motion.button>
           ))}
+
+          {/* New project card */}
+          <button
+            type="button"
+            className="project-card project-card--new"
+            onClick={() => setShowCreate(true)}
+          >
+            <Plus size={20} strokeWidth={1.5} />
+            <span>New Project</span>
+          </button>
         </div>
       </motion.div>
 
       {showCreate && <CreateProjectModal onClose={() => setShowCreate(false)} />}
 
       {deleteProject && (
-        <div className="modal-overlay" onClick={() => setDeleteTarget(null)} onKeyDown={(e) => e.key === 'Escape' && setDeleteTarget(null)}>
-          <div className="modal-card modal-card--sm" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() => setDeleteTarget(null)}
+          onKeyDown={(e) => e.key === 'Escape' && setDeleteTarget(null)}
+        >
+          <div
+            className="modal-card modal-card--sm"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
             <div className="modal-card__body">
               <h3>Delete "{deleteProject.name}"?</h3>
               <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>
-                This will delete all sessions, jobs, and data. This cannot be undone.
+                This will delete all sessions, agents, and data. This cannot be undone.
               </p>
             </div>
             <div className="modal-card__footer">
-              <button type="button" className="button button--ghost" onClick={() => setDeleteTarget(null)}>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={() => setDeleteTarget(null)}
+              >
                 Cancel
               </button>
               <button type="button" className="button button--danger" onClick={handleDeleteProject}>

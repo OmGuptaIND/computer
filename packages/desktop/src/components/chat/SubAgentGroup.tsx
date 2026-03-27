@@ -1,8 +1,9 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, ChevronDown, ChevronRight, Circle, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import type { ChatMessage } from '../../lib/store.js'
+import { useEffect, useMemo, useState } from 'react'
+import { type ChatMessage, useStore } from '../../lib/store.js'
 import { ToolTreeItem, getGroupHeader } from './ActionsGroup.js'
+import { ArtifactCard } from './ArtifactCard.js'
 import type { ToolAction } from './groupMessages.js'
 
 interface Props {
@@ -15,6 +16,13 @@ interface Props {
 
 export function SubAgentGroup({ task, actions, result, defaultExpanded = false }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded)
+  const artifacts = useStore((s) => s.artifacts)
+
+  const actionCallIds = useMemo(() => new Set(actions.map((a) => a.call.id)), [actions])
+  const groupArtifacts = useMemo(
+    () => artifacts.filter((a) => actionCallIds.has(a.toolCallId)),
+    [artifacts, actionCallIds],
+  )
 
   const isPending = !result
   const isError = result?.isError
@@ -87,6 +95,15 @@ export function SubAgentGroup({ task, actions, result, defaultExpanded = false }
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Inline artifact cards */}
+      {groupArtifacts.length > 0 && (
+        <div className="tool-tree__artifacts">
+          {groupArtifacts.map((artifact) => (
+            <ArtifactCard key={artifact.id} artifact={artifact} />
+          ))}
+        </div>
+      )}
     </motion.div>
   )
 }

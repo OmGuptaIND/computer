@@ -25,7 +25,7 @@ export function MessageBubble({ message }: Props) {
       className={getContainerClass(message)}
     >
       {message.role === 'user' && (
-        <div className="message__surface message__surface--user">
+        <div className={`message__surface message__surface--user${message.isSteering ? ' message__surface--steering' : ''}`}>
           {message.attachments && message.attachments.length > 0 && (
             <div className="message__attachments">
               {message.attachments.map((attachment, index) => {
@@ -46,6 +46,9 @@ export function MessageBubble({ message }: Props) {
             </div>
           )}
           <div className="message__text">{message.content}</div>
+          {message.isSteering && (
+            <div className="message__steering-label">sent while working</div>
+          )}
         </div>
       )}
 

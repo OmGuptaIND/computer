@@ -36,6 +36,7 @@ export interface ChatMessage {
   toolInput?: Record<string, unknown>
   isError?: boolean
   parentToolCallId?: string // set when this message is from a sub-agent
+  isSteering?: boolean // sent while agent was working
 }
 
 export interface CitationSource {
@@ -148,8 +149,7 @@ export type SidebarTab = 'history' | 'skills'
 function parseCitationSources(output: string): CitationSource[] {
   const sources: CitationSource[] = []
   const regex = /\[(\d+)\]\s+(.+?)\s*\|\s*(\S+)\s*—\s*(https?:\/\/\S+)/g
-  let match: RegExpExecArray | null
-  while ((match = regex.exec(output)) !== null) {
+  for (const match of output.matchAll(regex)) {
     sources.push({
       index: Number.parseInt(match[1], 10),
       title: match[2].trim(),
@@ -245,6 +245,8 @@ interface AppState {
   // Track tool call IDs for tools with dedicated UI (ask_user, task_tracker, etc.)
   // so their tool_results can be silently discarded
   _hiddenToolCallIds: Set<string>
+  // Map tool call IDs to their names so tool_results can inherit the toolName
+  _toolCallNames: Map<string, { name: string; input?: Record<string, unknown> }>
 
   // Citations: maps assistant message ID → sources extracted from web_search
   citations: Map<string, CitationSource[]>
@@ -461,6 +463,7 @@ export const useStore = create<AppState>((set, get) => {
     _currentAssistantMsgId: null,
     _sessionAssistantMsgIds: new Map(),
     _hiddenToolCallIds: new Set(),
+    _toolCallNames: new Map(),
     citations: new Map(),
     _pendingCitationSources: [],
     _pendingWebSearchToolCallIds: new Set(),
@@ -1067,7 +1070,6 @@ export const useStore = create<AppState>((set, get) => {
         return {
           artifacts,
           activeArtifactId: artifact.id,
-          artifactPanelOpen: true,
         }
       }),
 
@@ -1265,6 +1267,17 @@ connection.onMessage((channel, msg) => {
   }
 
   switch (msg.type) {
+    // ── Steering ack — user message sent while agent was working ──
+    case 'steer_ack':
+      addMsg({
+        id: `steer_${Date.now()}`,
+        role: 'user',
+        content: msg.content,
+        timestamp: Date.now(),
+        isSteering: true,
+      })
+      break
+
     // ── Chat messages ──────────────────────────────────────────
     case 'text': {
       console.log(`[WS] AI text chunk: "${msg.content?.slice(0, 80)}..."`)
@@ -1316,6 +1329,8 @@ connection.onMessage((channel, msg) => {
           store._sessionAssistantMsgIds.delete(msgSessionId)
         }
       }
+      // Track tool name so tool_result can inherit it
+      store._toolCallNames.set(msg.id, { name: msg.name, input: msg.input })
       addMsg({
         id: `tc_${msg.id}`,
         role: 'tool',
@@ -1349,6 +1364,8 @@ connection.onMessage((channel, msg) => {
         store._hiddenToolCallIds.delete(msg.id)
         break
       }
+      // Inherit toolName/toolInput from matching tool_call
+      const callInfo = store._toolCallNames.get(msg.id)
       const resultMsg: ChatMessage = {
         id: `tr_${msg.id}`,
         role: 'tool',
@@ -1356,7 +1373,9 @@ connection.onMessage((channel, msg) => {
         isError: msg.isError,
         timestamp: Date.now(),
         parentToolCallId: msg.parentToolCallId,
+        ...(callInfo && { toolName: callInfo.name, toolInput: callInfo.input }),
       }
+      store._toolCallNames.delete(msg.id)
       addMsg(resultMsg)
       // Extract citation sources from web_search results
       if (store._pendingWebSearchToolCallIds.has(msg.id)) {

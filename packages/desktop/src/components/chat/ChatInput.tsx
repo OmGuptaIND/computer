@@ -12,6 +12,7 @@ import { SlashCommandMenu } from './SlashCommandMenu.js'
 
 interface Props {
   onSend: (text: string, attachments?: ChatImageAttachment[]) => void
+  onSteer?: (text: string) => void
   onSkillSelect: (skill: Skill) => void
   variant?: 'docked' | 'hero'
   initialValue?: string
@@ -46,6 +47,7 @@ function attachmentPreviewSrc(attachment: ChatImageAttachment): string | undefin
 
 export function ChatInput({
   onSend,
+  onSteer,
   onSkillSelect,
   variant = 'docked',
   initialValue,
@@ -128,7 +130,18 @@ export function ChatInput({
 
   const handleSend = useCallback(() => {
     const text = input.trim()
-    if ((!text && attachments.length === 0) || isCurrentSessionWorking) return
+    if (!text && attachments.length === 0) return
+
+    // If agent is working, steer instead of sending a new message
+    if (isCurrentSessionWorking) {
+      if (text && onSteer) {
+        onSteer(text)
+        setInput('')
+        setShowSlashMenu(false)
+        textareaRef.current?.focus()
+      }
+      return
+    }
 
     const message = planFirst
       ? `Think step by step and create a plan before doing anything. Once I approve the plan, execute it.${text ? `\n\n${text}` : ''}`
@@ -141,7 +154,7 @@ export function ChatInput({
     setPlanFirst(false)
     setShowSlashMenu(false)
     textareaRef.current?.focus()
-  }, [input, attachments, isCurrentSessionWorking, onSend, planFirst])
+  }, [input, attachments, isCurrentSessionWorking, onSend, onSteer, planFirst])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (showSlashMenu) return
@@ -276,13 +289,26 @@ export function ChatInput({
             <div className="composer__toolbar-right">
               <ModelSelector />
               {isCurrentSessionWorking ? (
-                <button
-                  type="button"
-                  className="composer__btn composer__btn--stop"
-                  aria-label="Stop"
-                >
-                  <Square size={18} strokeWidth={1.5} />
-                </button>
+                <>
+                  {input.trim() && (
+                    <button
+                      type="button"
+                      onClick={handleSend}
+                      className="composer__btn composer__btn--steer"
+                      aria-label="Send while working"
+                      title="Send while working"
+                    >
+                      <Send size={16} strokeWidth={1.5} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="composer__btn composer__btn--stop"
+                    aria-label="Stop"
+                  >
+                    <Square size={18} strokeWidth={1.5} />
+                  </button>
+                </>
               ) : (
                 <button
                   type="button"

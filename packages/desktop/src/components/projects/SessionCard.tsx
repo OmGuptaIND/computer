@@ -20,7 +20,14 @@ function formatRelativeTime(ts: number): string {
   return new Date(ts).toLocaleDateString()
 }
 
-export function SessionCard({ title, messageCount, lastActiveAt, isActive, onClick, onDelete }: Props) {
+export function SessionCard({
+  title,
+  messageCount,
+  lastActiveAt,
+  isActive,
+  onClick,
+  onDelete,
+}: Props) {
   const [showMenu, setShowMenu] = useState(false)
 
   return (
@@ -60,7 +67,17 @@ export function SessionCard({ title, messageCount, lastActiveAt, isActive, onCli
 
         {showMenu && (
           <>
-            <div className="session-card__menu-backdrop" onClick={(e) => { e.stopPropagation(); setShowMenu(false) }} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') setShowMenu(false) }} />
+            <div
+              className="session-card__menu-backdrop"
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowMenu(false)
+              }}
+              onKeyDown={(e) => {
+                e.stopPropagation()
+                if (e.key === 'Escape') setShowMenu(false)
+              }}
+            />
             <div className="session-card__menu">
               <button
                 type="button"

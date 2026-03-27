@@ -155,6 +155,17 @@ export function AgentChat() {
     [addMessage, newConversation],
   )
 
+  const handleSteer = useCallback(
+    (text: string) => {
+      const store = useStore.getState()
+      const conv = store.getActiveConversation()
+      const sessionId = conv?.sessionId || store.currentSessionId
+      if (!sessionId) return
+      connection.sendSteerMessage(text, sessionId)
+    },
+    [],
+  )
+
   const handleConfirm = useCallback(
     (approved: boolean) => {
       if (!pendingConfirm) return
@@ -216,6 +227,7 @@ export function AgentChat() {
       {messages.length > 0 && (
         <ChatInput
           onSend={handleSend}
+          onSteer={handleSteer}
           onSkillSelect={setSelectedSkill}
           pendingAskUser={pendingAskUser}
           onAskUserSubmit={handleAskUserSubmit}

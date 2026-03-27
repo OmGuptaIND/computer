@@ -11,7 +11,9 @@ export function ProjectNotifications({ count = 0 }: Props) {
         <Bell size={14} strokeWidth={1.5} />
         <span>Notifications</span>
         {count > 0 && (
-          <span className="config-section-inline__badge config-section-inline__badge--warn">{count}</span>
+          <span className="config-section-inline__badge config-section-inline__badge--warn">
+            {count}
+          </span>
         )}
       </div>
       {count > 0 ? (

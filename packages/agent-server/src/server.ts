@@ -709,6 +709,25 @@ export class AgentServer {
         await this.handleChatMessage(msg)
         break
 
+      // ── Steering: user sends a message while the agent is working ──
+      case 'steer': {
+        const steerSessionId = msg.sessionId || DEFAULT_SESSION_ID
+        const steerSession = this.sessions.get(steerSessionId)
+        if (steerSession && this.activeTurns.has(steerSessionId)) {
+          steerSession.steer(msg.content)
+          this.sendToClient(Channel.AI, {
+            type: 'steer_ack',
+            content: msg.content,
+            sessionId: steerSessionId,
+          })
+          console.log(`[${steerSessionId}] Steering: "${msg.content.slice(0, 60)}"`)
+        } else {
+          // Session not active — treat as a regular message
+          await this.handleChatMessage(msg as any)
+        }
+        break
+      }
+
       // ── Confirm response (forwarded to active session) ──
       case 'confirm_response':
         if (msg.id && this.promptResolvers.has(msg.id)) {
@@ -1012,7 +1031,21 @@ export class AgentServer {
       }
     }
 
-    type UsageEntry = { id: string; title: string; provider: string; model: string; createdAt: number; lastActiveAt: number; usage?: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number } }
+    type UsageEntry = {
+      id: string
+      title: string
+      provider: string
+      model: string
+      createdAt: number
+      lastActiveAt: number
+      usage?: {
+        inputTokens: number
+        outputTokens: number
+        totalTokens: number
+        cacheReadTokens: number
+        cacheWriteTokens: number
+      }
+    }
 
     // Start from persisted metas, but prefer in-memory usage when available
     const allSessions: UsageEntry[] = metas.map((m) => {
@@ -1044,9 +1077,29 @@ export class AgentServer {
     }
 
     // Compute totals
-    const totals = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
-    const modelMap = new Map<string, { provider: string; inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens: number; cacheWriteTokens: number; sessionCount: number }>()
-    const dayMap = new Map<string, { inputTokens: number; outputTokens: number; totalTokens: number; sessionCount: number }>()
+    const totals = {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    }
+    const modelMap = new Map<
+      string,
+      {
+        provider: string
+        inputTokens: number
+        outputTokens: number
+        totalTokens: number
+        cacheReadTokens: number
+        cacheWriteTokens: number
+        sessionCount: number
+      }
+    >()
+    const dayMap = new Map<
+      string,
+      { inputTokens: number; outputTokens: number; totalTokens: number; sessionCount: number }
+    >()
 
     for (const s of allSessions) {
       if (!s.usage) continue

@@ -1,6 +1,6 @@
+import { AnimatePresence, motion } from 'framer-motion'
 import { Settings, Trash2, Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
 import { connection } from '../../lib/connection.js'
 import { useStore } from '../../lib/store.js'
 import { AgentChat } from '../AgentChat.js'
@@ -159,8 +159,16 @@ export function ProjectView() {
         />
 
         {showDeleteConfirm && (
-          <div className="modal-overlay" onClick={() => setShowDeleteConfirm(false)} onKeyDown={(e) => e.key === 'Escape' && setShowDeleteConfirm(false)}>
-            <div className="modal-card modal-card--sm" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          <div
+            className="modal-overlay"
+            onClick={() => setShowDeleteConfirm(false)}
+            onKeyDown={(e) => e.key === 'Escape' && setShowDeleteConfirm(false)}
+          >
+            <div
+              className="modal-card modal-card--sm"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
               <div className="modal-card__body">
                 <h3>Delete "{project.name}"?</h3>
                 <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>
@@ -168,7 +176,11 @@ export function ProjectView() {
                 </p>
               </div>
               <div className="modal-card__footer">
-                <button type="button" className="button button--ghost" onClick={() => setShowDeleteConfirm(false)}>
+                <button
+                  type="button"
+                  className="button button--ghost"
+                  onClick={() => setShowDeleteConfirm(false)}
+                >
                   Cancel
                 </button>
                 <button type="button" className="button button--danger" onClick={handleDelete}>
@@ -193,10 +205,7 @@ export function ProjectView() {
           className="project-chat-view__breadcrumb"
           onClick={handleBackToLanding}
         >
-          <div
-            className="project-chat-view__icon"
-            style={{ backgroundColor: project.color }}
-          >
+          <div className="project-chat-view__icon" style={{ backgroundColor: project.color }}>
             {project.icon}
           </div>
           <span className="project-chat-view__sep">/</span>
@@ -210,11 +219,7 @@ export function ProjectView() {
               {project.stats.activeJobs}
             </span>
           )}
-          <button
-            type="button"
-            className="project-chat-view__btn"
-            title="Settings"
-          >
+          <button type="button" className="project-chat-view__btn" title="Settings">
             <Settings size={14} strokeWidth={1.5} />
           </button>
           <button
@@ -251,8 +256,16 @@ export function ProjectView() {
       </div>
 
       {showDeleteConfirm && (
-        <div className="modal-overlay" onClick={() => setShowDeleteConfirm(false)} onKeyDown={(e) => e.key === 'Escape' && setShowDeleteConfirm(false)}>
-          <div className="modal-card modal-card--sm" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowDeleteConfirm(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setShowDeleteConfirm(false)}
+        >
+          <div
+            className="modal-card modal-card--sm"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
             <div className="modal-card__body">
               <h3>Delete "{project.name}"?</h3>
               <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>
@@ -260,7 +273,11 @@ export function ProjectView() {
               </p>
             </div>
             <div className="modal-card__footer">
-              <button type="button" className="button button--ghost" onClick={() => setShowDeleteConfirm(false)}>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={() => setShowDeleteConfirm(false)}
+              >
                 Cancel
               </button>
               <button type="button" className="button button--danger" onClick={handleDelete}>

@@ -35,10 +35,10 @@ import { executeNetwork } from './tools/network.js'
 import { executeNotification } from './tools/notification.js'
 import { executePlan } from './tools/plan.js'
 import { executeProcess } from './tools/process.js'
+import { executePublish } from './tools/publish.js'
 import { executeShell } from './tools/shell.js'
 import { type TasksUpdateCallback, executeTaskTracker } from './tools/task-tracker.js'
 import { executeTodo } from './tools/todo.js'
-import { executePublish } from './tools/publish.js'
 import { executeWebSearch } from './tools/web-search.js'
 
 // Re-export for session.ts
@@ -986,12 +986,8 @@ export function buildTools(
   // ── Web search (always registered — SearXNG free, Brave paid, or setup instructions) ──
   {
     // Prefer SearXNG (free, self-hosted), fall back to Brave (paid)
-    const searxng = config.connectors.find(
-      (c) => c.id === 'searxng' && c.enabled && c.baseUrl,
-    )
-    const brave = config.connectors.find(
-      (c) => c.id === 'brave-search' && c.enabled && c.apiKey,
-    )
+    const searxng = config.connectors.find((c) => c.id === 'searxng' && c.enabled && c.baseUrl)
+    const brave = config.connectors.find((c) => c.id === 'brave-search' && c.enabled && c.apiKey)
     const provider: import('./tools/web-search.js').SearchProvider | null = searxng?.baseUrl
       ? { type: 'searxng', baseUrl: searxng.baseUrl }
       : brave?.apiKey
@@ -1022,7 +1018,9 @@ export function buildTools(
             ),
           ),
           country: Type.Optional(
-            Type.String({ description: 'Country code for results, e.g. "US", "GB", "DE" (Brave only)' }),
+            Type.String({
+              description: 'Country code for results, e.g. "US", "GB", "DE" (Brave only)',
+            }),
           ),
         }),
         async execute(_toolCallId, params) {
