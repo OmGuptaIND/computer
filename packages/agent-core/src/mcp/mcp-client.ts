@@ -68,6 +68,8 @@ export class McpClient extends EventEmitter {
   private connected = false
   private tools: McpTool[] = []
   private buffer = ''
+  /** Serializes requests to prevent concurrent stdin writes to non-thread-safe MCP servers */
+  private requestQueue: Promise<void> = Promise.resolve()
 
   constructor(config: McpServerConfig) {
     super()
@@ -135,7 +137,11 @@ export class McpClient extends EventEmitter {
           clientInfo: { name: 'anton', version: '1.0.0' },
         },
         INIT_TIMEOUT,
-      )) as { protocolVersion: string; capabilities: Record<string, unknown>; serverInfo?: { name: string } }
+      )) as {
+        protocolVersion: string
+        capabilities: Record<string, unknown>
+        serverInfo?: { name: string }
+      }
 
       console.log(
         `[mcp:${this.config.id}] initialized — server: ${initResult.serverInfo?.name ?? 'unknown'}, protocol: ${initResult.protocolVersion}`,
@@ -183,39 +189,69 @@ export class McpClient extends EventEmitter {
    * Call a tool on the MCP server.
    */
   async callTool(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
-    const result = (await this.request('tools/call', { name, arguments: args }, CALL_TIMEOUT)) as McpToolResult
+    const result = (await this.request(
+      'tools/call',
+      { name, arguments: args },
+      CALL_TIMEOUT,
+    )) as McpToolResult
     return result
+  }
+
+  /** Health check — returns true if the MCP server responds within 5s. */
+  async ping(): Promise<boolean> {
+    try {
+      await this.request('ping', {}, 5_000)
+      return true
+    } catch {
+      return false
+    }
   }
 
   // ── Private helpers ─────────────────────────────────────────────
 
-  private request(method: string, params: Record<string, unknown>, timeout = CALL_TIMEOUT): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-      if (!this.process?.stdin?.writable) {
-        return reject(new Error(`MCP server "${this.config.id}" stdin not writable`))
-      }
+  private request(
+    method: string,
+    params: Record<string, unknown>,
+    timeout = CALL_TIMEOUT,
+  ): Promise<unknown> {
+    // Serialize: chain onto the request queue so only one request is in-flight at a time.
+    // This prevents interleaving stdin writes to non-thread-safe MCP servers.
+    const execute = (): Promise<unknown> =>
+      new Promise((resolve, reject) => {
+        if (!this.process?.stdin?.writable) {
+          return reject(new Error(`MCP server "${this.config.id}" stdin not writable`))
+        }
 
-      const id = this.nextId++
-      const msg: JsonRpcRequest = { jsonrpc: '2.0', id, method, params }
+        const id = this.nextId++
+        const msg: JsonRpcRequest = { jsonrpc: '2.0', id, method, params }
 
-      const timer = setTimeout(() => {
-        this.pending.delete(id)
-        reject(new Error(`MCP request "${method}" timed out after ${timeout}ms`))
-      }, timeout)
+        const timer = setTimeout(() => {
+          this.pending.delete(id)
+          reject(new Error(`MCP request "${method}" timed out after ${timeout}ms`))
+        }, timeout)
 
-      this.pending.set(id, {
-        resolve: (v) => {
-          clearTimeout(timer)
-          resolve(v)
-        },
-        reject: (e) => {
-          clearTimeout(timer)
-          reject(e)
-        },
+        this.pending.set(id, {
+          resolve: (v) => {
+            clearTimeout(timer)
+            resolve(v)
+          },
+          reject: (e) => {
+            clearTimeout(timer)
+            reject(e)
+          },
+        })
+
+        this.process.stdin.write(`${JSON.stringify(msg)}\n`)
       })
 
-      this.process.stdin.write(`${JSON.stringify(msg)}\n`)
-    })
+    // Chain onto the queue — previous request must complete before this one starts
+    const result = this.requestQueue.then(() => execute())
+    // Update queue head, swallow errors so one failure doesn't block the chain
+    this.requestQueue = result.then(
+      () => {},
+      () => {},
+    )
+    return result
   }
 
   private notify(method: string, params: Record<string, unknown>): void {

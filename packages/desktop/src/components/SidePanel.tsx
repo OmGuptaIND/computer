@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Brain, FileCode, ListChecks, X } from 'lucide-react'
+import { Brain, Layers, ListChecks, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '../lib/store.js'
 import { ContextPanelContent } from './context/ContextPanelContent.js'
@@ -11,7 +11,7 @@ type PanelView = 'artifacts' | 'plan' | 'context'
 interface ViewTab {
   id: PanelView
   label: string
-  icon: typeof FileCode
+  icon: typeof Layers
   available: boolean
 }
 
@@ -68,7 +68,7 @@ export function SidePanel() {
   }, [])
 
   const views: ViewTab[] = [
-    { id: 'artifacts', label: 'Artifacts', icon: FileCode, available: artifacts.length > 0 },
+    { id: 'artifacts', label: 'Artifacts', icon: Layers, available: artifacts.length > 0 },
     { id: 'plan', label: 'Plan', icon: ListChecks, available: pendingPlan !== null },
     { id: 'context', label: 'Context', icon: Brain, available: sidePanelView === 'context' },
   ]

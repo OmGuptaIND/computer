@@ -1,4 +1,4 @@
-import type { Project } from './projects.js'
+import type { Job, Project } from './projects.js'
 
 // ── Control Channel (0x00) ──────────────────────────────────────────
 
@@ -477,6 +477,13 @@ export interface AiSubAgentEndMessage {
   sessionId?: string
 }
 
+export interface AiSubAgentProgressMessage {
+  type: 'sub_agent_progress'
+  toolCallId: string
+  content: string
+  sessionId?: string
+}
+
 // Compaction events
 export interface CompactionStartMessage {
   type: 'compaction_start'
@@ -634,6 +641,79 @@ export interface ProjectSessionsListResponse {
   }[]
 }
 
+// ── Job management ───────────────────────────────────────────────────
+
+// Client → Server
+export interface JobCreateMessage {
+  type: 'job_create'
+  projectId: string
+  job: {
+    name: string
+    description?: string
+    kind: Job['kind']
+    command: string
+    args?: string[]
+    trigger?: Job['trigger']
+    workingDirectory?: string
+    env?: Record<string, string>
+    timeout?: number
+    restartPolicy?: Job['restartPolicy']
+    maxRestarts?: number
+    prompt?: string // agent prompt (for kind: 'agent')
+  }
+}
+
+export interface JobsListMessage {
+  type: 'jobs_list'
+  projectId: string
+}
+
+export interface JobActionMessage {
+  type: 'job_action'
+  projectId: string
+  jobId: string
+  action: 'start' | 'stop' | 'delete'
+}
+
+export interface JobLogsMessage {
+  type: 'job_logs'
+  projectId: string
+  jobId: string
+  runId?: string
+  tail?: number // default 100
+}
+
+// Server → Client
+export interface JobCreatedMessage {
+  type: 'job_created'
+  job: Job
+}
+
+export interface JobsListResponse {
+  type: 'jobs_list_response'
+  projectId: string
+  jobs: Job[]
+}
+
+export interface JobUpdatedMessage {
+  type: 'job_updated'
+  job: Job
+}
+
+export interface JobDeletedMessage {
+  type: 'job_deleted'
+  projectId: string
+  jobId: string
+}
+
+export interface JobLogsResponse {
+  type: 'job_logs_response'
+  projectId: string
+  jobId: string
+  runId: string
+  lines: string[]
+}
+
 // ── Connector management ─────────────────────────────────────────────
 
 export interface ConnectorConfigPayload {
@@ -673,6 +753,7 @@ export interface ConnectorRegistryEntryPayload {
   command?: string
   args?: string[]
   requiredEnv: string[]
+  featured?: boolean
 }
 
 // Client → Server
@@ -796,6 +877,7 @@ export type AiMessage =
   // Sub-agent
   | AiSubAgentStartMessage
   | AiSubAgentEndMessage
+  | AiSubAgentProgressMessage
   // Compaction
   | CompactionStartMessage
   | CompactionCompleteMessage
@@ -821,6 +903,16 @@ export type AiMessage =
   | ProjectFilesListResponse
   | ProjectSessionsListMessage
   | ProjectSessionsListResponse
+  // Jobs
+  | JobCreateMessage
+  | JobCreatedMessage
+  | JobsListMessage
+  | JobsListResponse
+  | JobActionMessage
+  | JobUpdatedMessage
+  | JobDeletedMessage
+  | JobLogsMessage
+  | JobLogsResponse
   // Connectors
   | ConnectorsListMessage
   | ConnectorsListResponse
@@ -874,9 +966,35 @@ export interface UpdateAvailableEvent {
   releaseUrl: string
 }
 
+export interface JobEventMessage {
+  type: 'job_event'
+  jobId: string
+  projectId: string
+  jobName: string
+  event: 'started' | 'completed' | 'failed' | 'crashed' | 'stopped'
+  detail?: string
+  runId?: string
+  timestamp: number
+}
+
+export interface NotificationEventMessage {
+  type: 'notification'
+  projectId: string
+  notification: {
+    id: string
+    jobId?: string
+    severity: 'info' | 'success' | 'warning' | 'error'
+    title: string
+    body?: string
+    createdAt: number
+  }
+}
+
 export type EventMessage =
   | FileChangedEvent
   | PortChangedEvent
   | TaskCompletedEvent
   | AgentStatusEvent
   | UpdateAvailableEvent
+  | JobEventMessage
+  | NotificationEventMessage

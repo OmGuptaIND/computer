@@ -29,6 +29,7 @@ import { executeFilesystem } from './tools/filesystem.js'
 import { executeGit } from './tools/git.js'
 import { executeHttpApi } from './tools/http-api.js'
 import { executeImage } from './tools/image.js'
+import type { JobActionHandler, JobToolInput } from './tools/job.js'
 import { executeMemory } from './tools/memory.js'
 import { executeNetwork } from './tools/network.js'
 import { executeNotification } from './tools/notification.js'
@@ -37,6 +38,7 @@ import { executeProcess } from './tools/process.js'
 import { executeShell } from './tools/shell.js'
 import { type TasksUpdateCallback, executeTaskTracker } from './tools/task-tracker.js'
 import { executeTodo } from './tools/todo.js'
+import { executeWebSearch } from './tools/web-search.js'
 
 // Re-export for session.ts
 export { needsConfirmation } from './tools/shell.js'
@@ -71,7 +73,11 @@ function toolResult(output: string, isError = false) {
  */
 function defineTool<T extends TSchema>(
   def: Omit<AgentTool<T>, 'execute'> & {
-    execute: (toolCallId: string, params: Static<T>, signal?: AbortSignal) => Promise<AgentToolResult<unknown>>
+    execute: (
+      toolCallId: string,
+      params: Static<T>,
+      signal?: AbortSignal,
+    ) => Promise<AgentToolResult<unknown>>
   },
 ): AgentTool {
   return def as AgentTool
@@ -87,8 +93,8 @@ export interface ToolCallbacks {
   onSubAgentEvent?: (
     event: import('./session.js').SessionEvent & { parentToolCallId: string },
   ) => void
-  /** When true, omit the sub_agent tool (prevents infinite recursion in child agents). */
-  excludeSubAgent?: boolean
+  /** Current sub-agent nesting depth. Max 2 levels. Replaces the old boolean excludeSubAgent. */
+  subAgentDepth?: number
   /** Access the parent session's confirm handler for sub-agents. */
   getConfirmHandler?: () => import('./session.js').ConfirmHandler | undefined
   /** Client-provided API key to pass through to sub-agent sessions. */
@@ -99,11 +105,17 @@ export interface ToolCallbacks {
   onTasksUpdate?: TasksUpdateCallback
   /** Default working directory for shell commands (project workspace or conversation workspace). */
   defaultWorkingDirectory?: string
-  /** Project ID — when set, enables the update_project_context tool. */
+  /** Project ID — when set, enables the update_project_context tool and job tool. */
   projectId?: string
+  /** Callback for the job management tool. Provided by the server. */
+  onJobAction?: JobActionHandler
 }
 
-export function buildTools(config: AgentConfig, callbacks?: ToolCallbacks, mcpManager?: import('./mcp/mcp-manager.js').McpManager): AgentTool[] {
+export function buildTools(
+  config: AgentConfig,
+  callbacks?: ToolCallbacks,
+  mcpManager?: import('./mcp/mcp-manager.js').McpManager,
+): AgentTool[] {
   const tools: AgentTool[] = [
     // ── Core tools ──────────────────────────────────────────────────
     defineTool({
@@ -411,7 +423,8 @@ export function buildTools(config: AgentConfig, callbacks?: ToolCallbacks, mcpMa
         query: Type.Optional(Type.String({ description: 'Filter term (for list)' })),
         scope: Type.Optional(
           Type.Union([Type.Literal('global'), Type.Literal('conversation')], {
-            description: 'Memory scope: "conversation" (default) for this conversation, "global" for cross-conversation',
+            description:
+              'Memory scope: "conversation" (default) for this conversation, "global" for cross-conversation',
           }),
         ),
       }),
@@ -462,8 +475,12 @@ export function buildTools(config: AgentConfig, callbacks?: ToolCallbacks, mcpMa
       parameters: Type.Object({
         tasks: Type.Array(
           Type.Object({
-            content: Type.String({ description: 'What needs to be done (imperative, e.g. "Run tests")' }),
-            activeForm: Type.String({ description: 'Present-continuous form (e.g. "Running tests")' }),
+            content: Type.String({
+              description: 'What needs to be done (imperative, e.g. "Run tests")',
+            }),
+            activeForm: Type.String({
+              description: 'Present-continuous form (e.g. "Running tests")',
+            }),
             status: Type.Union(
               [Type.Literal('pending'), Type.Literal('in_progress'), Type.Literal('completed')],
               { description: 'Task status' },
@@ -663,115 +680,322 @@ export function buildTools(config: AgentConfig, callbacks?: ToolCallbacks, mcpMa
     }),
   ]
 
-  // ── Sub-agent (conditional — excluded for child agents to prevent recursion) ──
-  if (!callbacks?.excludeSubAgent) {
-    tools.push(defineTool({
-      name: 'sub_agent',
-      label: 'Sub Agent',
-      description:
-        'Spawn a sub-agent to handle a complex task independently. ' +
-        'The sub-agent has its own context and access to all tools (shell, filesystem, browser, git, etc.). ' +
-        'Use for tasks that can be parallelized or need focused work — e.g. research, code analysis, file operations. ' +
-        'Multiple sub_agent calls in the same response run in parallel. ' +
-        'The sub-agent works autonomously until the task is complete, then returns its final output as the result.',
-      parameters: Type.Object({
-        task: Type.String({
-          description: 'Detailed description of the task for the sub-agent to complete',
+  // ── Sub-agent (depth-limited — max 2 levels of nesting) ──
+  const currentDepth = callbacks?.subAgentDepth ?? 0
+  const MAX_SUB_AGENT_DEPTH = 2
+
+  if (currentDepth < MAX_SUB_AGENT_DEPTH) {
+    tools.push(
+      defineTool({
+        name: 'sub_agent',
+        label: 'Sub Agent',
+        description:
+          'Spawn a sub-agent to handle a complex task independently. ' +
+          'The sub-agent has its own context and access to all tools including project files and MCP connectors. ' +
+          'Use for tasks that can be parallelized or need focused work — e.g. research, code analysis, file operations, API calls. ' +
+          'Multiple sub_agent calls in the same response run in parallel. ' +
+          'The sub-agent works autonomously until the task is complete, then returns its final output as the result.',
+        parameters: Type.Object({
+          task: Type.String({
+            description: 'Detailed description of the task for the sub-agent to complete',
+          }),
         }),
+        async execute(toolCallId, params) {
+          const onEvent = callbacks?.onSubAgentEvent
+
+          // Emit sub_agent_start
+          onEvent?.({
+            type: 'sub_agent_start',
+            toolCallId,
+            task: params.task,
+            parentToolCallId: toolCallId,
+          })
+
+          let finalText = ''
+          let hadError = false
+
+          try {
+            // Lazy import to avoid circular dependency (agent.ts <-> session.ts)
+            const { Session } = await import('./session.js')
+
+            // Build tools for sub-agent with full project + MCP powers, depth incremented
+            const subTools = buildTools(
+              config,
+              {
+                getAskUserHandler: callbacks?.getAskUserHandler,
+                getConfirmHandler: callbacks?.getConfirmHandler,
+                onSubAgentEvent: callbacks?.onSubAgentEvent,
+                subAgentDepth: currentDepth + 1,
+                clientApiKey: callbacks?.clientApiKey,
+                defaultWorkingDirectory: callbacks?.defaultWorkingDirectory,
+                projectId: callbacks?.projectId,
+                onJobAction: callbacks?.onJobAction,
+                // Shared project-scoped memory so parallel sub-agents can coordinate
+                conversationId: callbacks?.projectId
+                  ? `project-${callbacks.projectId}`
+                  : callbacks?.conversationId,
+              },
+              mcpManager,
+            )
+
+            const subSession = new Session({
+              id: `sub_${toolCallId}`,
+              provider: config.defaults.provider,
+              model: config.defaults.model,
+              config,
+              tools: subTools,
+              apiKey: callbacks?.clientApiKey,
+              ephemeral: true,
+              // Safety limits for sub-agents
+              maxTokenBudget: 100_000,
+              maxDurationMs: 600_000, // 10 minutes
+              maxTurns: 50,
+            })
+
+            // Wire confirm handler from parent so sub-agent shell commands can be approved
+            const confirmHandler = callbacks?.getConfirmHandler?.()
+            if (confirmHandler) {
+              subSession.setConfirmHandler(confirmHandler)
+            }
+
+            for await (const event of subSession.processMessage(params.task)) {
+              // Forward intermediate events to client, tagged with parentToolCallId
+              if (onEvent && event.type !== 'done' && event.type !== 'title_update') {
+                onEvent({
+                  ...event,
+                  parentToolCallId: toolCallId,
+                } as import('./session.js').SessionEvent & { parentToolCallId: string })
+              }
+
+              // Stream progress: emit text events as live progress updates
+              if (event.type === 'text' && event.content) {
+                onEvent?.({
+                  type: 'sub_agent_progress',
+                  toolCallId,
+                  content: event.content,
+                  parentToolCallId: toolCallId,
+                } as import('./session.js').SessionEvent & { parentToolCallId: string })
+              }
+
+              // Collect text output for the final tool result
+              if (event.type === 'text') {
+                finalText += event.content
+              }
+              if (event.type === 'error') {
+                hadError = true
+                finalText += `\nError: ${event.message}`
+              }
+            }
+          } catch (err) {
+            hadError = true
+            finalText = `Sub-agent error: ${(err as Error).message}`
+          }
+
+          // Emit sub_agent_end
+          onEvent?.({
+            type: 'sub_agent_end',
+            toolCallId,
+            success: !hadError,
+            parentToolCallId: toolCallId,
+          })
+
+          return toolResult(finalText || '(sub-agent produced no output)', hadError)
+        },
       }),
-      async execute(toolCallId, params) {
-        const onEvent = callbacks?.onSubAgentEvent
-
-        // Emit sub_agent_start
-        onEvent?.({
-          type: 'sub_agent_start',
-          toolCallId,
-          task: params.task,
-          parentToolCallId: toolCallId,
-        })
-
-        let finalText = ''
-        let hadError = false
-
-        try {
-          // Lazy import to avoid circular dependency (agent.ts <-> session.ts)
-          const { Session } = await import('./session.js')
-
-          // Build tools for sub-agent without sub_agent tool (prevents recursion)
-          const subTools = buildTools(config, {
-            getAskUserHandler: callbacks?.getAskUserHandler,
-            excludeSubAgent: true,
-          })
-
-          const subSession = new Session({
-            id: `sub_${toolCallId}`,
-            provider: config.defaults.provider,
-            model: config.defaults.model,
-            config,
-            tools: subTools,
-            apiKey: callbacks?.clientApiKey,
-            ephemeral: true,
-          })
-
-          // Wire confirm handler from parent so sub-agent shell commands can be approved
-          const confirmHandler = callbacks?.getConfirmHandler?.()
-          if (confirmHandler) {
-            subSession.setConfirmHandler(confirmHandler)
-          }
-
-          for await (const event of subSession.processMessage(params.task)) {
-            // Forward intermediate events to client, tagged with parentToolCallId
-            if (onEvent && event.type !== 'done' && event.type !== 'title_update') {
-              onEvent({ ...event, parentToolCallId: toolCallId } as import('./session.js').SessionEvent & { parentToolCallId: string })
-            }
-
-            // Collect text output for the final tool result
-            if (event.type === 'text') {
-              finalText += event.content
-            }
-            if (event.type === 'error') {
-              hadError = true
-              finalText += `\nError: ${event.message}`
-            }
-          }
-        } catch (err) {
-          hadError = true
-          finalText = `Sub-agent error: ${(err as Error).message}`
-        }
-
-        // Emit sub_agent_end
-        onEvent?.({
-          type: 'sub_agent_end',
-          toolCallId,
-          success: !hadError,
-          parentToolCallId: toolCallId,
-        })
-
-        return toolResult(finalText || '(sub-agent produced no output)', hadError)
-      },
-    }))
+    )
   }
 
   // ── Project context update (only for project-scoped sessions) ─────
   if (callbacks?.projectId) {
-    tools.push(defineTool({
-      name: 'update_project_context',
-      label: 'Project Context',
-      description:
-        'Update the project context with a summary of what was accomplished in this session. ' +
-        'Call this when a conversation is wrapping up or when significant progress has been made on the project. ' +
-        'This persists the summary so future sessions have context about past work.',
-      parameters: Type.Object({
-        session_summary: Type.String({ description: '1-2 sentence summary of what was accomplished in this session' }),
-        project_summary: Type.Optional(Type.String({ description: 'Updated overall project summary incorporating new info. Only provide if something significant changed.' })),
+    tools.push(
+      defineTool({
+        name: 'update_project_context',
+        label: 'Project Context',
+        description:
+          'Update the project context with a summary of what was accomplished in this session. ' +
+          'Call this when a conversation is wrapping up or when significant progress has been made on the project. ' +
+          'This persists the summary so future sessions have context about past work.',
+        parameters: Type.Object({
+          session_summary: Type.String({
+            description: '1-2 sentence summary of what was accomplished in this session',
+          }),
+          project_summary: Type.Optional(
+            Type.String({
+              description:
+                'Updated overall project summary incorporating new info. Only provide if something significant changed.',
+            }),
+          ),
+        }),
+        async execute(_toolCallId, params) {
+          return toolResult(
+            JSON.stringify({
+              sessionSummary: params.session_summary,
+              projectSummary: params.project_summary,
+            }),
+          )
+        },
       }),
-      async execute(_toolCallId, params) {
-        return toolResult(JSON.stringify({
-          sessionSummary: params.session_summary,
-          projectSummary: params.project_summary,
-        }))
-      },
-    }))
+    )
+  }
+
+  // ── Job management (only for project-scoped sessions with handler) ──
+  if (callbacks?.projectId && callbacks?.onJobAction) {
+    const projectId = callbacks.projectId
+    const jobHandler = callbacks.onJobAction
+    tools.push(
+      defineTool({
+        name: 'job',
+        label: 'Job',
+        description:
+          'Create, run, and manage jobs in the current project. ' +
+          'A job is a managed process (Python script, shell command, etc.) that Anton can start, stop, schedule, and monitor. ' +
+          'Operations: create (define a new job), list (show all jobs), start (run a job), stop (kill a running job), ' +
+          'delete (remove a job), logs (view job output), status (check a specific job).',
+        parameters: Type.Object({
+          operation: Type.Union(
+            [
+              Type.Literal('create'),
+              Type.Literal('list'),
+              Type.Literal('start'),
+              Type.Literal('stop'),
+              Type.Literal('delete'),
+              Type.Literal('logs'),
+              Type.Literal('status'),
+            ],
+            { description: 'Operation to perform' },
+          ),
+          name: Type.Optional(Type.String({ description: 'Job name (for create)' })),
+          description: Type.Optional(Type.String({ description: 'Job description (for create)' })),
+          kind: Type.Optional(
+            Type.Union(
+              [Type.Literal('task'), Type.Literal('long-running'), Type.Literal('agent')],
+              {
+                description:
+                  'Job kind: task (shell, run once), long-running (shell, stays alive), or agent (AI session with full MCP + project access)',
+              },
+            ),
+          ),
+          command: Type.Optional(
+            Type.String({ description: 'Shell command to execute (for task/long-running)' }),
+          ),
+          prompt: Type.Optional(
+            Type.String({
+              description:
+                'Agent prompt to execute (for kind: agent). The agent gets full project + MCP connector access.',
+            }),
+          ),
+          args: Type.Optional(
+            Type.Array(Type.String(), { description: 'Command arguments (for create)' }),
+          ),
+          schedule: Type.Optional(
+            Type.String({
+              description: 'Cron expression for scheduling, e.g. "0 9 * * 1-5" (for create)',
+            }),
+          ),
+          working_directory: Type.Optional(
+            Type.String({ description: 'Working directory (for create)' }),
+          ),
+          env: Type.Optional(
+            Type.Record(Type.String(), Type.String(), {
+              description: 'Environment variables (for create)',
+            }),
+          ),
+          timeout: Type.Optional(
+            Type.Number({ description: 'Timeout in seconds, 0 = no limit (for create)' }),
+          ),
+          restart_policy: Type.Optional(
+            Type.Union(
+              [Type.Literal('never'), Type.Literal('on-failure'), Type.Literal('always')],
+              {
+                description: 'Restart policy for long-running jobs',
+              },
+            ),
+          ),
+          max_restarts: Type.Optional(
+            Type.Number({ description: 'Max restart attempts (default 3)' }),
+          ),
+          job_id: Type.Optional(
+            Type.String({ description: 'Job ID (for start/stop/delete/logs/status)' }),
+          ),
+          tail: Type.Optional(
+            Type.Number({ description: 'Number of log lines to return (for logs, default 50)' }),
+          ),
+        }),
+        async execute(_toolCallId, params) {
+          const input: JobToolInput = {
+            operation: params.operation,
+            name: params.name,
+            description: params.description,
+            kind: params.kind,
+            command: params.command,
+            prompt: params.prompt,
+            args: params.args,
+            schedule: params.schedule,
+            workingDirectory: params.working_directory,
+            env: params.env,
+            timeout: params.timeout,
+            restartPolicy: params.restart_policy,
+            maxRestarts: params.max_restarts,
+            jobId: params.job_id,
+            tail: params.tail,
+          }
+          const output = await jobHandler(projectId, input)
+          return toolResult(output)
+        },
+      }),
+    )
+  }
+
+  // ── Web search (always registered — returns setup instructions if not configured) ──
+  {
+    const braveConnector = config.connectors.find(
+      (c) => c.id === 'brave-search' && c.enabled && c.apiKey,
+    )
+    const apiKey = braveConnector?.apiKey
+    tools.push(
+      defineTool({
+        name: 'web_search',
+        label: 'Web Search',
+        description:
+          'Search the web using Brave Search. Returns titles, URLs, and snippets. ' +
+          'Use for finding current information, researching topics, discovering resources, and answering questions that need up-to-date data. ' +
+          'If not configured, tells the user how to enable it.',
+        parameters: Type.Object({
+          query: Type.String({ description: 'Search query' }),
+          count: Type.Optional(
+            Type.Number({ description: 'Number of results (default: 10, max: 20)' }),
+          ),
+          offset: Type.Optional(Type.Number({ description: 'Offset for pagination (default: 0)' })),
+          freshness: Type.Optional(
+            Type.Union(
+              [Type.Literal('pd'), Type.Literal('pw'), Type.Literal('pm'), Type.Literal('py')],
+              {
+                description:
+                  'Filter by freshness: pd=past day, pw=past week, pm=past month, py=past year',
+              },
+            ),
+          ),
+          country: Type.Optional(
+            Type.String({ description: 'Country code for results, e.g. "US", "GB", "DE"' }),
+          ),
+        }),
+        async execute(_toolCallId, params) {
+          if (!apiKey) {
+            return toolResult(
+              'Web search is not configured. To enable it:\n' +
+                '1. Go to Settings → Connectors\n' +
+                '2. Find "Brave Search" and click Connect\n' +
+                '3. Enter your Brave Search API key (get one free at https://brave.com/search/api/)\n' +
+                '4. Once connected, web search will be available.\n\n' +
+                'In the meantime, you can use the browser tool to fetch specific URLs if you have them.',
+              true,
+            )
+          }
+          const output = await executeWebSearch(params, apiKey)
+          return toolResult(output)
+        },
+      }),
+    )
   }
 
   // ── MCP tools (from connected connectors) ─────────────────────────

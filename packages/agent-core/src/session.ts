@@ -10,7 +10,16 @@
  */
 
 import type { AgentConfig, PersistedSession, PersistedTaskItem } from '@anton/agent-config'
-import { ensureConversationDirs, getConversationWorkspace, getProjectSessionsDir, loadProjectTypePrompt, loadReferences, loadSession, saveSession, saveSessionTasks } from '@anton/agent-config'
+import {
+  ensureConversationDirs,
+  getConversationWorkspace,
+  getProjectSessionsDir,
+  loadProjectTypePrompt,
+  loadReferences,
+  loadSession,
+  saveSession,
+  saveSessionTasks,
+} from '@anton/agent-config'
 import type { ProjectType } from '@anton/agent-config'
 import type { ChatImageAttachmentInput, SessionImageAttachment, TokenUsage } from '@anton/protocol'
 import { Agent as PiAgent } from '@mariozechner/pi-agent-core'
@@ -22,8 +31,6 @@ import type {
 import { completeSimple, getModel } from '@mariozechner/pi-ai'
 import type { Api, ImageContent, Model, TextContent } from '@mariozechner/pi-ai'
 import { type AskUserHandler, SYSTEM_PROMPT, type ToolCallbacks, buildTools } from './agent.js'
-import { type ContextInfo, assembleConversationContext } from './context.js'
-import { type Span, isTracingEnabled, startTrace } from './tracing.js'
 import {
   type CompactionConfig,
   type CompactionState,
@@ -31,6 +38,8 @@ import {
   createInitialCompactionState,
   getDefaultCompactionConfig,
 } from './compaction.js'
+import { type ContextInfo, assembleConversationContext } from './context.js'
+import { type Span, startTrace } from './tracing.js'
 
 export type ConfirmHandler = (command: string, reason: string) => Promise<boolean>
 export type PlanConfirmHandler = (
@@ -70,6 +79,7 @@ export type SessionEvent =
   | { type: 'error'; message: string }
   | { type: 'sub_agent_start'; toolCallId: string; task: string }
   | { type: 'sub_agent_end'; toolCallId: string; success: boolean }
+  | { type: 'sub_agent_progress'; toolCallId: string; content: string }
   | { type: 'tasks_update'; tasks: import('@anton/protocol').TaskItem[] }
   | { type: 'token_update'; usage: TokenUsage }
 
@@ -132,6 +142,13 @@ export class Session {
   private firstMessage?: string
   public contextInfo?: ContextInfo
 
+  // Safety limits
+  private maxTokenBudget: number
+  private maxDurationMs: number
+  private maxTurns: number
+  private _turnCount = 0
+  private _processStartedAt = 0
+
   // Last known task tracker state — persisted for resume
   private _lastTasks: PersistedTaskItem[] = []
   // Whether we need to inject task context on the next user message (set on resume)
@@ -153,6 +170,10 @@ export class Session {
     projectContext?: string // injected into system prompt
     projectType?: string // project type for prompt module loading
     lastTasks?: PersistedTaskItem[] // restored task state from persistence
+    // Safety limits
+    maxTokenBudget?: number // max total tokens before aborting (0 = unlimited)
+    maxDurationMs?: number // max wall-clock time for processMessage (0 = unlimited)
+    maxTurns?: number // max LLM turns per processMessage call (0 = unlimited)
   }) {
     this.id = opts.id
     this.provider = opts.provider
@@ -169,6 +190,9 @@ export class Session {
     this._lastTasks = opts.lastTasks || []
     // If resuming with incomplete tasks, flag for context injection on next message
     this._needsTaskResumeHint = this._lastTasks.some((t) => t.status !== 'completed')
+    this.maxTokenBudget = opts.maxTokenBudget ?? 0
+    this.maxDurationMs = opts.maxDurationMs ?? 0
+    this.maxTurns = opts.maxTurns ?? 0
 
     // Set up conversation workspace (skip for ephemeral sub-agents)
     if (!this.ephemeral) {
@@ -360,6 +384,8 @@ export class Session {
   ): AsyncGenerator<SessionEvent> {
     this.lastActiveAt = Date.now()
     this.lastEmittedTextLength = 0 // reset delta tracking for new turn
+    this._turnCount = 0
+    this._processStartedAt = Date.now()
     let trimmedMessage = userMessage.trim()
     const hasAttachments = attachments.length > 0
 
@@ -370,7 +396,12 @@ export class Session {
       this._needsTaskResumeHint = false
       const taskSummary = this._lastTasks
         .map((t) => {
-          const icon = t.status === 'completed' ? '[DONE]' : t.status === 'in_progress' ? '[IN PROGRESS]' : '[PENDING]'
+          const icon =
+            t.status === 'completed'
+              ? '[DONE]'
+              : t.status === 'in_progress'
+                ? '[IN PROGRESS]'
+                : '[PENDING]'
           return `  ${icon} ${t.content}`
         })
         .join('\n')
@@ -553,7 +584,9 @@ export class Session {
     // Braintrust: close the parent trace span with output + usage
     if (traceSpan) {
       // End any orphaned tool spans
-      for (const [, s] of toolSpans) { s.end() }
+      for (const [, s] of toolSpans) {
+        s.end()
+      }
       toolSpans.clear()
 
       traceSpan.log({
@@ -563,11 +596,13 @@ export class Session {
           textEventCount,
           title: this.title,
         },
-        metrics: this.lastTurnUsage ? {
-          inputTokens: this.lastTurnUsage.inputTokens,
-          outputTokens: this.lastTurnUsage.outputTokens,
-          totalTokens: this.lastTurnUsage.totalTokens,
-        } : undefined,
+        metrics: this.lastTurnUsage
+          ? {
+              inputTokens: this.lastTurnUsage.inputTokens,
+              outputTokens: this.lastTurnUsage.outputTokens,
+              totalTokens: this.lastTurnUsage.totalTokens,
+            }
+          : undefined,
       })
       traceSpan.end()
     }
@@ -933,7 +968,45 @@ export class Session {
           this.cumulativeUsage.cacheWriteTokens += this.lastTurnUsage.cacheWriteTokens
         }
         // Emit streaming token update so the client can show live counters
-        return [{ type: 'token_update' as const, usage: this.getCumulativeUsage() }]
+        const events: SessionEvent[] = [
+          { type: 'token_update' as const, usage: this.getCumulativeUsage() },
+        ]
+
+        // Track turns for limit enforcement
+        this._turnCount++
+
+        // Enforce token budget
+        if (this.maxTokenBudget > 0 && this.cumulativeUsage.totalTokens > this.maxTokenBudget) {
+          this.cancel()
+          events.push({
+            type: 'error',
+            message: `Token budget exceeded: ${this.cumulativeUsage.totalTokens}/${this.maxTokenBudget} tokens`,
+          })
+        }
+
+        // Enforce max turns
+        if (this.maxTurns > 0 && this._turnCount >= this.maxTurns) {
+          this.cancel()
+          events.push({
+            type: 'error',
+            message: `Max turns reached: ${this._turnCount}/${this.maxTurns}`,
+          })
+        }
+
+        // Enforce max duration
+        if (
+          this.maxDurationMs > 0 &&
+          this._processStartedAt > 0 &&
+          Date.now() - this._processStartedAt > this.maxDurationMs
+        ) {
+          this.cancel()
+          events.push({
+            type: 'error',
+            message: `Max duration exceeded: ${Math.round((Date.now() - this._processStartedAt) / 1000)}s`,
+          })
+        }
+
+        return events
       }
 
       case 'agent_end': {
@@ -1208,6 +1281,7 @@ export function createSession(
     projectWorkspacePath?: string
     projectType?: string
     mcpManager?: import('./mcp/mcp-manager.js').McpManager
+    onJobAction?: import('./tools/job.js').JobActionHandler
   },
 ): Session {
   const provider = opts?.provider || config.defaults.provider
@@ -1229,6 +1303,7 @@ export function createSession(
     },
     defaultWorkingDirectory: opts?.projectWorkspacePath,
     projectId: opts?.projectId,
+    onJobAction: opts?.onJobAction,
   }
 
   const session = new Session({
@@ -1273,6 +1348,7 @@ export function resumeSession(
     projectWorkspacePath?: string
     projectType?: string
     mcpManager?: import('./mcp/mcp-manager.js').McpManager
+    onJobAction?: import('./tools/job.js').JobActionHandler
   },
 ): Session | null {
   const basePath = opts?.projectId ? getProjectSessionsDir(opts.projectId) : undefined
@@ -1293,6 +1369,7 @@ export function resumeSession(
     },
     defaultWorkingDirectory: opts?.projectWorkspacePath,
     projectId: opts?.projectId,
+    onJobAction: opts?.onJobAction,
   }
 
   const session = new Session({

@@ -1,6 +1,6 @@
 import { type AskUserQuestion, Channel, type Project, type TokenUsage } from '@anton/protocol'
 import { create } from 'zustand'
-import type { Artifact } from './artifacts.js'
+import { type Artifact, extractArtifact } from './artifacts.js'
 import { type ConnectionStatus, connection } from './connection.js'
 import {
   type Conversation,
@@ -100,6 +100,7 @@ export interface ConnectorRegistryInfo {
   command?: string
   args?: string[]
   requiredEnv: string[]
+  featured?: boolean
 }
 
 export interface UpdateInfo {
@@ -204,6 +205,9 @@ interface AppState {
   _currentAssistantMsgId: string | null
   // Per-session assistant message tracking (for multi-conversation isolation)
   _sessionAssistantMsgIds: Map<string, string>
+  // Track tool call IDs for tools with dedicated UI (ask_user, task_tracker, etc.)
+  // so their tool_results can be silently discarded
+  _hiddenToolCallIds: Set<string>
 
   // Artifacts
   artifacts: Artifact[]
@@ -243,6 +247,10 @@ interface AppState {
   projectSessionsLoading: boolean // true while fetching project sessions
   projectFiles: { name: string; size: number; mimeType: string }[]
   projectFilesLoading: boolean
+  projectJobs: import('@anton/protocol').Job[]
+  projectJobsLoading: boolean
+  selectedJobId: string | null
+  jobLogs: string[]
   activeView: 'chat' | 'projects' | 'terminal'
 
   // Connectors
@@ -262,6 +270,9 @@ interface AppState {
   removeProject: (id: string) => void
   setProjectSessions: (sessions: SessionMeta[]) => void
   setProjectFiles: (files: { name: string; size: number; mimeType: string }[]) => void
+  setProjectJobs: (jobs: import('@anton/protocol').Job[]) => void
+  setSelectedJob: (id: string | null) => void
+  setJobLogs: (lines: string[]) => void
   setActiveProjectSession: (sessionId: string | null) => void
   setActiveView: (view: 'chat' | 'projects' | 'terminal') => void
 
@@ -321,15 +332,21 @@ interface AppState {
   clearArtifacts: () => void
 
   // Confirm actions
-  setPendingConfirm: (confirm: { id: string; command: string; reason: string; sessionId?: string } | null) => void
+  setPendingConfirm: (
+    confirm: { id: string; command: string; reason: string; sessionId?: string } | null,
+  ) => void
 
   // Plan actions
-  setPendingPlan: (plan: { id: string; title: string; content: string; sessionId?: string } | null) => void
+  setPendingPlan: (
+    plan: { id: string; title: string; content: string; sessionId?: string } | null,
+  ) => void
   setSidePanelView: (view: 'artifacts' | 'plan' | 'context') => void
   openContextPanel: () => void
 
   // Ask-user actions
-  setPendingAskUser: (ask: { id: string; questions: AskUserQuestion[]; sessionId?: string } | null) => void
+  setPendingAskUser: (
+    ask: { id: string; questions: AskUserQuestion[]; sessionId?: string } | null,
+  ) => void
 
   // Update actions
   setAgentVersionInfo: (version: string, gitHash: string) => void
@@ -352,15 +369,13 @@ export const useStore = create<AppState>((set, get) => {
       ? savedActiveConvId
       : null
   // Prefer per-conversation model over global saved model
-  const activeConvModel = restoredActiveId
-    ? persisted.find((c) => c.id === restoredActiveId)
-    : null
+  const activeConvModel = restoredActiveId ? persisted.find((c) => c.id === restoredActiveId) : null
   const initProvider = activeConvModel?.provider ?? savedModel?.provider ?? 'anthropic'
   const initModel = activeConvModel?.model ?? savedModel?.model ?? 'claude-sonnet-4-6'
 
   return {
     connectionStatus: 'disconnected',
-    agentStatus: 'unknown',
+    agentStatus: 'idle',
     currentSessionId: null,
     currentProvider: initProvider,
     currentModel: initModel,
@@ -385,6 +400,7 @@ export const useStore = create<AppState>((set, get) => {
     _sessionResolvers: new Map(),
     _currentAssistantMsgId: null,
     _sessionAssistantMsgIds: new Map(),
+    _hiddenToolCallIds: new Set(),
     artifacts: [],
     activeArtifactId: null,
     artifactPanelOpen: false,
@@ -408,6 +424,10 @@ export const useStore = create<AppState>((set, get) => {
     projectSessionsLoading: false,
     projectFiles: [],
     projectFilesLoading: false,
+    projectJobs: [],
+    projectJobsLoading: false,
+    selectedJobId: null,
+    jobLogs: [],
     activeView: 'chat',
 
     // Connectors
@@ -424,7 +444,18 @@ export const useStore = create<AppState>((set, get) => {
     },
     setActiveProject: (id) => {
       saveActiveProjectId(id)
-      set({ activeProjectId: id, activeProjectSessionId: null, projectSessions: [], projectSessionsLoading: !!id, projectFiles: [], projectFilesLoading: !!id })
+      set({
+        activeProjectId: id,
+        activeProjectSessionId: null,
+        projectSessions: [],
+        projectSessionsLoading: !!id,
+        projectFiles: [],
+        projectFilesLoading: !!id,
+        projectJobs: [],
+        projectJobsLoading: !!id,
+        selectedJobId: null,
+        jobLogs: [],
+      })
     },
     addProject: (project) => {
       set((state) => {
@@ -451,8 +482,12 @@ export const useStore = create<AppState>((set, get) => {
         return { projects, activeProjectId }
       })
     },
-    setProjectSessions: (sessions) => set({ projectSessions: sessions, projectSessionsLoading: false }),
+    setProjectSessions: (sessions) =>
+      set({ projectSessions: sessions, projectSessionsLoading: false }),
     setProjectFiles: (files) => set({ projectFiles: files, projectFilesLoading: false }),
+    setProjectJobs: (jobs) => set({ projectJobs: jobs, projectJobsLoading: false }),
+    setSelectedJob: (id) => set({ selectedJobId: id }),
+    setJobLogs: (lines) => set({ jobLogs: lines }),
     setActiveProjectSession: (sessionId) => set({ activeProjectSessionId: sessionId }),
     setActiveView: (view) => {
       if (view === 'chat') {
@@ -478,7 +513,7 @@ export const useStore = create<AppState>((set, get) => {
         const state = get()
         if (state.activeProjectSessionId) {
           const projConv = state.conversations.find(
-            (c) => c.sessionId === state.activeProjectSessionId
+            (c) => c.sessionId === state.activeProjectSessionId,
           )
           if (projConv && projConv.id !== state.activeConversationId) {
             localStorage.setItem(ACTIVE_CONV_KEY, projConv.id)
@@ -502,8 +537,7 @@ export const useStore = create<AppState>((set, get) => {
         }
         return { connectors: [...s.connectors, connector] }
       }),
-    removeConnector: (id) =>
-      set((s) => ({ connectors: s.connectors.filter((c) => c.id !== id) })),
+    removeConnector: (id) => set((s) => ({ connectors: s.connectors.filter((c) => c.id !== id) })),
     updateConnectorStatus: (id, updates) =>
       set((s) => ({
         connectors: s.connectors.map((c) => (c.id === id ? { ...c, ...updates } : c)),
@@ -521,24 +555,38 @@ export const useStore = create<AppState>((set, get) => {
       }
 
       if (status === 'working' && prev !== 'working') {
-        set({ agentStatus: status, workingStartedAt: Date.now(), lastTurnDurationMs: null, turnUsage: null, workingSessionId: sessionId || null })
+        set({
+          agentStatus: status,
+          workingStartedAt: Date.now(),
+          lastTurnDurationMs: null,
+          turnUsage: null,
+          workingSessionId: sessionId || null,
+        })
 
         // Safety net: if stuck in "working" for 5 min with no events, auto-recover
-        ;(window as unknown as Record<string, unknown>).__stuckTimeout = window.setTimeout(() => {
-          const current = get()
-          if (current.agentStatus === 'working') {
-            console.error('[store] Stuck-state timeout: agent has been "working" for 5 minutes without completing. Auto-recovering to idle.')
-            set({ agentStatus: 'idle', workingSessionId: null, _currentAssistantMsgId: null })
-            current.clearAgentSteps()
-            current.setAgentStatusDetail(null)
-          }
-        }, 5 * 60 * 1000)
+        ;(window as unknown as Record<string, unknown>).__stuckTimeout = window.setTimeout(
+          () => {
+            const current = get()
+            if (current.agentStatus === 'working') {
+              console.error(
+                '[store] Stuck-state timeout: agent has been "working" for 5 minutes without completing. Auto-recovering to idle.',
+              )
+              set({ agentStatus: 'idle', workingSessionId: null, _currentAssistantMsgId: null })
+              current.clearAgentSteps()
+              current.setAgentStatusDetail(null)
+            }
+          },
+          5 * 60 * 1000,
+        )
       } else if (status === 'idle' && prev === 'working') {
         const started = get().workingStartedAt
         const duration = started ? Date.now() - started : null
         set({ agentStatus: status, lastTurnDurationMs: duration, workingSessionId: null })
       } else {
-        set({ agentStatus: status, workingSessionId: status === 'working' ? (sessionId || null) : null })
+        set({
+          agentStatus: status,
+          workingSessionId: status === 'working' ? sessionId || null : null,
+        })
       }
     },
     setSidebarTab: (tab) => set({ sidebarTab: tab }),
@@ -555,7 +603,12 @@ export const useStore = create<AppState>((set, get) => {
             )
           : state.conversations
         if (activeId) saveConversations(conversations)
-        return { currentSessionId: id, currentProvider: provider, currentModel: model, conversations }
+        return {
+          currentSessionId: id,
+          currentProvider: provider,
+          currentModel: model,
+          conversations,
+        }
       })
     },
 
@@ -636,7 +689,7 @@ export const useStore = create<AppState>((set, get) => {
       // Save current session's tasks before switching, then restore target session's tasks
       const currentState = get()
       const currentConv = currentState.conversations.find(
-        (c) => c.id === currentState.activeConversationId
+        (c) => c.id === currentState.activeConversationId,
       )
       if (currentConv?.sessionId && currentState.currentTasks.length > 0) {
         const sessionTasks = new Map(currentState._sessionTasks)
@@ -644,9 +697,10 @@ export const useStore = create<AppState>((set, get) => {
         updates._sessionTasks = sessionTasks
       }
       // Restore target session's tasks (or clear if none)
-      updates.currentTasks = (conv?.sessionId
-        ? (updates._sessionTasks ?? currentState._sessionTasks).get(conv.sessionId)
-        : undefined) ?? []
+      updates.currentTasks =
+        (conv?.sessionId
+          ? (updates._sessionTasks ?? currentState._sessionTasks).get(conv.sessionId)
+          : undefined) ?? []
 
       // If this session completed a turn in the background, fetch fresh history
       if (conv?.sessionId && get()._sessionsNeedingHistoryRefresh.has(conv.sessionId)) {
@@ -848,9 +902,8 @@ export const useStore = create<AppState>((set, get) => {
           // Session is idle. Server is authoritative for completed turns.
           // Use server data unless local has more (turn just ended but
           // server response was queued before persist completed)
-          mergedMessages = serverMessages.length >= localMessages.length
-            ? serverMessages
-            : localMessages
+          mergedMessages =
+            serverMessages.length >= localMessages.length ? serverMessages : localMessages
         }
 
         const conversations = state.conversations.map((c) => {
@@ -955,7 +1008,7 @@ export const useStore = create<AppState>((set, get) => {
         // Clear transient session/connection state
         currentSessionId: null,
         sessions: [],
-        agentStatus: 'unknown',
+        agentStatus: 'idle',
         agentStatusDetail: null,
         workingSessionId: null,
         agentSteps: [],
@@ -982,6 +1035,10 @@ export const useStore = create<AppState>((set, get) => {
         projectSessionsLoading: false,
         projectFiles: [],
         projectFilesLoading: false,
+        projectJobs: [],
+        projectJobsLoading: false,
+        selectedJobId: null,
+        jobLogs: [],
       })
       // DO NOT clear conversations or active conversation — preserve chat history
       // On reconnect, session_history will sync the server's persisted state
@@ -1027,6 +1084,15 @@ connection.onMessage((channel, msg) => {
       store.setUpdateProgress(msg.stage, msg.message)
     }
     // Don't return — let other control messages fall through for ping/pong etc.
+  }
+
+  // ── EVENTS channel: job events ──
+  if (channel === Channel.EVENTS && msg.type === 'job_event') {
+    // Refresh job list when a job state changes
+    if (msg.projectId === store.activeProjectId) {
+      connection.sendJobsList(msg.projectId)
+    }
+    return
   }
 
   // ── EVENTS channel: agent status + update notifications ──
@@ -1117,14 +1183,23 @@ connection.onMessage((channel, msg) => {
       break
 
     case 'text_replace': {
-      // Strip internal tags (e.g. [PROJECT_CONTEXT_UPDATE]) from the displayed message
+      // Strip internal tags from the displayed message
       if (msg.remove) {
         store.replaceAssistantText(msg.remove, '', msgSessionId)
       }
       break
     }
 
-    case 'tool_call':
+    case 'tool_call': {
+      // Tools with dedicated UI — don't pollute the message timeline
+      const uiOnlyTools = new Set(['ask_user', 'task_tracker', 'plan_confirm'])
+      if (uiOnlyTools.has(msg.name)) {
+        // Track the ID so we can skip its tool_result too
+        store._hiddenToolCallIds = store._hiddenToolCallIds || new Set()
+        store._hiddenToolCallIds.add(msg.id)
+        store.setAgentStatus('working', msgSessionId)
+        break
+      }
       // Reset assistant message tracking so any text AFTER this tool call
       // creates a new assistant bubble (shows reasoning between tool groups)
       if (!msg.parentToolCallId) {
@@ -1155,8 +1230,14 @@ connection.onMessage((channel, msg) => {
       }
       store.setAgentStatus('working', msgSessionId)
       break
+    }
 
     case 'tool_result': {
+      // Skip results for tools with dedicated UI
+      if (store._hiddenToolCallIds?.has(msg.id)) {
+        store._hiddenToolCallIds.delete(msg.id)
+        break
+      }
       const resultMsg: ChatMessage = {
         id: `tr_${msg.id}`,
         role: 'tool',
@@ -1255,7 +1336,10 @@ connection.onMessage((channel, msg) => {
           timestamp: Date.now(),
         })
       } else {
-        console.warn('[WS] Received error without sessionId, not adding to conversation:', msg.message)
+        console.warn(
+          '[WS] Received error without sessionId, not adding to conversation:',
+          msg.message,
+        )
       }
       // Only set global error status if this error belongs to the active session
       if (isForActiveSession && msgSessionId) {
@@ -1275,14 +1359,19 @@ connection.onMessage((channel, msg) => {
       console.log('[WS] title_update received:', { sessionId: msg.sessionId, title: msg.title })
       if (msg.sessionId) {
         const matchingConv = store.findConversationBySession(msg.sessionId)
-        console.log('[WS] title_update matching conv:', matchingConv?.id, matchingConv?.sessionId, matchingConv?.title)
+        console.log(
+          '[WS] title_update matching conv:',
+          matchingConv?.id,
+          matchingConv?.sessionId,
+          matchingConv?.title,
+        )
         store.updateConversationTitle(msg.sessionId, msg.title)
         // Also update projectSessions so sidebar reflects the new title
         if (store.projectSessions.some((s: SessionMeta) => s.id === msg.sessionId)) {
           store.setProjectSessions(
             store.projectSessions.map((s: SessionMeta) =>
-              s.id === msg.sessionId ? { ...s, title: msg.title } : s
-            )
+              s.id === msg.sessionId ? { ...s, title: msg.title } : s,
+            ),
           )
         }
       } else {
@@ -1374,6 +1463,29 @@ connection.onMessage((channel, msg) => {
         store.setAgentStatus('idle')
         store.clearAgentSteps()
         store.setAgentStatusDetail(null)
+      }
+
+      // Close out any pending tool calls that never got a result.
+      // This prevents spinner icons from staying stuck forever.
+      if (doneConv) {
+        const resultIds = new Set(
+          doneConv.messages.filter((m) => m.id.startsWith('tr_')).map((m) => m.id.slice(3)),
+        )
+        const pendingCalls = doneConv.messages.filter(
+          (m) => m.id.startsWith('tc_') && !resultIds.has(m.id.slice(3)),
+        )
+        if (pendingCalls.length > 0) {
+          for (const call of pendingCalls) {
+            const baseId = call.id.slice(3) // strip tc_ prefix
+            addMsg({
+              id: `tr_${baseId}`,
+              role: 'tool',
+              content: '',
+              timestamp: Date.now(),
+              parentToolCallId: call.parentToolCallId,
+            })
+          }
+        }
       }
 
       useStore.setState({ _currentAssistantMsgId: null })
@@ -1487,36 +1599,111 @@ connection.onMessage((channel, msg) => {
         isError?: boolean
         attachments?: ChatImageAttachment[]
       }
-      const historyMessages: ChatMessage[] = msg.messages.map((entry: HistoryEntry) => {
-        // Use tc_/tr_ prefixed IDs for tool messages so groupMessages can match
-        // tool_calls with their corresponding tool_results by base ID.
-        let id: string
-        if (entry.role === 'tool_call' && entry.toolId) {
-          id = `tc_${entry.toolId}`
-        } else if (entry.role === 'tool_result' && entry.toolId) {
-          id = `tr_${entry.toolId}`
-        } else {
-          id = `hist_${entry.seq}_${Date.now()}`
+      // Tools with dedicated UI — collect their IDs so we can filter them out
+      // and render Q&A summaries instead
+      const uiOnlyHistoryTools = new Set(['ask_user', 'task_tracker', 'plan_confirm'])
+      const hiddenHistoryIds = new Set<string>()
+      for (const entry of msg.messages as HistoryEntry[]) {
+        if (
+          entry.role === 'tool_call' &&
+          entry.toolName &&
+          uiOnlyHistoryTools.has(entry.toolName) &&
+          entry.toolId
+        ) {
+          hiddenHistoryIds.add(entry.toolId)
         }
-        return {
-          id,
-          role:
-            entry.role === 'user'
-              ? 'user'
-              : entry.role === 'assistant'
-                ? 'assistant'
-                : entry.role === 'tool_call' || entry.role === 'tool_result'
-                  ? 'tool'
-                  : 'system',
-          content: entry.content,
-          timestamp: entry.ts,
-          attachments: entry.attachments,
-          toolName: entry.toolName,
-          toolInput: entry.toolInput,
-          isError: entry.isError,
-        } as ChatMessage
-      })
-      store.loadSessionMessages(msg.id, historyMessages)
+      }
+
+      // Build ask_user Q&A summary messages from tool_result content
+      const askUserSummaries: ChatMessage[] = []
+      for (const entry of msg.messages as HistoryEntry[]) {
+        if (entry.role === 'tool_result' && entry.toolId && hiddenHistoryIds.has(entry.toolId)) {
+          // Find the matching tool_call to check if it's ask_user
+          const call = (msg.messages as HistoryEntry[]).find(
+            (e: HistoryEntry) => e.role === 'tool_call' && e.toolId === entry.toolId,
+          )
+          if (call?.toolName === 'ask_user' && entry.content) {
+            try {
+              const answers = JSON.parse(entry.content)
+              const summary = Object.entries(answers)
+                .map(([q, a]) => `**${q}** → ${a}`)
+                .join('\n')
+              if (summary) {
+                askUserSummaries.push({
+                  id: `askuser_hist_${entry.toolId}`,
+                  role: 'system',
+                  content: summary,
+                  timestamp: entry.ts,
+                })
+              }
+            } catch {
+              /* not valid JSON, skip */
+            }
+          }
+        }
+      }
+
+      const historyMessages: ChatMessage[] = (msg.messages as HistoryEntry[])
+        .filter((entry: HistoryEntry) => {
+          // Skip tools with dedicated UI
+          if (entry.toolId && hiddenHistoryIds.has(entry.toolId)) return false
+          return true
+        })
+        .map((entry: HistoryEntry) => {
+          // Use tc_/tr_ prefixed IDs for tool messages so groupMessages can match
+          // tool_calls with their corresponding tool_results by base ID.
+          let id: string
+          if (entry.role === 'tool_call' && entry.toolId) {
+            id = `tc_${entry.toolId}`
+          } else if (entry.role === 'tool_result' && entry.toolId) {
+            id = `tr_${entry.toolId}`
+          } else {
+            id = `hist_${entry.seq}_${Date.now()}`
+          }
+          return {
+            id,
+            role:
+              entry.role === 'user'
+                ? 'user'
+                : entry.role === 'assistant'
+                  ? 'assistant'
+                  : entry.role === 'tool_call' || entry.role === 'tool_result'
+                    ? 'tool'
+                    : 'system',
+            content: entry.content,
+            timestamp: entry.ts,
+            attachments: entry.attachments,
+            toolName: entry.toolName,
+            toolInput: entry.toolInput,
+            isError: entry.isError,
+          } as ChatMessage
+        })
+      // Insert ask_user Q&A summaries into the history
+      const allMessages = [...historyMessages, ...askUserSummaries].sort(
+        (a, b) => a.timestamp - b.timestamp,
+      )
+      store.loadSessionMessages(msg.id, allMessages)
+
+      // Reconstruct artifacts from history tool call/result pairs
+      // (artifact events are transient and not persisted in history)
+      const toolCalls = new Map<string, ChatMessage>()
+      for (const m of historyMessages) {
+        if (m.id.startsWith('tc_') && m.toolName) {
+          toolCalls.set(m.id.slice(3), m)
+        }
+      }
+      for (const m of historyMessages) {
+        if (m.id.startsWith('tr_')) {
+          const baseId = m.id.slice(3)
+          const call = toolCalls.get(baseId)
+          if (call && !m.isError) {
+            const artifact = extractArtifact(call, m)
+            if (artifact) {
+              store.addArtifact(artifact)
+            }
+          }
+        }
+      }
       break
     }
 
@@ -1595,6 +1782,38 @@ connection.onMessage((channel, msg) => {
       if (msg.projectId === store.activeProjectId) {
         store.setProjectSessions(msg.sessions)
       }
+      break
+
+    // ── Job responses ──────────────────────────────────────────────
+    case 'jobs_list_response':
+      if (msg.projectId === store.activeProjectId) {
+        store.setProjectJobs(msg.jobs)
+      }
+      break
+
+    case 'job_created': {
+      const jobs = [...store.projectJobs]
+      const idx = jobs.findIndex((j) => j.id === msg.job.id)
+      if (idx >= 0) jobs[idx] = msg.job
+      else jobs.push(msg.job)
+      store.setProjectJobs(jobs)
+      break
+    }
+
+    case 'job_updated': {
+      const jobs = store.projectJobs.map((j) => (j.id === msg.job.id ? msg.job : j))
+      store.setProjectJobs(jobs)
+      break
+    }
+
+    case 'job_deleted': {
+      const jobs = store.projectJobs.filter((j) => j.id !== msg.jobId)
+      store.setProjectJobs(jobs)
+      break
+    }
+
+    case 'job_logs_response':
+      store.setJobLogs(msg.lines)
       break
 
     // ── Connector responses ──────────────────────────────────────

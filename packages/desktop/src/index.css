@@ -7286,6 +7286,160 @@ button {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
+   JOB CARDS
+   ═══════════════════════════════════════════════════════════════════ */
+
+.project-jobs__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.job-card {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+}
+
+.job-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.job-card__name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-card__kind {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.job-card__desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 3px 0 0 14px;
+  line-height: 1.3;
+}
+
+.job-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 5px 0 0 14px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.job-card__schedule {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.job-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 6px 0 0 10px;
+}
+
+.job-card__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.job-card__btn:hover { background: rgba(255, 255, 255, 0.1); color: var(--text); }
+.job-card__btn--start:hover { color: var(--green); }
+.job-card__btn--stop:hover { color: var(--accent); }
+.job-card__btn--delete:hover { color: var(--red); }
+
+.pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ── Job Log Viewer ── */
+
+.job-logs {
+  display: flex;
+  flex-direction: column;
+  height: 300px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.job-logs__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.job-logs__header span { flex: 1; }
+
+.job-logs__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.job-logs__close:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+
+.job-logs__content {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.job-logs__pre {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+.job-logs__empty {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-align: center;
+  padding: 20px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    CREATE PROJECT MODAL (Manus-style)
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -7637,6 +7791,7 @@ button {
   flex-direction: column;
   gap: 16px;
   height: 100%;
+  overflow: hidden;
 }
 
 .connectors-header {
@@ -7701,19 +7856,36 @@ button {
 .connectors-content {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Category layout */
+.connectors-categorized {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.connectors-category__label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-subtle);
+  margin: 0 0 8px 2px;
 }
 
 .connectors-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
 .connector-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: 12px;
+  padding: 14px 16px;
   background: var(--bg-subtle);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -7726,10 +7898,12 @@ button {
 .connector-card:hover {
   border-color: var(--border-strong);
   background: var(--bg-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 .connector-card--connected {
-  border-color: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 197, 94, 0.25);
 }
 
 .connector-card--add {
@@ -7744,17 +7918,32 @@ button {
 
 .connector-card--add:hover {
   color: var(--text);
+  transform: none;
+  box-shadow: none;
 }
 
-.connector-card__icon {
-  font-size: 22px;
-  width: 36px;
-  height: 36px;
+/* Icon wrap for SVG brand icons */
+.connector-card__icon-wrap {
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-strong);
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+/* Legacy emoji icon container (custom connectors) */
+.connector-card__icon {
+  font-size: 22px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
   flex-shrink: 0;
 }
 
@@ -7772,6 +7961,16 @@ button {
   gap: 6px;
 }
 
+/* Green dot indicator for connected state */
+.connector-card__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+  box-shadow: 0 0 4px rgba(34, 197, 94, 0.5);
+}
+
 .connector-card__badge {
   font-size: 10px;
   font-weight: 400;
@@ -7784,9 +7983,12 @@ button {
 .connector-card__desc {
   font-size: 11px;
   color: var(--text-muted);
-  white-space: nowrap;
+  margin-top: 2px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .connector-card__actions {
@@ -7818,15 +8020,15 @@ button {
 /* ── App Detail Modal (Manus-style centered) ──────────────────────── */
 
 .app-detail-overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 30;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(8px);
-  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .app-detail {

@@ -80,8 +80,12 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
     unmatchedCalls.clear()
   }
 
-  // Tool names that should be hidden from the actions timeline
+  // Tool names that should be hidden from the actions timeline.
+  // Their call+result pairs are silently discarded.
   const hiddenTools = new Set(['ask_user', 'plan_confirm', 'task_tracker'])
+  // Track IDs of hidden tool calls so we can discard their results
+  // even if they arrive after a flush (e.g. after an assistant text message).
+  const hiddenCallIds = new Set<string>()
 
   for (const msg of messages) {
     if (msg.role !== 'tool') {
@@ -90,14 +94,10 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
       continue
     }
 
-    // Hidden tools: set as pendingCall so their result gets discarded by the
-    // hiddenTools check in the result-handling branch below (lines ~176-181).
-    // We must NOT `continue` here — that would orphan the result into "unknown".
+    // Hidden tools: track their ID and skip entirely (don't add to actions or pendingCall)
     if (msg.toolName && hiddenTools.has(msg.toolName)) {
-      if (pendingCall) {
-        currentActions.push({ call: pendingCall, result: null })
-      }
-      pendingCall = msg
+      const baseId = msg.id.startsWith('tc_') ? msg.id.slice(3) : msg.id
+      hiddenCallIds.add(baseId)
       continue
     }
 
@@ -185,24 +185,23 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
         currentActions.push({ call: pendingCall, result: null })
         // Track by base ID so we can match its result later
         const baseId = pendingCall.id.startsWith('tc_') ? pendingCall.id.slice(3) : pendingCall.id
-        if (!hiddenTools.has(pendingCall.toolName!)) {
-          unmatchedCalls.set(baseId, idx)
-        }
+        unmatchedCalls.set(baseId, idx)
       }
       pendingCall = msg
     } else {
       // This is a tool result — try to match it to a call by ID
       const resultBaseId = msg.id.startsWith('tr_') ? msg.id.slice(3) : msg.id
 
+      // Silently discard results of hidden tool calls
+      if (hiddenCallIds.has(resultBaseId)) {
+        continue
+      }
+
       if (pendingCall) {
         const pendingBaseId = pendingCall.id.startsWith('tc_') ? pendingCall.id.slice(3) : pendingCall.id
 
         if (pendingBaseId === resultBaseId) {
           // Direct match with pending call
-          if (pendingCall.toolName && hiddenTools.has(pendingCall.toolName)) {
-            pendingCall = null
-            continue
-          }
           currentActions.push({ call: pendingCall, result: msg })
           pendingCall = null
         } else if (unmatchedCalls.has(resultBaseId)) {
@@ -212,10 +211,6 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
           unmatchedCalls.delete(resultBaseId)
         } else {
           // Fallback: pair with pending call sequentially
-          if (pendingCall.toolName && hiddenTools.has(pendingCall.toolName)) {
-            pendingCall = null
-            continue
-          }
           currentActions.push({ call: pendingCall, result: msg })
           pendingCall = null
         }

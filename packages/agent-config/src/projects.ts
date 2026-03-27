@@ -168,9 +168,24 @@ export function createProject(input: {
   return project
 }
 
-/** Load all projects from index */
+/** Load all projects from index, refreshing stats from disk */
 export function loadProjects(): Project[] {
-  return loadIndex()
+  const projects = loadIndex()
+  let dirty = false
+
+  for (const project of projects) {
+    const sessions = listProjectSessions(project.id)
+    if (project.stats.sessionCount !== sessions.length) {
+      project.stats.sessionCount = sessions.length
+      dirty = true
+    }
+  }
+
+  if (dirty) {
+    saveIndex(projects)
+  }
+
+  return projects
 }
 
 /** Load a single project by ID */

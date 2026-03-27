@@ -264,6 +264,24 @@ export class Connection {
     this.send(Channel.AI, { type: 'project_sessions_list', projectId })
   }
 
+  // ── Jobs ───────────────────────────────────────────────────────
+
+  sendJobCreate(projectId: string, job: Record<string, unknown>) {
+    this.send(Channel.AI, { type: 'job_create', projectId, job })
+  }
+
+  sendJobsList(projectId: string) {
+    this.send(Channel.AI, { type: 'jobs_list', projectId })
+  }
+
+  sendJobAction(projectId: string, jobId: string, action: 'start' | 'stop' | 'delete') {
+    this.send(Channel.AI, { type: 'job_action', projectId, jobId, action })
+  }
+
+  sendJobLogs(projectId: string, jobId: string, tail = 100) {
+    this.send(Channel.AI, { type: 'job_logs', projectId, jobId, tail })
+  }
+
   // ── Connectors ─────────────────────────────────────────────────
 
   sendConnectorsList() {

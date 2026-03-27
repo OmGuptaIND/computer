@@ -37,28 +37,61 @@ export interface Project {
   sourceConversationId?: string // the conversation that triggered creation
 }
 
-// ── Job types (runtime not implemented yet) ─────────────────────────
+// ── Job types ────────────────────────────────────────────────────────
+
+export type JobKind = 'task' | 'long-running' | 'agent'
 
 export type JobTrigger =
   | { type: 'cron'; schedule: string }
   | { type: 'manual' }
   | { type: 'event'; event: string }
 
-export type JobStatus = 'active' | 'paused' | 'error' | 'completed'
+export type JobStatus = 'idle' | 'running' | 'paused' | 'error' | 'completed'
+
+export type RestartPolicy = 'never' | 'on-failure' | 'always'
+
+export interface JobRunRecord {
+  runId: string
+  startedAt: number
+  finishedAt: number | null
+  exitCode: number | null
+  status: 'running' | 'success' | 'error'
+}
 
 export interface Job {
   id: string
   projectId: string
   name: string
   description: string
+  kind: JobKind
   status: JobStatus
   trigger: JobTrigger
-  lastRun: number | null
-  nextRun: number | null
+
+  // Execution (shell jobs use command; agent jobs use prompt)
+  command: string
+  args: string[]
+  prompt?: string // agent prompt (for kind: 'agent')
+  workingDirectory?: string
+  env: Record<string, string>
+  timeout: number // seconds, 0 = no limit
+
+  // Lifecycle (for long-running jobs)
+  restartPolicy: RestartPolicy
+  maxRestarts: number
+
+  // Runner (extensibility: 'local' | 'modal' | 'daytona')
+  runner: string
+
+  // Runtime state
+  lastRun: JobRunRecord | null
+  nextRun: number | null // timestamp for scheduled jobs
+  runCount: number
+
   createdAt: number
+  updatedAt: number
 }
 
-// ── Notification types (runtime not implemented yet) ────────────────
+// ── Notification types ───────────────────────────────────────────────
 
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error'
 

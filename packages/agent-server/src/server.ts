@@ -9,7 +9,7 @@
  *   Port 9877 (config.port + 1) → wss:// with self-signed TLS
  */
 
-import { execSync, spawn, type ChildProcess } from 'node:child_process'
+import { type ChildProcess, execSync, spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
@@ -22,32 +22,24 @@ import {
   createProject,
   deleteSession as deletePersistedSession,
   deleteProject,
+  deleteProjectFile,
   getAntonDir,
   getProvidersList,
+  listProjectFiles,
   listProjectSessions,
   listSessionMetas,
   loadProject,
   loadProjects,
   saveConfig,
+  saveProjectFile,
   setDefault,
   setProviderKey,
   setProviderModels,
   updateProject,
   updateProjectContext,
   updateProjectStats,
-  saveProjectFile,
-  deleteProjectFile,
-  listProjectFiles,
 } from '@anton/agent-config'
 import { GIT_HASH, VERSION } from '@anton/agent-config'
-import {
-  type Session,
-  type SubAgentEventHandler,
-  McpManager,
-  type McpServerConfig,
-  createSession,
-  resumeSession,
-} from '@anton/agent-core'
 import {
   CONNECTOR_REGISTRY,
   type ConnectorConfig,
@@ -57,6 +49,14 @@ import {
   toggleConnector as toggleConnectorConfig,
   updateConnector as updateConnectorConfig,
 } from '@anton/agent-config'
+import {
+  McpManager,
+  type McpServerConfig,
+  type Session,
+  type SubAgentEventHandler,
+  createSession,
+  resumeSession,
+} from '@anton/agent-core'
 import { Channel, decodeFrame, encodeFrame, parseJsonPayload } from '@anton/protocol'
 import type { AiMessage, ChannelId, ControlMessage, TerminalMessage } from '@anton/protocol'
 import { WebSocket, WebSocketServer } from 'ws'
@@ -71,7 +71,13 @@ export class AgentServer {
   private sessions: Map<string, Session> = new Map()
   private activeTurns: Set<string> = new Set() // sessions currently processing a turn
   private activeClient: WebSocket | null = null
+  // Track pending interactive prompts so they can be re-sent on client reconnect
+  private pendingPrompts: Map<string, { type: string; payload: Record<string, unknown> }> =
+    new Map()
+  // Resolvers for pending interactive prompts — keyed by prompt ID
+  private promptResolvers: Map<string, (msg: AiMessage) => void> = new Map()
   private scheduler: Scheduler | null = null
+  private jobManager: import('./jobs/manager.js').JobManager | null = null
   private updater: Updater = new Updater()
   private mcpManager: McpManager = new McpManager()
   private ptys: Map<string, ChildProcess> = new Map()
@@ -89,6 +95,10 @@ export class AgentServer {
 
   setScheduler(scheduler: Scheduler) {
     this.scheduler = scheduler
+  }
+
+  setJobManager(jobManager: import('./jobs/manager.js').JobManager) {
+    this.jobManager = jobManager
   }
 
   async start(): Promise<void> {
@@ -210,8 +220,13 @@ export class AgentServer {
 
               this.sendToClient(Channel.EVENTS, {
                 type: 'agent_status',
-                status: 'idle',
+                status: this.pendingPrompts.size > 0 ? 'working' : 'idle',
               })
+
+              // Re-send any pending interactive prompts (ask_user, confirm, etc.)
+              for (const [, prompt] of this.pendingPrompts) {
+                this.sendToClient(Channel.AI, prompt.payload)
+              }
             } else {
               ws.send(
                 encodeFrame(Channel.CONTROL, {
@@ -234,21 +249,41 @@ export class AgentServer {
     ws.on('close', () => {
       if (ws === this.activeClient) {
         this.activeClient = null
-        // Cancel active turns and persist their current state
-        for (const sessionId of this.activeTurns) {
-          const session = this.sessions.get(sessionId)
-          if (session) {
-            console.log(`Cancelling active turn for session ${sessionId}`)
-            session.cancel()
+        // If there are pending interactive prompts (ask_user, confirm), don't cancel
+        // those turns — the user just needs to reconnect and answer
+        if (this.pendingPrompts.size > 0) {
+          console.log(
+            `Client disconnected — ${this.pendingPrompts.size} pending prompt(s), keeping turns alive`,
+          )
+        } else {
+          // Cancel interactive turns but keep background work (sub-agents, agent jobs) alive
+          for (const sessionId of this.activeTurns) {
+            // Sub-agent sessions (sub_*) and agent jobs (agent-job-*) continue in background
+            if (sessionId.startsWith('sub_') || sessionId.startsWith('agent-job-')) {
+              console.log(`Keeping background turn alive: ${sessionId}`)
+              continue
+            }
+            const session = this.sessions.get(sessionId)
+            if (session) {
+              console.log(`Cancelling active turn for session ${sessionId}`)
+              session.cancel()
+            }
+          }
+          // Only clear non-background turns
+          for (const sessionId of this.activeTurns) {
+            if (!sessionId.startsWith('sub_') && !sessionId.startsWith('agent-job-')) {
+              this.activeTurns.delete(sessionId)
+            }
           }
         }
-        this.activeTurns.clear()
         // Kill all PTY sessions
         for (const [id, p] of this.ptys) {
-          try { p.kill('SIGTERM') } catch {}
+          try {
+            p.kill('SIGTERM')
+          } catch {}
           this.ptys.delete(id)
         }
-        console.log('Client disconnected — active sessions cancelled & persisted')
+        console.log('Client disconnected')
       }
     })
   }
@@ -399,7 +434,9 @@ export class AgentServer {
         // Kill existing PTY with same ID if any
         const existing = this.ptys.get(msg.id)
         if (existing) {
-          try { existing.kill('SIGTERM') } catch {}
+          try {
+            existing.kill('SIGTERM')
+          } catch {}
           this.ptys.delete(msg.id)
         }
 
@@ -410,7 +447,12 @@ export class AgentServer {
         const p = spawn(shell, ['-i'], {
           stdio: ['pipe', 'pipe', 'pipe'],
           cwd: process.env.HOME || '/',
-          env: { ...process.env, TERM: 'xterm-256color', COLUMNS: String(cols), LINES: String(rows) },
+          env: {
+            ...process.env,
+            TERM: 'xterm-256color',
+            COLUMNS: String(cols),
+            LINES: String(rows),
+          },
         })
 
         this.ptys.set(msg.id, p)
@@ -449,7 +491,9 @@ export class AgentServer {
       case 'pty_close': {
         const p = this.ptys.get(msg.id)
         if (p) {
-          try { p.kill('SIGTERM') } catch {}
+          try {
+            p.kill('SIGTERM')
+          } catch {}
           this.ptys.delete(msg.id)
         }
         break
@@ -613,6 +657,20 @@ export class AgentServer {
         this.handleProjectSessionsList(msg)
         break
 
+      // ── Jobs ──
+      case 'job_create':
+        this.handleJobCreate(msg)
+        break
+      case 'jobs_list':
+        this.handleJobsList(msg)
+        break
+      case 'job_action':
+        this.handleJobAction(msg)
+        break
+      case 'job_logs':
+        this.handleJobLogs(msg)
+        break
+
       // ── Connectors ──
       case 'connectors_list':
         this.handleConnectorsList()
@@ -643,12 +701,23 @@ export class AgentServer {
 
       // ── Confirm response (forwarded to active session) ──
       case 'confirm_response':
-        // Handled inline by the confirm handler Promise in session
+        if (msg.id && this.promptResolvers.has(msg.id)) {
+          this.promptResolvers.get(msg.id)!(msg)
+        }
         break
 
       // ── Ask-user response (forwarded to active session) ──
       case 'ask_user_response':
-        // Handled inline by the ask_user handler Promise in session
+        if (msg.id && this.promptResolvers.has(msg.id)) {
+          this.promptResolvers.get(msg.id)!(msg)
+        }
+        break
+
+      // ── Plan confirm response ──
+      case 'plan_confirm_response':
+        if (msg.id && this.promptResolvers.has(msg.id)) {
+          this.promptResolvers.get(msg.id)!(msg)
+        }
         break
     }
   }
@@ -686,6 +755,7 @@ export class AgentServer {
         projectWorkspacePath,
         projectType,
         mcpManager: this.mcpManager,
+        onJobAction: msg.projectId ? this.buildJobActionHandler() : undefined,
       })
 
       this.wireSessionConfirmHandler(session)
@@ -721,7 +791,9 @@ export class AgentServer {
         })
       }
 
-      console.log(`Session created: ${msg.id} (${session.provider}/${session.model})${msg.projectId ? ` [project: ${msg.projectId}]` : ''}`)
+      console.log(
+        `Session created: ${msg.id} (${session.provider}/${session.model})${msg.projectId ? ` [project: ${msg.projectId}]` : ''}`,
+      )
     } catch (err: unknown) {
       this.sendToClient(Channel.AI, {
         type: 'error',
@@ -751,17 +823,20 @@ export class AgentServer {
             onSubAgentEvent: this.makeSubAgentEventHandler(msg.id),
             mcpManager: this.mcpManager,
             projectId,
-            projectContext: resumeProject ? buildProjectContext(resumeProject, projectId!) : undefined,
+            projectContext: resumeProject
+              ? buildProjectContext(resumeProject, projectId!)
+              : undefined,
             projectWorkspacePath: resumeProject?.workspacePath,
             projectType: resumeProject?.type,
           }) ?? undefined
 
         // Fallback to global sessions
         if (!session && projectId) {
-          session = resumeSession(msg.id, this.config, {
-            onSubAgentEvent: this.makeSubAgentEventHandler(msg.id),
-            mcpManager: this.mcpManager,
-          }) ?? undefined
+          session =
+            resumeSession(msg.id, this.config, {
+              onSubAgentEvent: this.makeSubAgentEventHandler(msg.id),
+              mcpManager: this.mcpManager,
+            }) ?? undefined
         }
 
         if (!session) {
@@ -894,7 +969,9 @@ export class AgentServer {
           })
         }
       } catch (e) {
-        console.warn(`Failed to update project stats after session destroy: ${(e as Error).message}`)
+        console.warn(
+          `Failed to update project stats after session destroy: ${(e as Error).message}`,
+        )
       }
     }
 
@@ -1084,6 +1161,191 @@ export class AgentServer {
     }
   }
 
+  // ── Job handlers ────────────────────────────────────────────────
+
+  private handleJobCreate(msg: { projectId: string; job: Record<string, unknown> }) {
+    if (!this.jobManager) {
+      this.sendToClient(Channel.AI, { type: 'error', message: 'Job manager not initialized' })
+      return
+    }
+    try {
+      const spec = msg.job as Parameters<typeof this.jobManager.createJob>[1]
+      const job = this.jobManager.createJob(msg.projectId, spec)
+      this.sendToClient(Channel.AI, { type: 'job_created', job })
+    } catch (err: unknown) {
+      this.sendToClient(Channel.AI, { type: 'error', message: (err as Error).message })
+    }
+  }
+
+  private handleJobsList(msg: { projectId: string }) {
+    if (!this.jobManager) {
+      this.sendToClient(Channel.AI, {
+        type: 'jobs_list_response',
+        projectId: msg.projectId,
+        jobs: [],
+      })
+      return
+    }
+    const jobs = this.jobManager.listJobs(msg.projectId)
+    this.sendToClient(Channel.AI, { type: 'jobs_list_response', projectId: msg.projectId, jobs })
+  }
+
+  private handleJobAction(msg: { projectId: string; jobId: string; action: string }) {
+    if (!this.jobManager) {
+      this.sendToClient(Channel.AI, { type: 'error', message: 'Job manager not initialized' })
+      return
+    }
+
+    let job: import('@anton/protocol').Job | undefined
+    switch (msg.action) {
+      case 'start':
+        job = this.jobManager.startJob(msg.jobId)
+        break
+      case 'stop':
+        job = this.jobManager.stopJob(msg.jobId)
+        break
+      case 'delete':
+        if (this.jobManager.deleteJob(msg.jobId)) {
+          this.sendToClient(Channel.AI, {
+            type: 'job_deleted',
+            projectId: msg.projectId,
+            jobId: msg.jobId,
+          })
+          return
+        }
+        this.sendToClient(Channel.AI, { type: 'error', message: `Job not found: ${msg.jobId}` })
+        return
+      default:
+        this.sendToClient(Channel.AI, { type: 'error', message: `Unknown action: ${msg.action}` })
+        return
+    }
+
+    if (job) {
+      this.sendToClient(Channel.AI, { type: 'job_updated', job })
+    } else {
+      this.sendToClient(Channel.AI, { type: 'error', message: `Job not found: ${msg.jobId}` })
+    }
+  }
+
+  private handleJobLogs(msg: { projectId: string; jobId: string; runId?: string; tail?: number }) {
+    if (!this.jobManager) {
+      this.sendToClient(Channel.AI, {
+        type: 'job_logs_response',
+        projectId: msg.projectId,
+        jobId: msg.jobId,
+        runId: '',
+        lines: [],
+      })
+      return
+    }
+
+    const result = this.jobManager.getJobLogs(msg.jobId, msg.runId, msg.tail ?? 100)
+    this.sendToClient(Channel.AI, {
+      type: 'job_logs_response',
+      projectId: msg.projectId,
+      jobId: msg.jobId,
+      runId: result?.runId ?? '',
+      lines: result?.lines ?? [],
+    })
+  }
+
+  /** Build the onJobAction callback for the agent tool */
+  private buildJobActionHandler(): import('@anton/agent-core').JobActionHandler | undefined {
+    if (!this.jobManager) return undefined
+    const jm = this.jobManager
+
+    return async (projectId, input) => {
+      switch (input.operation) {
+        case 'create': {
+          if (!input.name) return 'Error: name is required for create'
+          const isAgent = input.kind === 'agent'
+          if (isAgent && !input.prompt) return 'Error: prompt is required for agent jobs'
+          if (!isAgent && !input.command) return 'Error: command is required for shell jobs'
+          const trigger = input.schedule
+            ? { type: 'cron' as const, schedule: input.schedule }
+            : { type: 'manual' as const }
+          const job = jm.createJob(projectId, {
+            name: input.name,
+            description: input.description,
+            kind: input.kind ?? 'task',
+            command: input.command,
+            prompt: input.prompt,
+            args: input.args,
+            trigger,
+            workingDirectory: input.workingDirectory,
+            env: input.env,
+            timeout: input.timeout,
+            restartPolicy: input.restartPolicy,
+            maxRestarts: input.maxRestarts,
+          })
+          this.sendToClient(Channel.AI, { type: 'job_created', job })
+          return `Job created: ${job.name} (id: ${job.id}, kind: ${job.kind}, trigger: ${job.trigger.type})`
+        }
+        case 'list': {
+          const jobs = jm.listJobs(projectId)
+          if (jobs.length === 0) return 'No jobs in this project.'
+          return jobs
+            .map(
+              (j) =>
+                `- ${j.name} (id: ${j.id}, kind: ${j.kind}, status: ${j.status}${j.trigger.type === 'cron' ? `, schedule: ${j.trigger.schedule}` : ''})`,
+            )
+            .join('\n')
+        }
+        case 'start': {
+          if (!input.jobId) return 'Error: job_id is required for start'
+          const job = jm.startJob(input.jobId)
+          if (!job) return `Error: Job not found: ${input.jobId}`
+          this.sendToClient(Channel.AI, { type: 'job_updated', job })
+          return `Job "${job.name}" started (run: ${job.lastRun?.runId})`
+        }
+        case 'stop': {
+          if (!input.jobId) return 'Error: job_id is required for stop'
+          const job = jm.stopJob(input.jobId)
+          if (!job) return `Error: Job not found: ${input.jobId}`
+          this.sendToClient(Channel.AI, { type: 'job_updated', job })
+          return `Job "${job.name}" stopped.`
+        }
+        case 'delete': {
+          if (!input.jobId) return 'Error: job_id is required for delete'
+          const success = jm.deleteJob(input.jobId)
+          if (!success) return `Error: Job not found: ${input.jobId}`
+          this.sendToClient(Channel.AI, { type: 'job_deleted', projectId, jobId: input.jobId })
+          return 'Job deleted.'
+        }
+        case 'logs': {
+          if (!input.jobId) return 'Error: job_id is required for logs'
+          const result = jm.getJobLogs(input.jobId, undefined, input.tail ?? 50)
+          if (!result || result.lines.length === 0) return 'No logs available.'
+          return `Logs for run ${result.runId}:\n${result.lines.join('\n')}`
+        }
+        case 'status': {
+          if (!input.jobId) return 'Error: job_id is required for status'
+          const job = jm.getJob(input.jobId)
+          if (!job) return `Error: Job not found: ${input.jobId}`
+          const lines = [
+            `Job: ${job.name}`,
+            `Status: ${job.status}`,
+            `Kind: ${job.kind}`,
+            `Command: ${job.command} ${job.args.join(' ')}`.trim(),
+            `Trigger: ${job.trigger.type}${job.trigger.type === 'cron' ? ` (${job.trigger.schedule})` : ''}`,
+            `Runs: ${job.runCount}`,
+          ]
+          if (job.lastRun) {
+            lines.push(
+              `Last run: ${job.lastRun.status} (exit: ${job.lastRun.exitCode}, at: ${new Date(job.lastRun.startedAt).toISOString()})`,
+            )
+          }
+          if (job.nextRun) {
+            lines.push(`Next run: ${new Date(job.nextRun).toISOString()}`)
+          }
+          return lines.join('\n')
+        }
+        default:
+          return `Unknown operation: ${input.operation}`
+      }
+    }
+  }
+
   // ── Project handlers ──────────────────────────────────────────
 
   private handleProjectCreate(msg: {
@@ -1161,7 +1423,11 @@ export class AgentServer {
     })
   }
 
-  private handleProjectContextUpdate(msg: { id: string; field: 'notes' | 'summary'; value: string }) {
+  private handleProjectContextUpdate(msg: {
+    id: string
+    field: 'notes' | 'summary'
+    value: string
+  }) {
     const updated = updateProjectContext(msg.id, msg.field, msg.value)
     if (updated) {
       this.sendToClient(Channel.AI, { type: 'project_updated', project: updated })
@@ -1286,17 +1552,21 @@ export class AgentServer {
             onSubAgentEvent: this.makeSubAgentEventHandler(sessionId),
             mcpManager: this.mcpManager,
             projectId,
-            projectContext: chatResumeProject ? buildProjectContext(chatResumeProject, projectId!) : undefined,
+            projectContext: chatResumeProject
+              ? buildProjectContext(chatResumeProject, projectId!)
+              : undefined,
             projectWorkspacePath: chatResumeProject?.workspacePath,
             projectType: chatResumeProject?.type,
+            onJobAction: projectId ? this.buildJobActionHandler() : undefined,
           }) ?? undefined
 
         // Also try global sessions as fallback
         if (!session && projectId) {
-          session = resumeSession(sessionId, this.config, {
-            onSubAgentEvent: this.makeSubAgentEventHandler(sessionId),
-            mcpManager: this.mcpManager,
-          }) ?? undefined
+          session =
+            resumeSession(sessionId, this.config, {
+              onSubAgentEvent: this.makeSubAgentEventHandler(sessionId),
+              mcpManager: this.mcpManager,
+            }) ?? undefined
         }
 
         if (session) {
@@ -1353,12 +1623,32 @@ export class AgentServer {
       let eventCount = 0
       let accumulatedText = ''
       let toolCallCount = 0
+      // Track update_project_context tool call data
+      const pendingToolNames = new Map<string, string>()
+      let projectContextUpdate: { sessionSummary?: string; projectSummary?: string } | null = null
+
       for await (const event of session.processMessage(msg.content, msg.attachments || [])) {
-        // Accumulate text for project context extraction
-        if (event.type === 'text') {
-          accumulatedText += event.content
-        }
+        if (event.type === 'text') accumulatedText += event.content
         eventCount++
+
+        // Track tool call names for result matching
+        if (event.type === 'tool_call') {
+          const tc = event as { id: string; name: string }
+          pendingToolNames.set(tc.id, tc.name)
+        }
+
+        // Capture update_project_context tool result
+        if (event.type === 'tool_result') {
+          const tr = event as { id: string; output: string }
+          if (pendingToolNames.get(tr.id) === 'update_project_context') {
+            try {
+              projectContextUpdate = JSON.parse(tr.output)
+            } catch {
+              /* ignore malformed output */
+            }
+          }
+          pendingToolNames.delete(tr.id)
+        }
 
         // Emit granular status updates so the client can show step-by-step progress
         if (event.type === 'tool_call') {
@@ -1376,7 +1666,9 @@ export class AgentServer {
               const file = String(inp.path).split('/').pop()
               toolDetail = `${String(op).charAt(0).toUpperCase()}${String(op).slice(1)} ${file}`
             } else if (toolEvent.name === 'network' && (inp.url || inp.host)) {
-              const host = String(inp.url || inp.host).replace(/^https?:\/\//, '').split('/')[0]
+              const host = String(inp.url || inp.host)
+                .replace(/^https?:\/\//, '')
+                .split('/')[0]
               toolDetail = `Fetching ${host}`
             } else if (toolEvent.name === 'browser' && inp.operation) {
               toolDetail = `Browser: ${inp.operation}`
@@ -1406,8 +1698,9 @@ export class AgentServer {
           })
         } else if (event.type === 'tasks_update') {
           // Use the activeForm of the current in_progress task as status detail
-          const active = (event as { tasks: Array<{ activeForm: string; status: string }> }).tasks
-            .find((t) => t.status === 'in_progress')
+          const active = (
+            event as { tasks: Array<{ activeForm: string; status: string }> }
+          ).tasks.find((t) => t.status === 'in_progress')
           if (active) {
             this.sendToClient(Channel.EVENTS, {
               type: 'agent_status',
@@ -1430,10 +1723,18 @@ export class AgentServer {
       const sessionInfo = session.getInfo()
       if (session.projectId && sessionInfo.title) {
         try {
+          // Use LLM-provided summary from update_project_context tool, fallback to title
+          const sessionSummary = projectContextUpdate?.sessionSummary || sessionInfo.title
+
+          // Update project summary if the LLM provided one
+          if (projectContextUpdate?.projectSummary) {
+            updateProjectContext(session.projectId, 'summary', projectContextUpdate.projectSummary)
+          }
+
           appendSessionHistory(session.projectId, {
             sessionId: session.id,
             title: sessionInfo.title,
-            summary: sessionInfo.title,
+            summary: sessionSummary,
             ts: Date.now(),
           })
           updateProjectStats(session.projectId)
@@ -1527,31 +1828,30 @@ export class AgentServer {
       return new Promise((resolve) => {
         const confirmId = `c_${Date.now()}`
 
-        this.sendToClient(Channel.AI, {
-          type: 'confirm',
+        const payload = {
+          type: 'confirm' as const,
           id: confirmId,
           command,
           reason,
           sessionId: session.id,
-        })
-
-        const timeout = setTimeout(() => resolve(false), 60_000)
-
-        const handler = (data: Buffer) => {
-          try {
-            const frame = decodeFrame(new Uint8Array(data))
-            if (frame.channel === Channel.AI) {
-              const msg = parseJsonPayload<AiMessage>(frame.payload)
-              if (msg.type === 'confirm_response' && msg.id === confirmId) {
-                clearTimeout(timeout)
-                this.activeClient?.off('message', handler)
-                resolve(msg.approved)
-              }
-            }
-          } catch {}
         }
+        this.sendToClient(Channel.AI, payload)
+        this.pendingPrompts.set(confirmId, { type: 'confirm', payload })
 
-        this.activeClient?.on('message', handler)
+        const timeout = setTimeout(() => {
+          this.pendingPrompts.delete(confirmId)
+          this.promptResolvers.delete(confirmId)
+          resolve(false)
+        }, 60_000)
+
+        this.promptResolvers.set(confirmId, (msg: AiMessage) => {
+          if (msg.type === 'confirm_response' && msg.id === confirmId) {
+            clearTimeout(timeout)
+            this.pendingPrompts.delete(confirmId)
+            this.promptResolvers.delete(confirmId)
+            resolve(msg.approved)
+          }
+        })
       })
     })
   }
@@ -1563,35 +1863,31 @@ export class AgentServer {
       return new Promise((resolve) => {
         const confirmId = `plan_${Date.now()}`
 
-        this.sendToClient(Channel.AI, {
-          type: 'plan_confirm',
+        const payload = {
+          type: 'plan_confirm' as const,
           id: confirmId,
           title,
           content,
           sessionId: session.id,
-        })
+        }
+        this.sendToClient(Channel.AI, payload)
+        this.pendingPrompts.set(confirmId, { type: 'plan_confirm', payload })
 
         // 5 minutes — plans need reading time
-        const timeout = setTimeout(
-          () => resolve({ approved: false, feedback: 'Timed out waiting for plan review' }),
-          300_000,
-        )
+        const timeout = setTimeout(() => {
+          this.pendingPrompts.delete(confirmId)
+          this.promptResolvers.delete(confirmId)
+          resolve({ approved: false, feedback: 'Timed out waiting for plan review' })
+        }, 300_000)
 
-        const handler = (data: Buffer) => {
-          try {
-            const frame = decodeFrame(new Uint8Array(data))
-            if (frame.channel === Channel.AI) {
-              const msg = parseJsonPayload<AiMessage>(frame.payload)
-              if (msg.type === 'plan_confirm_response' && msg.id === confirmId) {
-                clearTimeout(timeout)
-                this.activeClient?.off('message', handler)
-                resolve({ approved: msg.approved, feedback: msg.feedback })
-              }
-            }
-          } catch {}
-        }
-
-        this.activeClient?.on('message', handler)
+        this.promptResolvers.set(confirmId, (msg: AiMessage) => {
+          if (msg.type === 'plan_confirm_response' && msg.id === confirmId) {
+            clearTimeout(timeout)
+            this.pendingPrompts.delete(confirmId)
+            this.promptResolvers.delete(confirmId)
+            resolve({ approved: msg.approved, feedback: msg.feedback })
+          }
+        })
       })
     })
   }
@@ -1603,34 +1899,32 @@ export class AgentServer {
       return new Promise((resolve) => {
         const askId = `ask_${Date.now()}`
 
-        this.sendToClient(Channel.AI, {
-          type: 'ask_user',
+        const payload = {
+          type: 'ask_user' as const,
           id: askId,
           questions,
           sessionId: session.id,
-        })
+        }
+        this.sendToClient(Channel.AI, payload)
+        // Track so we can re-send on reconnect
+        this.pendingPrompts.set(askId, { type: 'ask_user', payload })
 
         // 5 minutes — user needs time to answer
         const timeout = setTimeout(() => {
-          this.activeClient?.off('message', handler)
+          this.pendingPrompts.delete(askId)
+          this.promptResolvers.delete(askId)
           resolve({})
         }, 300_000)
 
-        const handler = (data: Buffer) => {
-          try {
-            const frame = decodeFrame(new Uint8Array(data))
-            if (frame.channel === Channel.AI) {
-              const msg = parseJsonPayload<AiMessage>(frame.payload)
-              if (msg.type === 'ask_user_response' && msg.id === askId) {
-                clearTimeout(timeout)
-                this.activeClient?.off('message', handler)
-                resolve(msg.answers)
-              }
-            }
-          } catch {}
-        }
-
-        this.activeClient?.on('message', handler)
+        // Register resolver — routed via handleMessage, survives reconnects
+        this.promptResolvers.set(askId, (msg: AiMessage) => {
+          if (msg.type === 'ask_user_response' && msg.id === askId) {
+            clearTimeout(timeout)
+            this.pendingPrompts.delete(askId)
+            this.promptResolvers.delete(askId)
+            resolve(msg.answers)
+          }
+        })
       })
     })
   }
@@ -1673,16 +1967,18 @@ export class AgentServer {
 
   private buildConnectorStatus(c: ConnectorConfig) {
     const mcpStatus = this.mcpManager.getStatus().find((s) => s.id === c.id)
+    // API connectors are "connected" when they have an apiKey configured
+    const isApiConnected = c.type === 'api' && !!c.apiKey && c.enabled
     return {
       id: c.id,
       name: c.name,
       description: c.description,
       icon: c.icon,
       type: c.type,
-      connected: mcpStatus?.connected ?? false,
+      connected: mcpStatus?.connected ?? isApiConnected,
       enabled: c.enabled,
-      toolCount: mcpStatus?.toolCount ?? 0,
-      tools: mcpStatus?.tools ?? [],
+      toolCount: mcpStatus?.toolCount ?? (isApiConnected ? 1 : 0),
+      tools: mcpStatus?.tools ?? (isApiConnected ? ['web_search'] : []),
     }
   }
 
@@ -1715,7 +2011,10 @@ export class AgentServer {
     }
   }
 
-  private async handleConnectorUpdate(msg: { id: string; changes: Partial<ConnectorConfig> }): Promise<void> {
+  private async handleConnectorUpdate(msg: {
+    id: string
+    changes: Partial<ConnectorConfig>
+  }): Promise<void> {
     try {
       const updated = updateConnectorConfig(this.config, msg.id, msg.changes)
       if (!updated) {
@@ -1806,6 +2105,11 @@ export class AgentServer {
   }
 
   // ── Helpers ─────────────────────────────────────────────────────
+
+  /** Public: forward job manager events to the client via EVENTS channel */
+  broadcastJobEvent(event: object) {
+    this.sendToClient(Channel.EVENTS, event)
+  }
 
   private sendToClient(channel: ChannelId, message: object) {
     if (this.activeClient && this.activeClient.readyState === WebSocket.OPEN) {

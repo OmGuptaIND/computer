@@ -320,6 +320,7 @@ function createDefaultConfig(): AgentConfig {
         'registry.npmjs.org',
         'api.anthropic.com',
         'api.openai.com',
+        'api.search.brave.com',
       ],
     },
     skills: [],
@@ -1005,11 +1006,9 @@ export function getPromptsDir(): string {
 export function loadSystemPrompt(): string {
   mkdirSync(PROMPTS_DIR, { recursive: true })
 
-  // Seed from embedded default if user hasn't customized yet
-  if (!existsSync(SYSTEM_PROMPT_PATH)) {
-    writeFileSync(SYSTEM_PROMPT_PATH, EMBEDDED_SYSTEM_PROMPT, 'utf-8')
-    console.log(`  System prompt created: ${SYSTEM_PROMPT_PATH}`)
-  }
+  // Always sync the base system prompt from the embedded version.
+  // Users should use append.md and rules/ for customizations.
+  writeFileSync(SYSTEM_PROMPT_PATH, EMBEDDED_SYSTEM_PROMPT, 'utf-8')
 
   let prompt = readFileSync(SYSTEM_PROMPT_PATH, 'utf-8')
 
@@ -1089,9 +1088,19 @@ export interface ConnectorRegistryEntry {
   command?: string
   args?: string[]
   requiredEnv: string[]
+  featured?: boolean
 }
 
 export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
+  {
+    id: 'brave-search',
+    name: 'Brave Search',
+    description: 'Search the web for current information, research topics, and find resources',
+    icon: '🔍',
+    category: 'productivity',
+    type: 'api',
+    requiredEnv: ['BRAVE_SEARCH_API_KEY'],
+  },
   {
     id: 'telegram',
     name: 'Telegram',
@@ -1113,6 +1122,7 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     command: 'npx',
     args: ['-y', '@anthropic/mcp-server-gmail'],
     requiredEnv: ['GMAIL_CREDENTIALS_PATH'],
+    featured: true,
   },
   {
     id: 'google-calendar',
@@ -1135,6 +1145,7 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     command: 'npx',
     args: ['-y', '@anthropic/mcp-server-notion'],
     requiredEnv: ['NOTION_API_KEY'],
+    featured: true,
   },
   {
     id: 'github',
@@ -1146,6 +1157,7 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-github'],
     requiredEnv: ['GITHUB_TOKEN'],
+    featured: true,
   },
   {
     id: 'slack',
@@ -1157,6 +1169,7 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     command: 'npx',
     args: ['-y', '@anthropic/mcp-server-slack'],
     requiredEnv: ['SLACK_BOT_TOKEN'],
+    featured: true,
   },
   {
     id: 'linear',

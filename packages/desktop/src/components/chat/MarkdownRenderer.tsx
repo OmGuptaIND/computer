@@ -9,13 +9,7 @@ interface Props {
   content: string
 }
 
-/** Strip internal tags that should never be shown to users */
-function sanitize(text: string): string {
-  return text.replace(/\[PROJECT_CONTEXT_UPDATE\][\s\S]*?\[\/PROJECT_CONTEXT_UPDATE\]/g, '').trim()
-}
-
 export function MarkdownRenderer({ content }: Props) {
-  const cleaned = sanitize(content)
   return (
     <div className="markdown-body">
       <Markdown
@@ -59,7 +53,7 @@ export function MarkdownRenderer({ content }: Props) {
           hr: () => <hr className="markdown-body__rule" />,
         }}
       >
-        {cleaned}
+        {content}
       </Markdown>
     </div>
   )

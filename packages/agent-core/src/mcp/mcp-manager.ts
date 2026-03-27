@@ -25,6 +25,7 @@ export interface ConnectorStatus {
 export class McpManager {
   private clients = new Map<string, McpClient>()
   private configs = new Map<string, McpServerConfig>()
+  private healthTimer: NodeJS.Timeout | null = null
 
   /**
    * Start all enabled connectors from config.
@@ -44,7 +45,10 @@ export class McpManager {
     for (let i = 0; i < results.length; i++) {
       const r = results[i]
       if (r.status === 'rejected') {
-        console.error(`[mcp-manager] failed to start "${enabled[i].id}":`, r.reason?.message || r.reason)
+        console.error(
+          `[mcp-manager] failed to start "${enabled[i].id}":`,
+          r.reason?.message || r.reason,
+        )
       }
     }
   }
@@ -53,7 +57,7 @@ export class McpManager {
    * Stop all connectors and clean up.
    */
   async stopAll(): Promise<void> {
-    console.log("[mcp-manager] stopping all connectors...")
+    console.log('[mcp-manager] stopping all connectors...')
     const promises = Array.from(this.clients.keys()).map((id) => this.stop(id))
     await Promise.allSettled(promises)
   }
@@ -75,6 +79,20 @@ export class McpManager {
     client.on('disconnected', () => {
       console.log(`[mcp-manager] connector "${id}" disconnected`)
       this.clients.delete(id)
+      // Auto-reconnect after 5 seconds
+      setTimeout(async () => {
+        if (this.configs.has(id) && this.configs.get(id)?.enabled !== false) {
+          try {
+            console.log(`[mcp-manager] auto-reconnecting "${id}"...`)
+            await this.start(id)
+          } catch (err) {
+            console.error(
+              `[mcp-manager] auto-reconnect failed for "${id}":`,
+              (err as Error).message,
+            )
+          }
+        }
+      }, 5_000)
     })
 
     client.on('error', (err: Error) => {
@@ -197,5 +215,31 @@ export class McpManager {
    */
   isConnected(id: string): boolean {
     return this.clients.get(id)?.isConnected() ?? false
+  }
+
+  /** Start periodic health checks for all connected MCP servers. */
+  startHealthChecks(intervalMs = 60_000): void {
+    this.stopHealthChecks()
+    this.healthTimer = setInterval(async () => {
+      for (const [id, client] of this.clients) {
+        const ok = await client.ping()
+        if (!ok) {
+          console.log(`[mcp-manager] health check failed for "${id}", restarting...`)
+          try {
+            await this.restart(id)
+          } catch (err) {
+            console.error(`[mcp-manager] restart failed for "${id}":`, (err as Error).message)
+          }
+        }
+      }
+    }, intervalMs)
+  }
+
+  /** Stop health check loop. */
+  stopHealthChecks(): void {
+    if (this.healthTimer) {
+      clearInterval(this.healthTimer)
+      this.healthTimer = null
+    }
   }
 }

@@ -18,6 +18,15 @@ import {
   type ConnectorStatusInfo,
   useStore,
 } from '../../lib/store.js'
+import { ConnectorIcon } from './ConnectorIcons.js'
+
+const CATEGORY_ORDER: { key: string; label: string }[] = [
+  { key: 'messaging', label: 'Messaging' },
+  { key: 'productivity', label: 'Productivity' },
+  { key: 'development', label: 'Development' },
+  { key: 'social', label: 'Social' },
+  { key: 'other', label: 'Other' },
+]
 
 type Tab = 'apps' | 'custom-api' | 'custom-mcp'
 
@@ -118,30 +127,60 @@ function AppsTab({
     }
   }
 
+  // Split into featured and grouped-by-category
+  const featured = filtered.filter((r) => r.featured)
+  const grouped = CATEGORY_ORDER.map(({ key, label }) => ({
+    key,
+    label,
+    entries: filtered.filter((r) => r.category === key),
+  })).filter((g) => g.entries.length > 0)
+
+  const renderCard = (entry: ConnectorRegistryInfo) => {
+    const existing = connectors.find((c) => c.id === entry.id)
+    return (
+      <button
+        key={entry.id}
+        type="button"
+        className={`connector-card${existing?.connected ? ' connector-card--connected' : ''}`}
+        onClick={() => setSetupId(entry.id)}
+      >
+        <div className="connector-card__icon-wrap">
+          <ConnectorIcon id={entry.id} size={22} />
+        </div>
+        <div className="connector-card__info">
+          <div className="connector-card__name">
+            {entry.name}
+            {existing?.connected && (
+              <span className="connector-card__dot" title="Connected" />
+            )}
+          </div>
+          <div className="connector-card__desc">{entry.description}</div>
+        </div>
+      </button>
+    )
+  }
+
   return (
-    <div className="connectors-grid">
-      {filtered.map((entry) => {
-        const existing = connectors.find((c) => c.id === entry.id)
-        return (
-          <button
-            key={entry.id}
-            type="button"
-            className={`connector-card${existing?.connected ? ' connector-card--connected' : ''}`}
-            onClick={() => setSetupId(entry.id)}
-          >
-            <div className="connector-card__icon">{entry.icon}</div>
-            <div className="connector-card__info">
-              <div className="connector-card__name">
-                {entry.name}
-                {existing?.connected && (
-                  <span className="connector-card__badge">Connected</span>
-                )}
-              </div>
-              <div className="connector-card__desc">{entry.description}</div>
-            </div>
-          </button>
-        )
-      })}
+    <div className="connectors-categorized">
+      {/* Recommended / Featured section */}
+      {featured.length > 0 && !search && (
+        <div className="connectors-category">
+          <h3 className="connectors-category__label">Recommended</h3>
+          <div className="connectors-grid">
+            {featured.map(renderCard)}
+          </div>
+        </div>
+      )}
+
+      {/* Category sections */}
+      {grouped.map((group) => (
+        <div key={group.key} className="connectors-category">
+          <h3 className="connectors-category__label">{search ? group.label : `All ${group.label}`}</h3>
+          <div className="connectors-grid">
+            {group.entries.map(renderCard)}
+          </div>
+        </div>
+      ))}
       {filtered.length === 0 && (
         <div className="connectors-empty">No connectors match your search.</div>
       )}
@@ -178,6 +217,11 @@ function AppSetup({
       if (envValues[key]) env[key] = envValues[key]
     }
 
+    // For API-type connectors, map the first requiredEnv value to apiKey
+    const apiKey = entry.type === 'api' && entry.requiredEnv.length > 0
+      ? envValues[entry.requiredEnv[0]]
+      : undefined
+
     connection.sendConnectorAdd({
       id: entry.id,
       name: entry.name,
@@ -187,6 +231,7 @@ function AppSetup({
       command: entry.command,
       args: entry.args,
       env,
+      ...(apiKey ? { apiKey } : {}),
       enabled: true,
     })
 
@@ -238,7 +283,9 @@ function AppSetup({
         </button>
 
         {/* Icon */}
-        <div className="app-detail__icon">{entry.icon}</div>
+        <div className="app-detail__icon">
+          <ConnectorIcon id={entry.id} size={40} />
+        </div>
 
         {/* Name */}
         <h2 className="app-detail__name">{entry.name}</h2>

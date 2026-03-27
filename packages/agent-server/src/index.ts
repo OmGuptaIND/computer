@@ -16,7 +16,8 @@
 
 import { loadConfig, loadSkills } from '@anton/agent-config'
 import { GIT_HASH, VERSION } from '@anton/agent-config'
-import { initTracing, flushTraces } from '@anton/agent-core'
+import { flushTraces, initTracing } from '@anton/agent-core'
+import { JobManager } from './jobs/index.js'
 import { Scheduler } from './scheduler.js'
 import { AgentServer } from './server.js'
 
@@ -62,11 +63,22 @@ async function main() {
   const scheduler = new Scheduler(config)
   scheduler.addSkills(skills)
   scheduler.start()
+  server.setScheduler(scheduler)
+
+  // Start the job manager (with config + MCP for agent jobs)
+  const jobManager = new JobManager(config, null, (event) => {
+    // Forward job events to connected client via EVENTS channel
+    server.broadcastJobEvent(event)
+  })
+  await jobManager.loadAllJobs()
+  jobManager.start()
+  server.setJobManager(jobManager)
 
   // Graceful shutdown
   const shutdown = async () => {
     console.log('\nShutting down...')
     scheduler.stop()
+    await jobManager.shutdown()
     await flushTraces()
     process.exit(0)
   }
@@ -83,4 +95,5 @@ main().catch((err) => {
 export { AgentServer } from './server.js'
 export { Scheduler } from './scheduler.js'
 export { Updater } from './updater.js'
+export { JobManager } from './jobs/index.js'
 export type { SchedulerJobInfo, SchedulerEventCallback } from './scheduler.js'

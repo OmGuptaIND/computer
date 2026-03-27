@@ -1,3 +1,4 @@
+import type { Project } from '@anton/protocol'
 import {
   Bell,
   Brain,
@@ -12,11 +13,11 @@ import {
   Zap,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { Project } from '@anton/protocol'
-import { Skeleton, SkeletonLines } from '../Skeleton.js'
-import { Modal } from '../ui/Modal.js'
 import { connection } from '../../lib/connection.js'
 import { useStore } from '../../lib/store.js'
+import { Skeleton, SkeletonLines } from '../Skeleton.js'
+import { Modal } from '../ui/Modal.js'
+import { ProjectJobs } from './ProjectJobs.js'
 
 interface Props {
   project: Project
@@ -32,17 +33,20 @@ interface SectionProps {
   defaultOpen?: boolean
 }
 
-function ConfigSection({ icon, title, action, headerAction, children, defaultOpen = false }: SectionProps) {
+function ConfigSection({
+  icon,
+  title,
+  action,
+  headerAction,
+  children,
+  defaultOpen = false,
+}: SectionProps) {
   const [open, setOpen] = useState(defaultOpen)
 
   return (
     <div className="config-section">
       <div className="config-section__header-row">
-        <button
-          type="button"
-          className="config-section__header"
-          onClick={() => setOpen(!open)}
-        >
+        <button type="button" className="config-section__header" onClick={() => setOpen(!open)}>
           <span className="config-section__icon">{icon}</span>
           <span className="config-section__title">{title}</span>
           <ChevronRight
@@ -51,17 +55,17 @@ function ConfigSection({ icon, title, action, headerAction, children, defaultOpe
             className={`config-section__chevron${open ? ' config-section__chevron--open' : ''}`}
           />
         </button>
-        {headerAction && (
-          <div className="config-section__header-action">{headerAction}</div>
-        )}
+        {headerAction && <div className="config-section__header-action">{headerAction}</div>}
       </div>
-      {action && !open && (
-        <div className="config-section__action">{action}</div>
-      )}
+      {action && !open && <div className="config-section__action">{action}</div>}
       {open && (
         <div className="config-section__content">
           {children}
-          {action && <div className="config-section__action" style={{ marginTop: 8 }}>{action}</div>}
+          {action && (
+            <div className="config-section__action" style={{ marginTop: 8 }}>
+              {action}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -194,7 +198,9 @@ function TextFileModal({
     <Modal open={open} onClose={onClose} title="Add Text Content">
       <div className="context-modal">
         <div className="form-field">
-          <label className="form-field__label" htmlFor="text-file-filename">Filename</label>
+          <label className="form-field__label" htmlFor="text-file-filename">
+            Filename
+          </label>
           <input
             id="text-file-filename"
             className="form-field__input"
@@ -290,7 +296,11 @@ function FilesSection({ projectId }: { projectId: string }) {
             </button>
             {showMenu && (
               <>
-                <div className="files-add-backdrop" onClick={() => setShowMenu(false)} onKeyDown={(e) => e.key === 'Escape' && setShowMenu(false)} />
+                <div
+                  className="files-add-backdrop"
+                  onClick={() => setShowMenu(false)}
+                  onKeyDown={(e) => e.key === 'Escape' && setShowMenu(false)}
+                />
                 <div className="files-add-menu">
                   <button
                     type="button"
@@ -346,9 +356,7 @@ function FilesSection({ projectId }: { projectId: string }) {
             })}
           </div>
         ) : (
-          <p className="config-section__hint">
-            Start by attaching files to your project.
-          </p>
+          <p className="config-section__hint">Start by attaching files to your project.</p>
         )}
       </ConfigSection>
 
@@ -445,31 +453,16 @@ export function ProjectConfigPanel({ project, loading }: Props) {
         <ConfigSection
           icon={<Zap size={14} strokeWidth={1.5} />}
           title="Jobs"
-          action={
-            <button type="button" className="config-section__add-btn">
-              <Plus size={13} strokeWidth={1.5} />
-              <span>Add</span>
-            </button>
-          }
+          defaultOpen={project.stats.activeJobs > 0}
         >
-          {project.stats.activeJobs > 0 ? (
-            <p className="config-section__value">
-              {project.stats.activeJobs} active job{project.stats.activeJobs !== 1 ? 's' : ''}
-            </p>
-          ) : (
-            <p className="config-section__hint">
-              No active jobs. Automate tasks like scraping, syncing, and monitoring.
-            </p>
-          )}
+          <ProjectJobs projectId={project.id} />
         </ConfigSection>
 
         {/* Notifications */}
-        <ConfigSection
-          icon={<Bell size={14} strokeWidth={1.5} />}
-          title="Notifications"
-        >
+        <ConfigSection icon={<Bell size={14} strokeWidth={1.5} />} title="Notifications">
           <p className="config-section__hint">
-            Activity feed for this project. Job results, errors, and things that need your attention.
+            Activity feed for this project. Job results, errors, and things that need your
+            attention.
           </p>
         </ConfigSection>
 
