@@ -253,6 +253,15 @@ interface AppState {
   _pendingCitationSources: CitationSource[]
   _pendingWebSearchToolCallIds: Set<string>
 
+  // Browser viewer
+  browserState: {
+    url: string
+    title: string
+    screenshot: string | null
+    actions: Array<{ action: string; target?: string; value?: string; timestamp: number }>
+    active: boolean
+  } | null
+
   // Artifacts
   artifacts: Artifact[]
   activeArtifactId: string | null
@@ -273,7 +282,7 @@ interface AppState {
 
   // Plan review
   pendingPlan: { id: string; title: string; content: string; sessionId?: string } | null
-  sidePanelView: 'artifacts' | 'plan' | 'context'
+  sidePanelView: 'artifacts' | 'plan' | 'context' | 'browser'
 
   // Ask-user questionnaire
   pendingAskUser: { id: string; questions: AskUserQuestion[]; sessionId?: string } | null
@@ -294,10 +303,9 @@ interface AppState {
   projectSessionsLoading: boolean // true while fetching project sessions
   projectFiles: { name: string; size: number; mimeType: string }[]
   projectFilesLoading: boolean
-  projectAgents: import('@anton/protocol').Job[]
+  projectAgents: import('@anton/protocol').AgentSession[]
   projectAgentsLoading: boolean
   selectedAgentId: string | null
-  agentLogs: string[]
   activeView: 'chat' | 'projects' | 'terminal'
 
   // Usage stats (server-computed)
@@ -326,9 +334,8 @@ interface AppState {
   removeProject: (id: string) => void
   setProjectSessions: (sessions: SessionMeta[]) => void
   setProjectFiles: (files: { name: string; size: number; mimeType: string }[]) => void
-  setProjectAgents: (jobs: import('@anton/protocol').Job[]) => void
+  setProjectAgents: (agents: import('@anton/protocol').AgentSession[]) => void
   setSelectedAgent: (id: string | null) => void
-  setAgentLogs: (lines: string[]) => void
   setActiveProjectSession: (sessionId: string | null) => void
   setActiveView: (view: 'chat' | 'projects' | 'terminal') => void
 
@@ -383,6 +390,16 @@ interface AppState {
   registerPendingSession: (id: string) => Promise<void>
   resolvePendingSession: (id: string) => void
 
+  // Browser viewer actions
+  setBrowserState: (state: {
+    url: string
+    title: string
+    screenshot?: string
+    lastAction: { action: string; target?: string; value?: string; timestamp: number }
+    elementCount?: number
+  }) => void
+  clearBrowserState: () => void
+
   // Artifact actions
   addArtifact: (artifact: Artifact) => void
   setActiveArtifact: (id: string | null) => void
@@ -402,7 +419,7 @@ interface AppState {
   setPendingPlan: (
     plan: { id: string; title: string; content: string; sessionId?: string } | null,
   ) => void
-  setSidePanelView: (view: 'artifacts' | 'plan' | 'context') => void
+  setSidePanelView: (view: 'artifacts' | 'plan' | 'context' | 'browser') => void
   openContextPanel: () => void
 
   // Ask-user actions
@@ -467,6 +484,7 @@ export const useStore = create<AppState>((set, get) => {
     citations: new Map(),
     _pendingCitationSources: [],
     _pendingWebSearchToolCallIds: new Set(),
+    browserState: null,
     artifacts: [],
     activeArtifactId: null,
     artifactPanelOpen: false,
@@ -496,7 +514,6 @@ export const useStore = create<AppState>((set, get) => {
     projectAgents: [],
     projectAgentsLoading: false,
     selectedAgentId: null,
-    agentLogs: [],
     activeView: 'chat',
 
     // Usage stats
@@ -527,7 +544,6 @@ export const useStore = create<AppState>((set, get) => {
         projectAgents: [],
         projectAgentsLoading: !!id,
         selectedAgentId: null,
-        agentLogs: [],
       })
     },
     addProject: (project) => {
@@ -558,9 +574,8 @@ export const useStore = create<AppState>((set, get) => {
     setProjectSessions: (sessions) =>
       set({ projectSessions: sessions, projectSessionsLoading: false }),
     setProjectFiles: (files) => set({ projectFiles: files, projectFilesLoading: false }),
-    setProjectAgents: (jobs) => set({ projectAgents: jobs, projectAgentsLoading: false }),
+    setProjectAgents: (agents) => set({ projectAgents: agents, projectAgentsLoading: false }),
     setSelectedAgent: (id) => set({ selectedAgentId: id }),
-    setAgentLogs: (lines) => set({ agentLogs: lines }),
     setActiveProjectSession: (sessionId) => set({ activeProjectSessionId: sessionId }),
     setActiveView: (view) => {
       if (view === 'chat') {
@@ -775,6 +790,9 @@ export const useStore = create<AppState>((set, get) => {
         (conv?.sessionId
           ? (updates._sessionTasks ?? currentState._sessionTasks).get(conv.sessionId)
           : undefined) ?? []
+
+      // Close artifact panel when switching conversations
+      updates.artifactPanelOpen = false
 
       // If this session completed a turn in the background, fetch fresh history
       if (conv?.sessionId && get()._sessionsNeedingHistoryRefresh.has(conv.sessionId)) {
@@ -1077,6 +1095,24 @@ export const useStore = create<AppState>((set, get) => {
 
     setArtifactPanelOpen: (open) => set({ artifactPanelOpen: open }),
 
+    setBrowserState: (state) => {
+      const current = get().browserState
+      const actions = current?.actions ?? []
+      // Keep last 50 actions
+      const newActions = [...actions, state.lastAction].slice(-50)
+      set({
+        browserState: {
+          url: state.url,
+          title: state.title,
+          screenshot: state.screenshot ?? current?.screenshot ?? null,
+          actions: newActions,
+          active: true,
+        },
+      })
+    },
+
+    clearBrowserState: () => set({ browserState: null }),
+
     clearArtifacts: () => set({ artifacts: [], activeArtifactId: null, artifactPanelOpen: false }),
 
     setArtifactSearchQuery: (query) => set({ artifactSearchQuery: query }),
@@ -1147,7 +1183,6 @@ export const useStore = create<AppState>((set, get) => {
         projectAgents: [],
         projectAgentsLoading: false,
         selectedAgentId: null,
-        agentLogs: [],
       })
       // DO NOT clear conversations or active conversation — preserve chat history
       // On reconnect, session_history will sync the server's persisted state
@@ -1553,6 +1588,32 @@ connection.onMessage((channel, msg) => {
         } else if (isForActiveSession) {
           useStore.setState({ currentTasks: msg.tasks })
         }
+      }
+      break
+    }
+
+    case 'browser_state': {
+      if (isForActiveSession) {
+        const wasActive = store.browserState?.active
+        store.setBrowserState({
+          url: msg.url,
+          title: msg.title,
+          screenshot: msg.screenshot,
+          lastAction: msg.lastAction,
+          elementCount: msg.elementCount,
+        })
+        // Auto-open browser viewer on first browser event
+        if (!wasActive) {
+          store.setSidePanelView('browser')
+          useStore.setState({ artifactPanelOpen: true })
+        }
+      }
+      break
+    }
+
+    case 'browser_close': {
+      if (isForActiveSession) {
+        store.clearBrowserState()
       }
       break
     }
@@ -1974,37 +2035,35 @@ connection.onMessage((channel, msg) => {
       }
       break
 
-    // ── Job responses ──────────────────────────────────────────────
-    case 'jobs_list_response':
+    // ── Agent responses ──────────────────────────────────────────
+    case 'agents_list_response':
       if (msg.projectId === store.activeProjectId) {
-        store.setProjectAgents(msg.jobs)
+        store.setProjectAgents(msg.agents)
       }
       break
 
-    case 'job_created': {
-      const jobs = [...store.projectAgents]
-      const idx = jobs.findIndex((j) => j.id === msg.job.id)
-      if (idx >= 0) jobs[idx] = msg.job
-      else jobs.push(msg.job)
-      store.setProjectAgents(jobs)
+    case 'agent_created': {
+      const agents = [...store.projectAgents]
+      const idx = agents.findIndex((a) => a.sessionId === msg.agent.sessionId)
+      if (idx >= 0) agents[idx] = msg.agent
+      else agents.push(msg.agent)
+      store.setProjectAgents(agents)
       break
     }
 
-    case 'job_updated': {
-      const jobs = store.projectAgents.map((j) => (j.id === msg.job.id ? msg.job : j))
-      store.setProjectAgents(jobs)
+    case 'agent_updated': {
+      const agents = store.projectAgents.map((a) =>
+        a.sessionId === msg.agent.sessionId ? msg.agent : a,
+      )
+      store.setProjectAgents(agents)
       break
     }
 
-    case 'job_deleted': {
-      const jobs = store.projectAgents.filter((j) => j.id !== msg.jobId)
-      store.setProjectAgents(jobs)
+    case 'agent_deleted': {
+      const agents = store.projectAgents.filter((a) => a.sessionId !== msg.sessionId)
+      store.setProjectAgents(agents)
       break
     }
-
-    case 'job_logs_response':
-      store.setAgentLogs(msg.lines)
-      break
 
     // ── Connector responses ──────────────────────────────────────
     case 'connectors_list_response':

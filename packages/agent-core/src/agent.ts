@@ -29,6 +29,7 @@ import { executeFilesystem } from './tools/filesystem.js'
 import { executeGit } from './tools/git.js'
 import { executeHttpApi } from './tools/http-api.js'
 import { executeImage } from './tools/image.js'
+import type { DeliverResultHandler } from './tools/deliver-result.js'
 import type { JobActionHandler, JobToolInput } from './tools/job.js'
 import { executeMemory } from './tools/memory.js'
 import { executeNetwork } from './tools/network.js'
@@ -108,10 +109,22 @@ export interface ToolCallbacks {
   defaultWorkingDirectory?: string
   /** Project ID — when set, enables the update_project_context tool and job tool. */
   projectId?: string
-  /** Callback for the job management tool. Provided by the server. */
+  /** Callback for the agent management tool. Provided by the server. */
   onJobAction?: JobActionHandler
+  /** Callback to deliver results back to the origin conversation. */
+  onDeliverResult?: DeliverResultHandler
   /** Domain for this agent (e.g. "slug.antoncomputer.in"). Used by the publish tool. */
   domain?: string
+  /** Callback when the browser tool updates its state (screenshot, URL, action). */
+  onBrowserState?: (state: {
+    url: string
+    title: string
+    screenshot?: string
+    lastAction: import('@anton/protocol').BrowserAction
+    elementCount?: number
+  }) => void
+  /** Callback when the browser is closed. */
+  onBrowserClose?: () => void
 }
 
 export function buildTools(
@@ -175,18 +188,62 @@ export function buildTools(
       name: 'browser',
       label: 'Browser',
       description:
-        'Fetch remote web pages or extract content from URLs. Operations: fetch, extract, screenshot. ' +
-        'Only use for remote URLs (http/https). For local files, use the filesystem tool to read them and the artifact tool to display them.',
+        'Web browsing and browser automation. Two modes:\n' +
+        '• **fetch/extract** — Fast, lightweight. Use for reading articles, docs, APIs. No JS execution.\n' +
+        '• **open/snapshot/click/fill/scroll/screenshot/get/wait/close** — Full browser automation via agent-browser. ' +
+        'Use ONLY when you need to interact with a page (click buttons, fill forms, navigate JS-heavy SPAs, take screenshots, automate workflows). ' +
+        'The real browser is heavier — prefer fetch for simple content retrieval.\n' +
+        'For local files, use the filesystem tool.',
       parameters: Type.Object({
         operation: Type.Union(
-          [Type.Literal('fetch'), Type.Literal('screenshot'), Type.Literal('extract')],
-          { description: 'Operation to perform' },
+          [
+            Type.Literal('fetch'),
+            Type.Literal('extract'),
+            Type.Literal('open'),
+            Type.Literal('snapshot'),
+            Type.Literal('click'),
+            Type.Literal('fill'),
+            Type.Literal('screenshot'),
+            Type.Literal('scroll'),
+            Type.Literal('get'),
+            Type.Literal('wait'),
+            Type.Literal('close'),
+          ],
+          {
+            description:
+              'fetch: GET page as markdown (fast, no JS). extract: CSS selector extraction. ' +
+              'open: navigate real browser to URL. snapshot: get interactive elements with @refs. ' +
+              'click: click element by @ref. fill: type text into @ref. screenshot: capture page. ' +
+              'scroll: scroll page. get: get text/url/title. wait: wait for element/load. close: close browser.',
+          },
         ),
-        url: Type.String({ description: 'URL to fetch' }),
+        url: Type.Optional(Type.String({ description: 'URL for fetch/extract/open' })),
+        ref: Type.Optional(Type.String({ description: 'Element ref like @e1 for click/fill/get' })),
+        text: Type.Optional(Type.String({ description: 'Text for fill operation' })),
         selector: Type.Optional(Type.String({ description: 'CSS selector for extract' })),
+        direction: Type.Optional(
+          Type.Union([Type.Literal('up'), Type.Literal('down')], {
+            description: 'Scroll direction',
+          }),
+        ),
+        amount: Type.Optional(Type.Number({ description: 'Scroll amount in pixels' })),
+        property: Type.Optional(
+          Type.Union(
+            [
+              Type.Literal('text'),
+              Type.Literal('url'),
+              Type.Literal('title'),
+              Type.Literal('html'),
+            ],
+            { description: 'Property for get operation' },
+          ),
+        ),
       }),
       async execute(_toolCallId, params) {
-        const output = executeBrowser(params)
+        const output = await executeBrowser(params, {
+          onBrowserState: callbacks?.onBrowserState,
+          onBrowserClose: callbacks?.onBrowserClose,
+        })
         return toolResult(output)
       },
     }),
@@ -767,6 +824,7 @@ export function buildTools(
                 defaultWorkingDirectory: callbacks?.defaultWorkingDirectory,
                 projectId: callbacks?.projectId,
                 onJobAction: callbacks?.onJobAction,
+                onDeliverResult: callbacks?.onDeliverResult,
                 // Shared project-scoped memory so parallel sub-agents can coordinate
                 conversationId: callbacks?.projectId
                   ? `project-${callbacks.projectId}`
@@ -875,19 +933,21 @@ export function buildTools(
     )
   }
 
-  // ── Job management (only for project-scoped sessions with handler) ──
+  // ── Agent management (only for project-scoped sessions with handler) ──
   if (callbacks?.projectId && callbacks?.onJobAction) {
     const projectId = callbacks.projectId
-    const jobHandler = callbacks.onJobAction
+    const agentHandler = callbacks.onJobAction
+    const getAskUser = callbacks?.getAskUserHandler
     tools.push(
       defineTool({
-        name: 'job',
-        label: 'Job',
+        name: 'agent',
+        label: 'Agent',
         description:
-          'Create, run, and manage jobs in the current project. ' +
-          'A job is a managed process (Python script, shell command, etc.) that Anton can start, stop, schedule, and monitor. ' +
-          'Operations: create (define a new job), list (show all jobs), start (run a job), stop (kill a running job), ' +
-          'delete (remove a job), logs (view job output), status (check a specific job).',
+          'Create and manage agents — autonomous conversations that run on a schedule. ' +
+          'An agent is its own conversation with full tool and MCP access that executes instructions repeatedly. ' +
+          'Operations: create (define a new agent), list (show all agents), start (trigger a run), stop (cancel a run), ' +
+          'delete (remove an agent), status (check agent details). ' +
+          'IMPORTANT: For create, the user will be asked to confirm before the agent is created.',
         parameters: Type.Object({
           operation: Type.Union(
             [
@@ -896,87 +956,102 @@ export function buildTools(
               Type.Literal('start'),
               Type.Literal('stop'),
               Type.Literal('delete'),
-              Type.Literal('logs'),
               Type.Literal('status'),
             ],
             { description: 'Operation to perform' },
           ),
-          name: Type.Optional(Type.String({ description: 'Job name (for create)' })),
-          description: Type.Optional(Type.String({ description: 'Job description (for create)' })),
-          kind: Type.Optional(
-            Type.Union(
-              [Type.Literal('task'), Type.Literal('long-running'), Type.Literal('agent')],
-              {
-                description:
-                  'Job kind: task (shell, run once), long-running (shell, stays alive), or agent (AI session with full MCP + project access)',
-              },
-            ),
-          ),
-          command: Type.Optional(
-            Type.String({ description: 'Shell command to execute (for task/long-running)' }),
-          ),
+          name: Type.Optional(Type.String({ description: 'Agent name (for create)' })),
+          description: Type.Optional(Type.String({ description: 'What the agent does (for create)' })),
           prompt: Type.Optional(
             Type.String({
-              description:
-                'Agent prompt to execute (for kind: agent). The agent gets full project + MCP connector access.',
+              description: 'Instructions for the agent — what it should do on each run. Be specific.',
             }),
-          ),
-          args: Type.Optional(
-            Type.Array(Type.String(), { description: 'Command arguments (for create)' }),
           ),
           schedule: Type.Optional(
             Type.String({
-              description: 'Cron expression for scheduling, e.g. "0 9 * * 1-5" (for create)',
+              description: 'Cron expression for scheduling, e.g. "0 9 * * *" for daily at 9am, "0 */6 * * *" for every 6 hours. Omit for manual-only.',
             }),
           ),
-          working_directory: Type.Optional(
-            Type.String({ description: 'Working directory (for create)' }),
-          ),
-          env: Type.Optional(
-            Type.Record(Type.String(), Type.String(), {
-              description: 'Environment variables (for create)',
-            }),
-          ),
-          timeout: Type.Optional(
-            Type.Number({ description: 'Timeout in seconds, 0 = no limit (for create)' }),
-          ),
-          restart_policy: Type.Optional(
-            Type.Union(
-              [Type.Literal('never'), Type.Literal('on-failure'), Type.Literal('always')],
-              {
-                description: 'Restart policy for long-running jobs',
-              },
-            ),
-          ),
-          max_restarts: Type.Optional(
-            Type.Number({ description: 'Max restart attempts (default 3)' }),
-          ),
-          job_id: Type.Optional(
-            Type.String({ description: 'Job ID (for start/stop/delete/logs/status)' }),
-          ),
-          tail: Type.Optional(
-            Type.Number({ description: 'Number of log lines to return (for logs, default 50)' }),
+          agent_id: Type.Optional(
+            Type.String({ description: 'Agent session ID (for start/stop/delete/status)' }),
           ),
         }),
         async execute(_toolCallId, params) {
+          // For create: require user confirmation via ask_user
+          if (params.operation === 'create' && getAskUser) {
+            const askUser = getAskUser()
+            if (askUser) {
+              const scheduleDesc = params.schedule
+                ? `Runs on schedule: \`${params.schedule}\``
+                : 'Manual only (you trigger it)'
+              const answers = await askUser([{
+                question: `Create agent "${params.name || 'Untitled'}"?\n\n${params.description || ''}\n\n${scheduleDesc}`,
+                options: ['Yes, create it', 'No, cancel'],
+              }])
+              // Check if user rejected
+              const answer = Object.values(answers)[0]
+              if (answer && (answer.toLowerCase().includes('no') || answer.toLowerCase().includes('cancel'))) {
+                return toolResult('Agent creation cancelled by user.')
+              }
+            }
+          }
+
+          // For delete: also require confirmation
+          if (params.operation === 'delete' && getAskUser) {
+            const askUser = getAskUser()
+            if (askUser) {
+              const answers = await askUser([{
+                question: `Delete agent "${params.agent_id}"? This will remove the agent and its conversation history.`,
+                options: ['Yes, delete it', 'No, keep it'],
+              }])
+              const answer = Object.values(answers)[0]
+              if (answer && (answer.toLowerCase().includes('no') || answer.toLowerCase().includes('keep'))) {
+                return toolResult('Agent deletion cancelled by user.')
+              }
+            }
+          }
+
           const input: JobToolInput = {
             operation: params.operation,
             name: params.name,
             description: params.description,
-            kind: params.kind,
-            command: params.command,
             prompt: params.prompt,
-            args: params.args,
             schedule: params.schedule,
-            workingDirectory: params.working_directory,
-            env: params.env,
-            timeout: params.timeout,
-            restartPolicy: params.restart_policy,
-            maxRestarts: params.max_restarts,
-            jobId: params.job_id,
-            tail: params.tail,
+            jobId: params.agent_id,
           }
-          const output = await jobHandler(projectId, input)
+          const output = await agentHandler(projectId, input)
+          return toolResult(output)
+        },
+      }),
+    )
+  }
+
+  // ── Deliver result (for agents to send results back to origin conversation) ──
+  if (callbacks?.onDeliverResult) {
+    const deliverHandler = callbacks.onDeliverResult
+    tools.push(
+      defineTool({
+        name: 'deliver_result',
+        label: 'Deliver Result',
+        description:
+          'Send your results back to the conversation that created you. ' +
+          'Use this after completing your task to deliver findings, summaries, or data to the user. ' +
+          'Only call this when you have meaningful results to share — don\'t spam empty updates.',
+        parameters: Type.Object({
+          content: Type.String({
+            description: 'The full result to deliver — findings, data, summaries. Formatted as markdown.',
+          }),
+          summary: Type.Optional(
+            Type.String({
+              description: 'One-line summary for notifications (e.g. "Found 5 new AI quotes")',
+            }),
+          ),
+        }),
+        async execute(_toolCallId, params) {
+          const output = await deliverHandler({
+            content: params.content,
+            summary: params.summary,
+          })
           return toolResult(output)
         },
       }),

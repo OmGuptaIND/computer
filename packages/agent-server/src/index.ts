@@ -14,10 +14,10 @@
  *   ANTON_TOKEN  — Force a specific auth token (skips random generation)
  */
 
-import { loadConfig, loadSkills } from '@anton/agent-config'
+import { loadConfig, loadProjects, loadSkills } from '@anton/agent-config'
 import { GIT_HASH, VERSION } from '@anton/agent-config'
 import { flushTraces, initTracing } from '@anton/agent-core'
-import { JobManager } from './jobs/index.js'
+import { AgentManager } from './agents/index.js'
 import { Scheduler } from './scheduler.js'
 import { AgentServer } from './server.js'
 
@@ -65,20 +65,20 @@ async function main() {
   scheduler.start()
   server.setScheduler(scheduler)
 
-  // Start the job manager (with config + MCP for agent jobs)
-  const jobManager = new JobManager(config, null, (event) => {
-    // Forward job events to connected client via EVENTS channel
-    server.broadcastJobEvent(event)
+  // Start the agent manager — agents are conversations with a schedule
+  const agentManager = new AgentManager((event) => {
+    server.broadcastAgentEvent(event)
   })
-  await jobManager.loadAllJobs()
-  jobManager.start()
-  server.setJobManager(jobManager)
+  const projects = loadProjects()
+  agentManager.loadAll(projects.map((p) => p.id))
+  agentManager.start()
+  server.setAgentManager(agentManager)
 
   // Graceful shutdown
   const shutdown = async () => {
     console.log('\nShutting down...')
     scheduler.stop()
-    await jobManager.shutdown()
+    agentManager.shutdown()
     await flushTraces()
     process.exit(0)
   }
@@ -95,5 +95,5 @@ main().catch((err) => {
 export { AgentServer } from './server.js'
 export { Scheduler } from './scheduler.js'
 export { Updater } from './updater.js'
-export { JobManager } from './jobs/index.js'
+export { AgentManager } from './agents/index.js'
 export type { SchedulerJobInfo, SchedulerEventCallback } from './scheduler.js'

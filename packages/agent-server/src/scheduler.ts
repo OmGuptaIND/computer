@@ -12,7 +12,7 @@ import type { AgentConfig, SkillConfig } from '@anton/agent-config'
 import { getAntonDir } from '@anton/agent-config'
 import { buildSkillPrompt } from '@anton/agent-config'
 import { type Session, createSession, resumeSession } from '@anton/agent-core'
-import { getNextCronTime } from './jobs/cron.js'
+import { getNextCronTime } from './agents/cron.js'
 
 export interface SchedulerJobInfo {
   name: string

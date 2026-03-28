@@ -38,6 +38,8 @@ import {
   updateProject,
   updateProjectContext,
   updateProjectStats,
+  appendMessageToSession,
+  getProjectSessionsDir,
 } from '@anton/agent-config'
 import { GIT_HASH, VERSION } from '@anton/agent-config'
 import {
@@ -78,7 +80,7 @@ export class AgentServer {
   // Resolvers for pending interactive prompts — keyed by prompt ID
   private promptResolvers: Map<string, (msg: AiMessage) => void> = new Map()
   private scheduler: Scheduler | null = null
-  private jobManager: import('./jobs/manager.js').JobManager | null = null
+  private agentManager: import('./agents/agent-manager.js').AgentManager | null = null
   private updater: Updater = new Updater()
   private mcpManager: McpManager = new McpManager()
   private ptys: Map<string, ChildProcess> = new Map()
@@ -98,8 +100,13 @@ export class AgentServer {
     this.scheduler = scheduler
   }
 
-  setJobManager(jobManager: import('./jobs/manager.js').JobManager) {
-    this.jobManager = jobManager
+  setAgentManager(agentManager: import('./agents/agent-manager.js').AgentManager) {
+    this.agentManager = agentManager
+
+    // Wire sendMessage — an agent run = send a message to the conversation
+    agentManager.setSendMessageHandler(async (sessionId, content) => {
+      await this.handleChatMessage({ content, sessionId })
+    })
   }
 
   async start(): Promise<void> {
@@ -259,8 +266,8 @@ export class AgentServer {
         } else {
           // Cancel interactive turns but keep background work (sub-agents, agent jobs) alive
           for (const sessionId of this.activeTurns) {
-            // Sub-agent sessions (sub_*) and agent jobs (agent-job-*) continue in background
-            if (sessionId.startsWith('sub_') || sessionId.startsWith('agent-job-')) {
+            // Sub-agent sessions (sub_*) and agent sessions continue in background
+            if (sessionId.startsWith('sub_') || sessionId.startsWith('agent-job-') || sessionId.startsWith('agent--')) {
               console.log(`Keeping background turn alive: ${sessionId}`)
               continue
             }
@@ -272,7 +279,7 @@ export class AgentServer {
           }
           // Only clear non-background turns
           for (const sessionId of this.activeTurns) {
-            if (!sessionId.startsWith('sub_') && !sessionId.startsWith('agent-job-')) {
+            if (!sessionId.startsWith('sub_') && !sessionId.startsWith('agent-job-') && !sessionId.startsWith('agent--')) {
               this.activeTurns.delete(sessionId)
             }
           }
@@ -662,18 +669,15 @@ export class AgentServer {
         this.handleProjectSessionsList(msg)
         break
 
-      // ── Jobs ──
-      case 'job_create':
-        this.handleJobCreate(msg)
+      // ── Agents ──
+      case 'agent_create':
+        this.handleAgentCreate(msg)
         break
-      case 'jobs_list':
-        this.handleJobsList(msg)
+      case 'agents_list':
+        this.handleAgentsList(msg)
         break
-      case 'job_action':
-        this.handleJobAction(msg)
-        break
-      case 'job_logs':
-        this.handleJobLogs(msg)
+      case 'agent_action':
+        this.handleAgentAction(msg)
         break
 
       // ── Connectors ──
@@ -839,7 +843,10 @@ export class AgentServer {
         projectWorkspacePath,
         projectType,
         mcpManager: this.mcpManager,
-        onJobAction: msg.projectId ? this.buildJobActionHandler() : undefined,
+        onJobAction: msg.projectId ? (this.buildAgentActionHandler(msg.id)) : undefined,
+        onDeliverResult: (msg.projectId && msg.id.startsWith('agent--'))
+          ? this.buildDeliverResultHandler(msg.id, msg.projectId)
+          : undefined,
         domain: process.env.DOMAIN,
       })
 
@@ -894,11 +901,26 @@ export class AgentServer {
       let session = this.sessions.get(msg.id)
 
       if (!session) {
-        // Extract projectId from session ID format (proj_{projectId}_sess_...)
+        // Extract projectId from session ID format
         let projectId: string | undefined
         const projMatch = msg.id.match(/^proj_(.+?)_sess_/)
         if (projMatch) {
           projectId = projMatch[1]
+        }
+
+        // Also handle agent-job-{projectId}-{jobId} format
+        // Use -job_ as delimiter since job IDs always start with job_
+        const agentMatch = msg.id.match(/^agent-job-(.+?)-(job_.+)$/)
+        if (agentMatch) {
+          projectId = agentMatch[1]
+        }
+
+        // Handle agent--{projectId}--{suffix} format
+        if (!projectId) {
+          const newAgentMatch = msg.id.match(/^agent--(.+?)--/)
+          if (newAgentMatch) {
+            projectId = newAgentMatch[1]
+          }
         }
 
         // Try loading from disk (project dir first if applicable, then global)
@@ -913,6 +935,10 @@ export class AgentServer {
               : undefined,
             projectWorkspacePath: resumeProject?.workspacePath,
             projectType: resumeProject?.type,
+            onJobAction: projectId ? (this.buildAgentActionHandler(msg.id)) : undefined,
+            onDeliverResult: (projectId && msg.id.startsWith('agent--'))
+              ? this.buildDeliverResultHandler(msg.id, projectId)
+              : undefined,
           }) ?? undefined
 
         // Fallback to global sessions
@@ -1413,188 +1439,185 @@ export class AgentServer {
     }
   }
 
-  // ── Job handlers ────────────────────────────────────────────────
+  // ── Agent handlers ─────────────────────────────────────────────
 
-  private handleJobCreate(msg: { projectId: string; job: Record<string, unknown> }) {
-    if (!this.jobManager) {
-      this.sendToClient(Channel.AI, { type: 'error', message: 'Job manager not initialized' })
+  private handleAgentCreate(msg: { projectId: string; agent: Record<string, unknown> }) {
+    if (!this.agentManager) {
+      this.sendToClient(Channel.AI, { type: 'error', message: 'Agent manager not initialized' })
       return
     }
     try {
-      const spec = msg.job as Parameters<typeof this.jobManager.createJob>[1]
-      const job = this.jobManager.createJob(msg.projectId, spec)
-      this.sendToClient(Channel.AI, { type: 'job_created', job })
+      const spec = msg.agent as { name: string; description?: string; instructions: string; schedule?: string; originConversationId?: string }
+      const agent = this.agentManager.createAgent(msg.projectId, spec)
+      this.sendToClient(Channel.AI, { type: 'agent_created', agent })
     } catch (err: unknown) {
       this.sendToClient(Channel.AI, { type: 'error', message: (err as Error).message })
     }
   }
 
-  private handleJobsList(msg: { projectId: string }) {
-    if (!this.jobManager) {
-      this.sendToClient(Channel.AI, {
-        type: 'jobs_list_response',
-        projectId: msg.projectId,
-        jobs: [],
-      })
+  private handleAgentsList(msg: { projectId: string }) {
+    if (!this.agentManager) {
+      this.sendToClient(Channel.AI, { type: 'agents_list_response', projectId: msg.projectId, agents: [] })
       return
     }
-    const jobs = this.jobManager.listJobs(msg.projectId)
-    this.sendToClient(Channel.AI, { type: 'jobs_list_response', projectId: msg.projectId, jobs })
+    const agents = this.agentManager.listAgents(msg.projectId)
+    this.sendToClient(Channel.AI, { type: 'agents_list_response', projectId: msg.projectId, agents })
   }
 
-  private handleJobAction(msg: { projectId: string; jobId: string; action: string }) {
-    if (!this.jobManager) {
-      this.sendToClient(Channel.AI, { type: 'error', message: 'Job manager not initialized' })
+  private handleAgentAction(msg: { projectId: string; sessionId: string; action: string }) {
+    if (!this.agentManager) {
+      this.sendToClient(Channel.AI, { type: 'error', message: 'Agent manager not initialized' })
       return
     }
 
-    let job: import('@anton/protocol').Job | undefined
     switch (msg.action) {
       case 'start':
-        job = this.jobManager.startJob(msg.jobId)
+        this.agentManager.runAgent(msg.sessionId)
         break
-      case 'stop':
-        job = this.jobManager.stopJob(msg.jobId)
+      case 'stop': {
+        const agent = this.agentManager.stopAgent(msg.sessionId)
+        if (agent) this.sendToClient(Channel.AI, { type: 'agent_updated', agent })
         break
+      }
+      case 'pause': {
+        const agent = this.agentManager.pauseAgent(msg.sessionId)
+        if (agent) this.sendToClient(Channel.AI, { type: 'agent_updated', agent })
+        break
+      }
+      case 'resume': {
+        const agent = this.agentManager.resumeAgent(msg.sessionId)
+        if (agent) this.sendToClient(Channel.AI, { type: 'agent_updated', agent })
+        break
+      }
       case 'delete':
-        if (this.jobManager.deleteJob(msg.jobId)) {
-          this.sendToClient(Channel.AI, {
-            type: 'job_deleted',
-            projectId: msg.projectId,
-            jobId: msg.jobId,
-          })
-          return
+        if (this.agentManager.deleteAgent(msg.sessionId)) {
+          this.sendToClient(Channel.AI, { type: 'agent_deleted', projectId: msg.projectId, sessionId: msg.sessionId })
+        } else {
+          this.sendToClient(Channel.AI, { type: 'error', message: `Agent not found: ${msg.sessionId}` })
         }
-        this.sendToClient(Channel.AI, { type: 'error', message: `Job not found: ${msg.jobId}` })
-        return
+        break
       default:
         this.sendToClient(Channel.AI, { type: 'error', message: `Unknown action: ${msg.action}` })
-        return
-    }
-
-    if (job) {
-      this.sendToClient(Channel.AI, { type: 'job_updated', job })
-    } else {
-      this.sendToClient(Channel.AI, { type: 'error', message: `Job not found: ${msg.jobId}` })
     }
   }
 
-  private handleJobLogs(msg: { projectId: string; jobId: string; runId?: string; tail?: number }) {
-    if (!this.jobManager) {
-      this.sendToClient(Channel.AI, {
-        type: 'job_logs_response',
-        projectId: msg.projectId,
-        jobId: msg.jobId,
-        runId: '',
-        lines: [],
-      })
-      return
+  /** Resolve the root human conversation ID — walk up the agent chain to find the original user conversation */
+  private resolveRootConversation(sessionId?: string): string | undefined {
+    if (!sessionId || !this.agentManager) return sessionId
+    // If this session is an agent, find its origin and recurse
+    const agent = this.agentManager.getAgent(sessionId)
+    if (agent?.agent.originConversationId) {
+      return this.resolveRootConversation(agent.agent.originConversationId)
     }
-
-    const result = this.jobManager.getJobLogs(msg.jobId, msg.runId, msg.tail ?? 100)
-    this.sendToClient(Channel.AI, {
-      type: 'job_logs_response',
-      projectId: msg.projectId,
-      jobId: msg.jobId,
-      runId: result?.runId ?? '',
-      lines: result?.lines ?? [],
-    })
+    // Not an agent — this is the root human conversation
+    return sessionId
   }
 
-  /** Build the onJobAction callback for the agent tool */
-  private buildJobActionHandler(): import('@anton/agent-core').JobActionHandler | undefined {
-    if (!this.jobManager) return undefined
-    const jm = this.jobManager
+  /** Build the agent action callback for the agent tool (used by the LLM) */
+  private buildAgentActionHandler(originSessionId?: string): import('@anton/agent-core').JobActionHandler | undefined {
+    if (!this.agentManager) return undefined
+    const am = this.agentManager
 
     return async (projectId, input) => {
       switch (input.operation) {
         case 'create': {
           if (!input.name) return 'Error: name is required for create'
-          const isAgent = input.kind === 'agent'
-          if (isAgent && !input.prompt) return 'Error: prompt is required for agent jobs'
-          if (!isAgent && !input.command) return 'Error: command is required for shell jobs'
-          const trigger = input.schedule
-            ? { type: 'cron' as const, schedule: input.schedule }
-            : { type: 'manual' as const }
-          const job = jm.createJob(projectId, {
+          if (!input.prompt) return 'Error: prompt/instructions is required for agent'
+          // Flat ownership: always point to the root human conversation, not the calling agent
+          const rootConversationId = this.resolveRootConversation(originSessionId)
+          const agent = am.createAgent(projectId, {
             name: input.name,
             description: input.description,
-            kind: input.kind ?? 'task',
-            command: input.command,
-            prompt: input.prompt,
-            args: input.args,
-            trigger,
-            workingDirectory: input.workingDirectory,
-            env: input.env,
-            timeout: input.timeout,
-            restartPolicy: input.restartPolicy,
-            maxRestarts: input.maxRestarts,
+            instructions: input.prompt,
+            schedule: input.schedule,
+            originConversationId: rootConversationId,
           })
-          this.sendToClient(Channel.AI, { type: 'job_created', job })
-          return `Job created: ${job.name} (id: ${job.id}, kind: ${job.kind}, trigger: ${job.trigger.type})`
+          this.sendToClient(Channel.AI, { type: 'agent_created', agent })
+          return `Agent created: ${agent.agent.name} (session: ${agent.sessionId}, schedule: ${agent.agent.schedule?.cron ?? 'manual'})`
         }
         case 'list': {
-          const jobs = jm.listJobs(projectId)
-          if (jobs.length === 0) return 'No jobs in this project.'
-          return jobs
-            .map(
-              (j) =>
-                `- ${j.name} (id: ${j.id}, kind: ${j.kind}, status: ${j.status}${j.trigger.type === 'cron' ? `, schedule: ${j.trigger.schedule}` : ''})`,
-            )
+          const agents = am.listAgents(projectId)
+          if (agents.length === 0) return 'No agents in this project.'
+          return agents
+            .map((a) => `- ${a.agent.name} (session: ${a.sessionId}, status: ${a.agent.status}${a.agent.schedule?.cron ? `, schedule: ${a.agent.schedule.cron}` : ''})`)
             .join('\n')
         }
         case 'start': {
-          if (!input.jobId) return 'Error: job_id is required for start'
-          const job = jm.startJob(input.jobId)
-          if (!job) return `Error: Job not found: ${input.jobId}`
-          this.sendToClient(Channel.AI, { type: 'job_updated', job })
-          return `Job "${job.name}" started (run: ${job.lastRun?.runId})`
+          if (!input.jobId) return 'Error: job_id (session ID) is required for start'
+          const agent = await am.runAgent(input.jobId)
+          if (!agent) return `Error: Agent not found: ${input.jobId}`
+          return `Agent "${agent.agent.name}" started`
         }
         case 'stop': {
-          if (!input.jobId) return 'Error: job_id is required for stop'
-          const job = jm.stopJob(input.jobId)
-          if (!job) return `Error: Job not found: ${input.jobId}`
-          this.sendToClient(Channel.AI, { type: 'job_updated', job })
-          return `Job "${job.name}" stopped.`
+          if (!input.jobId) return 'Error: job_id (session ID) is required for stop'
+          const agent = am.stopAgent(input.jobId)
+          if (!agent) return `Error: Agent not found: ${input.jobId}`
+          return `Agent "${agent.agent.name}" stopped.`
         }
         case 'delete': {
-          if (!input.jobId) return 'Error: job_id is required for delete'
-          const success = jm.deleteJob(input.jobId)
-          if (!success) return `Error: Job not found: ${input.jobId}`
-          this.sendToClient(Channel.AI, { type: 'job_deleted', projectId, jobId: input.jobId })
-          return 'Job deleted.'
-        }
-        case 'logs': {
-          if (!input.jobId) return 'Error: job_id is required for logs'
-          const result = jm.getJobLogs(input.jobId, undefined, input.tail ?? 50)
-          if (!result || result.lines.length === 0) return 'No logs available.'
-          return `Logs for run ${result.runId}:\n${result.lines.join('\n')}`
+          if (!input.jobId) return 'Error: job_id (session ID) is required for delete'
+          const success = am.deleteAgent(input.jobId)
+          if (!success) return `Error: Agent not found: ${input.jobId}`
+          this.sendToClient(Channel.AI, { type: 'agent_deleted', projectId, sessionId: input.jobId })
+          return 'Agent deleted.'
         }
         case 'status': {
-          if (!input.jobId) return 'Error: job_id is required for status'
-          const job = jm.getJob(input.jobId)
-          if (!job) return `Error: Job not found: ${input.jobId}`
-          const lines = [
-            `Job: ${job.name}`,
-            `Status: ${job.status}`,
-            `Kind: ${job.kind}`,
-            `Command: ${job.command} ${job.args.join(' ')}`.trim(),
-            `Trigger: ${job.trigger.type}${job.trigger.type === 'cron' ? ` (${job.trigger.schedule})` : ''}`,
-            `Runs: ${job.runCount}`,
-          ]
-          if (job.lastRun) {
-            lines.push(
-              `Last run: ${job.lastRun.status} (exit: ${job.lastRun.exitCode}, at: ${new Date(job.lastRun.startedAt).toISOString()})`,
-            )
-          }
-          if (job.nextRun) {
-            lines.push(`Next run: ${new Date(job.nextRun).toISOString()}`)
-          }
-          return lines.join('\n')
+          if (!input.jobId) return 'Error: job_id (session ID) is required for status'
+          const agent = am.getAgent(input.jobId)
+          if (!agent) return `Error: Agent not found: ${input.jobId}`
+          return [
+            `Agent: ${agent.agent.name}`,
+            `Status: ${agent.agent.status}`,
+            `Runs: ${agent.agent.runCount}`,
+            agent.agent.schedule ? `Schedule: ${agent.agent.schedule.cron}` : 'Schedule: manual',
+            agent.agent.lastRunAt ? `Last run: ${new Date(agent.agent.lastRunAt).toISOString()}` : 'Last run: never',
+          ].join('\n')
         }
         default:
           return `Unknown operation: ${input.operation}`
       }
+    }
+  }
+
+  /** Build the deliver_result callback for an agent session */
+  private buildDeliverResultHandler(agentSessionId: string, projectId: string): import('@anton/agent-core').DeliverResultHandler {
+    return async (result) => {
+      // Find the agent to get its originConversationId and name
+      const agent = this.agentManager?.getAgent(agentSessionId)
+      if (!agent?.agent.originConversationId) {
+        return 'No origin conversation — results stay in this conversation.'
+      }
+
+      const originId = agent.agent.originConversationId
+      const basePath = getProjectSessionsDir(projectId)
+
+      // Append the result as an assistant message to the origin conversation
+      const delivered = appendMessageToSession(
+        originId,
+        {
+          role: 'assistant',
+          content: `**Agent: ${agent.agent.name}**\n\n${result.content}`,
+          agentName: agent.agent.name,
+          agentSessionId,
+        },
+        basePath,
+      )
+
+      if (!delivered) {
+        return `Could not deliver to conversation ${originId} — it may not exist.`
+      }
+
+      // Notify the client so the UI updates if that conversation is open
+      this.sendToClient(Channel.AI, {
+        type: 'agent_result_delivered',
+        projectId,
+        agentSessionId,
+        agentName: agent.agent.name,
+        originConversationId: originId,
+        summary: result.summary ?? 'Agent delivered results',
+      })
+
+      return 'Results delivered to your origin conversation.'
     }
   }
 
@@ -1638,9 +1661,9 @@ export class AgentServer {
   }
 
   private handleProjectSessionsList(msg: { projectId: string }) {
-    // Filter out agent job sessions — they're internal, not user conversations
+    // Filter out agent sessions — they appear in the agents list, not here
     const persisted = listProjectSessions(msg.projectId).filter(
-      (s) => !s.id.startsWith('agent-job-'),
+      (s) => !s.id.startsWith('agent-job-') && !s.id.startsWith('agent--'),
     )
     const sessions = persisted.map((s) => ({
       id: s.id,
@@ -1795,11 +1818,24 @@ export class AgentServer {
         this.sessions.set(DEFAULT_SESSION_ID, session)
       } else {
         // Try to resume from disk automatically
-        // For project sessions (proj_{projectId}_sess_...), try the project directory first
         let projectId: string | undefined
         const projMatch = sessionId.match(/^proj_(.+?)_sess_/)
         if (projMatch) {
           projectId = projMatch[1]
+        }
+
+        // Also handle agent-job-{projectId}-{jobId} format
+        const agentMatch = sessionId.match(/^agent-job-(.+?)-(job_.+)$/)
+        if (agentMatch) {
+          projectId = agentMatch[1]
+        }
+
+        // Handle agent--{projectId}--{suffix} format
+        if (!projectId) {
+          const newAgentMatch = sessionId.match(/^agent--(.+?)--/)
+          if (newAgentMatch) {
+            projectId = newAgentMatch[1]
+          }
         }
 
         const chatResumeProject = projectId ? loadProject(projectId) : undefined
@@ -1813,7 +1849,10 @@ export class AgentServer {
               : undefined,
             projectWorkspacePath: chatResumeProject?.workspacePath,
             projectType: chatResumeProject?.type,
-            onJobAction: projectId ? this.buildJobActionHandler() : undefined,
+            onJobAction: projectId ? (this.buildAgentActionHandler(sessionId)) : undefined,
+            onDeliverResult: (projectId && sessionId.startsWith('agent--'))
+              ? this.buildDeliverResultHandler(sessionId, projectId)
+              : undefined,
           }) ?? undefined
 
         // Also try global sessions as fallback
@@ -2362,9 +2401,9 @@ export class AgentServer {
 
   // ── Helpers ─────────────────────────────────────────────────────
 
-  /** Public: forward job manager events to the client via EVENTS channel */
-  broadcastJobEvent(event: object) {
-    this.sendToClient(Channel.EVENTS, event)
+  /** Public: forward agent manager events to client */
+  broadcastAgentEvent(event: import('./agents/agent-manager.js').AgentEvent) {
+    this.sendToClient(Channel.AI, event)
   }
 
   private sendToClient(channel: ChannelId, message: object) {

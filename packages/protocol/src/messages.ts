@@ -1,4 +1,4 @@
-import type { Job, Project } from './projects.js'
+import type { AgentSession, Project } from './projects.js'
 
 // ── Control Channel (0x00) ──────────────────────────────────────────
 
@@ -431,6 +431,30 @@ export interface AiArtifactMessage {
   parentToolCallId?: string
 }
 
+// ── Browser automation state ─────────────────────────────────────────
+
+export interface BrowserAction {
+  action: string // 'open', 'click', 'fill', 'scroll', 'snapshot', etc.
+  target?: string // URL or @ref
+  value?: string // fill text, scroll direction
+  timestamp: number
+}
+
+export interface AiBrowserStateMessage {
+  type: 'browser_state'
+  sessionId?: string
+  url: string
+  title: string
+  screenshot?: string // base64 JPEG
+  lastAction: BrowserAction
+  elementCount?: number
+}
+
+export interface AiBrowserCloseMessage {
+  type: 'browser_close'
+  sessionId?: string
+}
+
 // ── Task tracker (Claude Code–style todo list) ──────────────────────
 export type TaskStatus = 'pending' | 'in_progress' | 'completed'
 
@@ -654,77 +678,63 @@ export interface ProjectSessionsListResponse {
   }[]
 }
 
-// ── Job management ───────────────────────────────────────────────────
+// ── Agent management ─────────────────────────────────────────────────
 
 // Client → Server
-export interface JobCreateMessage {
-  type: 'job_create'
+export interface AgentCreateMessage {
+  type: 'agent_create'
   projectId: string
-  job: {
+  agent: {
     name: string
     description?: string
-    kind: Job['kind']
-    command: string
-    args?: string[]
-    trigger?: Job['trigger']
-    workingDirectory?: string
-    env?: Record<string, string>
-    timeout?: number
-    restartPolicy?: Job['restartPolicy']
-    maxRestarts?: number
-    prompt?: string // agent prompt (for kind: 'agent')
+    instructions: string
+    schedule?: string // cron expression
+    originConversationId?: string
   }
 }
 
-export interface JobsListMessage {
-  type: 'jobs_list'
+export interface AgentsListMessage {
+  type: 'agents_list'
   projectId: string
 }
 
-export interface JobActionMessage {
-  type: 'job_action'
+export interface AgentActionMessage {
+  type: 'agent_action'
   projectId: string
-  jobId: string
-  action: 'start' | 'stop' | 'delete'
-}
-
-export interface JobLogsMessage {
-  type: 'job_logs'
-  projectId: string
-  jobId: string
-  runId?: string
-  tail?: number // default 100
+  sessionId: string // the agent's conversation session ID
+  action: 'start' | 'stop' | 'delete' | 'pause' | 'resume'
 }
 
 // Server → Client
-export interface JobCreatedMessage {
-  type: 'job_created'
-  job: Job
+export interface AgentCreatedMessage {
+  type: 'agent_created'
+  agent: AgentSession
 }
 
-export interface JobsListResponse {
-  type: 'jobs_list_response'
+export interface AgentsListResponse {
+  type: 'agents_list_response'
   projectId: string
-  jobs: Job[]
+  agents: AgentSession[]
 }
 
-export interface JobUpdatedMessage {
-  type: 'job_updated'
-  job: Job
+export interface AgentUpdatedMessage {
+  type: 'agent_updated'
+  agent: AgentSession
 }
 
-export interface JobDeletedMessage {
-  type: 'job_deleted'
+export interface AgentDeletedMessage {
+  type: 'agent_deleted'
   projectId: string
-  jobId: string
+  sessionId: string
 }
 
-export interface JobLogsResponse {
-  type: 'job_logs_response'
+export interface AgentResultDeliveredMessage {
+  type: 'agent_result_delivered'
   projectId: string
-  jobId: string
-  runId: string
-  lines: string[]
+  agentSessionId: string
+  agentName: string
+  originConversationId: string
+  summary: string
 }
 
 // ── Connector management ─────────────────────────────────────────────
@@ -988,16 +998,15 @@ export type AiMessage =
   | ProjectFilesListResponse
   | ProjectSessionsListMessage
   | ProjectSessionsListResponse
-  // Jobs
-  | JobCreateMessage
-  | JobCreatedMessage
-  | JobsListMessage
-  | JobsListResponse
-  | JobActionMessage
-  | JobUpdatedMessage
-  | JobDeletedMessage
-  | JobLogsMessage
-  | JobLogsResponse
+  // Agents
+  | AgentCreateMessage
+  | AgentCreatedMessage
+  | AgentsListMessage
+  | AgentsListResponse
+  | AgentActionMessage
+  | AgentUpdatedMessage
+  | AgentDeletedMessage
+  | AgentResultDeliveredMessage
   // Connectors
   | ConnectorsListMessage
   | ConnectorsListResponse
@@ -1013,6 +1022,9 @@ export type AiMessage =
   | ConnectorTestResponse
   | ConnectorRegistryListMessage
   | ConnectorRegistryListResponse
+  // Browser automation
+  | AiBrowserStateMessage
+  | AiBrowserCloseMessage
   // Publish
   | PublishArtifactMessage
   | PublishArtifactResponse
@@ -1057,30 +1069,6 @@ export interface UpdateAvailableEvent {
   releaseUrl: string
 }
 
-export interface JobEventMessage {
-  type: 'job_event'
-  jobId: string
-  projectId: string
-  jobName: string
-  event: 'started' | 'completed' | 'failed' | 'crashed' | 'stopped'
-  detail?: string
-  runId?: string
-  timestamp: number
-}
-
-export interface NotificationEventMessage {
-  type: 'notification'
-  projectId: string
-  notification: {
-    id: string
-    jobId?: string
-    severity: 'info' | 'success' | 'warning' | 'error'
-    title: string
-    body?: string
-    createdAt: number
-  }
-}
-
 export interface ArtifactPublishedEvent {
   type: 'artifact_published'
   artifactId: string
@@ -1094,6 +1082,4 @@ export type EventMessage =
   | TaskCompletedEvent
   | AgentStatusEvent
   | UpdateAvailableEvent
-  | JobEventMessage
-  | NotificationEventMessage
   | ArtifactPublishedEvent

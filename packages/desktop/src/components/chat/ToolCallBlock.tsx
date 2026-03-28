@@ -33,8 +33,31 @@ function getToolParam(toolName: string, toolInput: Record<string, unknown>): str
       return (toolInput.command as string) || ''
     case 'filesystem':
       return [toolInput.operation, toolInput.path].filter(Boolean).join(' ')
-    case 'browser':
-      return [toolInput.operation, toolInput.url].filter(Boolean).join(' ')
+    case 'browser': {
+      const op = toolInput.operation as string
+      switch (op) {
+        case 'open':
+          return `Navigating to ${(toolInput.url as string)?.slice(0, 50) || 'page'}`
+        case 'click':
+          return `Clicking ${toolInput.ref || 'element'}`
+        case 'fill':
+          return `Typing in ${toolInput.ref || 'input'}`
+        case 'snapshot':
+          return 'Reading page elements'
+        case 'screenshot':
+          return 'Capturing screenshot'
+        case 'scroll':
+          return `Scrolling ${toolInput.direction || 'down'}`
+        case 'close':
+          return 'Closing browser'
+        case 'fetch':
+          return `Fetching ${(toolInput.url as string)?.slice(0, 50) || 'page'}`
+        case 'extract':
+          return `Extracting from ${(toolInput.url as string)?.slice(0, 50) || 'page'}`
+        default:
+          return [op, toolInput.url || toolInput.ref].filter(Boolean).join(' ')
+      }
+    }
     case 'process':
       return [toolInput.operation, toolInput.pid || toolInput.name].filter(Boolean).join(' ')
     case 'network':
@@ -80,7 +103,11 @@ export function ToolCallBlock({ message }: Props) {
             {message.content.length > 80 ? '...' : ''}
           </span>
           <span style={{ marginLeft: 'auto', color: 'var(--text-subtle)', flexShrink: 0 }}>
-            {expanded ? <ChevronUp size={14} strokeWidth={1.5} /> : <ChevronDown size={14} strokeWidth={1.5} />}
+            {expanded ? (
+              <ChevronUp size={14} strokeWidth={1.5} />
+            ) : (
+              <ChevronDown size={14} strokeWidth={1.5} />
+            )}
           </span>
         </button>
         <AnimatePresence>
@@ -112,7 +139,6 @@ export function ToolCallBlock({ message }: Props) {
         {message.toolName}
       </span>
       {param && <span className="tool-call__param">{param}</span>}
-      <span className="tool-call__pulse" />
     </div>
   )
 }

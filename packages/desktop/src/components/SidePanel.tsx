@@ -1,12 +1,13 @@
 import { motion } from 'framer-motion'
-import { Brain, Layers, ListChecks, X } from 'lucide-react'
+import { Brain, Globe, Layers, ListChecks, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '../lib/store.js'
-import { ContextPanelContent } from './context/ContextPanelContent.js'
 import { PlanPanel } from './PlanPanel.js'
 import { ArtifactPanelContent } from './artifacts/ArtifactPanel.js'
+import { BrowserViewerContent } from './browser/BrowserViewerContent.js'
+import { ContextPanelContent } from './context/ContextPanelContent.js'
 
-type PanelView = 'artifacts' | 'plan' | 'context'
+type PanelView = 'artifacts' | 'plan' | 'context' | 'browser'
 
 interface ViewTab {
   id: PanelView
@@ -22,6 +23,7 @@ const DEFAULT_WIDTH = 440
 export function SidePanel() {
   const artifacts = useStore((s) => s.artifacts)
   const pendingPlan = useStore((s) => s.pendingPlan)
+  const browserState = useStore((s) => s.browserState)
   const sidePanelView = useStore((s) => s.sidePanelView)
   const setSidePanelView = useStore((s) => s.setSidePanelView)
   const setArtifactPanelOpen = useStore((s) => s.setArtifactPanelOpen)
@@ -68,6 +70,7 @@ export function SidePanel() {
   }, [])
 
   const views: ViewTab[] = [
+    { id: 'browser', label: 'Browser', icon: Globe, available: browserState !== null },
     { id: 'artifacts', label: 'Artifacts', icon: Layers, available: artifacts.length > 0 },
     { id: 'plan', label: 'Plan', icon: ListChecks, available: pendingPlan !== null },
     { id: 'context', label: 'Context', icon: Brain, available: sidePanelView === 'context' },
@@ -121,6 +124,21 @@ export function SidePanel() {
         </div>
       )}
 
+      {/* Single-view close button for artifacts */}
+      {!showTabs && activeView === 'artifacts' && (
+        <div className="side-panel__header-bar">
+          <span className="side-panel__header-title">Artifacts</span>
+          <button
+            type="button"
+            className="side-panel__close"
+            onClick={() => setArtifactPanelOpen(false)}
+            aria-label="Close panel"
+          >
+            <X size={14} strokeWidth={1.5} />
+          </button>
+        </div>
+      )}
+
       {/* Single-view close button for context */}
       {!showTabs && activeView === 'context' && (
         <div className="side-panel__header-bar">
@@ -151,8 +169,24 @@ export function SidePanel() {
         </div>
       )}
 
+      {/* Single-view close button for browser */}
+      {!showTabs && activeView === 'browser' && (
+        <div className="side-panel__header-bar">
+          <span className="side-panel__header-title">Browser</span>
+          <button
+            type="button"
+            className="side-panel__close"
+            onClick={() => setArtifactPanelOpen(false)}
+            aria-label="Close panel"
+          >
+            <X size={14} strokeWidth={1.5} />
+          </button>
+        </div>
+      )}
+
       {/* Panel content */}
       <div className="side-panel__body">
+        {activeView === 'browser' && <BrowserViewerContent />}
         {activeView === 'artifacts' && <ArtifactPanelContent />}
         {activeView === 'plan' && <PlanPanel />}
         {activeView === 'context' && <ContextPanelContent />}

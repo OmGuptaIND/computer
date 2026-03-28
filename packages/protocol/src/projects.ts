@@ -9,7 +9,7 @@ export interface ProjectContext {
 
 export interface ProjectStats {
   sessionCount: number
-  activeJobs: number
+  activeAgents: number
   lastActive: number
 }
 
@@ -37,64 +37,54 @@ export interface Project {
   sourceConversationId?: string // the conversation that triggered creation
 }
 
-// ── Job types ────────────────────────────────────────────────────────
+// ── Agent types ──────────────────────────────────────────────────────
+//
+// An agent is a conversation with metadata. It lives as agent.json
+// alongside meta.json and messages.jsonl in the conversation directory.
 
-export type JobKind = 'task' | 'long-running' | 'agent'
+export type AgentStatus = 'idle' | 'running' | 'paused' | 'error'
 
-export type JobTrigger =
-  | { type: 'cron'; schedule: string }
-  | { type: 'manual' }
-  | { type: 'event'; event: string }
-
-export type JobStatus = 'idle' | 'running' | 'paused' | 'error' | 'completed'
-
-export type RestartPolicy = 'never' | 'on-failure' | 'always'
-
-export interface JobRunRecord {
-  runId: string
-  startedAt: number
-  finishedAt: number | null
-  exitCode: number | null
-  status: 'running' | 'success' | 'error'
+/** Agent metadata — stored as agent.json in the conversation directory */
+export interface AgentMetadata {
+  /** Agent display name */
+  name: string
+  /** Short description of what the agent does */
+  description: string
+  /** The prompt/instructions the agent executes on each run */
+  instructions: string
+  /** Cron schedule — null means manual-only */
+  schedule?: { cron: string }
+  /** Which conversation created this agent (for result delivery) */
+  originConversationId?: string
+  /** Token budget controls */
+  tokenBudget?: {
+    perRun: number      // max tokens per run (0 = unlimited)
+    monthly: number     // max tokens per month (0 = unlimited)
+    usedThisMonth: number
+  }
+  /** Current status */
+  status: AgentStatus
+  /** Timestamp of last run completion */
+  lastRunAt: number | null
+  /** Timestamp of next scheduled run */
+  nextRunAt: number | null
+  /** Total number of completed runs */
+  runCount: number
+  createdAt: number
 }
 
-export interface Job {
-  id: string
+/** Agent session = conversation metadata + agent config */
+export interface AgentSession {
+  /** The conversation's session ID */
+  sessionId: string
+  /** Project this agent belongs to */
   projectId: string
-  name: string
-  description: string
-  kind: JobKind
-  status: JobStatus
-  trigger: JobTrigger
-
-  // Execution (shell jobs use command; agent jobs use prompt)
-  command: string
-  args: string[]
-  prompt?: string // agent prompt (for kind: 'agent')
-  workingDirectory?: string
-  env: Record<string, string>
-  timeout: number // seconds, 0 = no limit
-
-  // Lifecycle (for long-running jobs)
-  restartPolicy: RestartPolicy
-  maxRestarts: number
-
-  // Runner (extensibility: 'local' | 'modal' | 'daytona')
-  runner: string
-
-  // Token budget (for agent jobs)
-  tokenBudgetPerRun: number // max tokens per run (0 = unlimited)
-  tokenBudgetMonthly: number // max tokens per month (0 = unlimited)
-  tokensUsedThisMonth: number // running total, resets monthly
-  tokensUsedLastRun: number // tokens consumed in the most recent run
-
-  // Runtime state
-  lastRun: JobRunRecord | null
-  nextRun: number | null // timestamp for scheduled jobs
-  runCount: number
-
-  createdAt: number
-  updatedAt: number
+  /** Agent metadata from agent.json */
+  agent: AgentMetadata
+  /** Conversation title (from meta.json) */
+  title?: string
+  /** Last active timestamp (from meta.json) */
+  lastActiveAt?: number
 }
 
 // ── Notification types ───────────────────────────────────────────────
@@ -109,7 +99,7 @@ export interface NotificationAction {
 export interface ProjectNotification {
   id: string
   projectId: string
-  jobId?: string
+  agentSessionId?: string
   severity: NotificationSeverity
   title: string
   body: string

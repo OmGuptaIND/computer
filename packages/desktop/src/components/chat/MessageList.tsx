@@ -57,8 +57,10 @@ export function MessageList({ messages }: Props) {
   const agentStatus = useAgentStatus()
   const grouped = useMemo(() => groupMessages(messages), [messages])
 
-  const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  const prevMsgCountRef = useRef(0)
+
+  const scrollToBottom = useCallback((instant?: boolean) => {
+    bottomRef.current?.scrollIntoView({ behavior: instant ? 'instant' : 'smooth' })
   }, [])
 
   // Auto-scroll on new messages
@@ -66,6 +68,15 @@ export function MessageList({ messages }: Props) {
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
+
+    const prevCount = prevMsgCountRef.current
+    prevMsgCountRef.current = messages.length
+
+    // When switching to a new chat (had 0 messages before), scroll to bottom instantly
+    if (prevCount === 0 && messages.length > 0) {
+      requestAnimationFrame(() => scrollToBottom(true))
+      return
+    }
 
     const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
 
@@ -146,7 +157,7 @@ export function MessageList({ messages }: Props) {
 
       {/* Scroll to bottom button */}
       {showScrollBtn && (
-        <button type="button" onClick={scrollToBottom} className="message-list__scrollButton">
+        <button type="button" onClick={() => scrollToBottom()} className="message-list__scrollButton">
           <ArrowDown size={18} strokeWidth={1.5} className="message-list__scrollIcon" />
         </button>
       )}

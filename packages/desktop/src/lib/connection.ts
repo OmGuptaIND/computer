@@ -84,6 +84,14 @@ export class Connection {
   }
 
   connect(config: ConnectionConfig) {
+    // Clear persisted UI state so every connection starts fresh,
+    // but preserve machine credentials and model preference
+    const preserve = ['anton.machines', 'anton.lastMachineId', 'anton.selectedModel']
+    const saved = preserve.map((k) => [k, localStorage.getItem(k)] as const)
+    localStorage.clear()
+    for (const [k, v] of saved) {
+      if (v !== null) localStorage.setItem(k, v)
+    }
     this.config = config
     this.doConnect()
   }
@@ -268,22 +276,18 @@ export class Connection {
     this.send(Channel.AI, { type: 'project_sessions_list', projectId })
   }
 
-  // ── Agents (jobs) ──────────────────────────────────────────────
+  // ── Agents ─────────────────────────────────────────────────────
 
-  sendAgentCreate(projectId: string, agent: Record<string, unknown>) {
-    this.send(Channel.AI, { type: 'job_create', projectId, job: agent })
+  sendAgentCreate(projectId: string, agent: { name: string; description?: string; instructions: string; schedule?: string; originConversationId?: string }) {
+    this.send(Channel.AI, { type: 'agent_create', projectId, agent })
   }
 
   sendAgentsList(projectId: string) {
-    this.send(Channel.AI, { type: 'jobs_list', projectId })
+    this.send(Channel.AI, { type: 'agents_list', projectId })
   }
 
-  sendAgentAction(projectId: string, jobId: string, action: 'start' | 'stop' | 'delete') {
-    this.send(Channel.AI, { type: 'job_action', projectId, jobId, action })
-  }
-
-  sendAgentLogs(projectId: string, jobId: string, tail = 100) {
-    this.send(Channel.AI, { type: 'job_logs', projectId, jobId, tail })
+  sendAgentAction(projectId: string, sessionId: string, action: 'start' | 'stop' | 'delete' | 'pause' | 'resume') {
+    this.send(Channel.AI, { type: 'agent_action', projectId, sessionId, action })
   }
 
   // ── Connectors ─────────────────────────────────────────────────

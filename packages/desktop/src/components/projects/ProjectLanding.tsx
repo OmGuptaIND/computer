@@ -1,4 +1,4 @@
-import type { Job } from '@anton/protocol'
+import type { AgentSession } from '@anton/protocol'
 import type { Project } from '@anton/protocol'
 import { motion } from 'framer-motion'
 import {
@@ -35,13 +35,6 @@ interface Props {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function formatTokens(n: number): string {
-  if (n === 0) return '—'
-  if (n < 1000) return `${n}`
-  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
-  return `${(n / 1_000_000).toFixed(1)}M`
-}
-
 function formatRelativeTime(ts: number): string {
   const diff = Date.now() - ts
   if (diff < 60_000) return 'Just now'
@@ -60,20 +53,35 @@ function cronToHuman(cron: string): string {
   return `Daily ${hour}:${min.padStart(2, '0')}`
 }
 
-// ── Agent Session Card ───────────────────────────────────────────────
+// ── Agent Card (clickable — opens conversation) ─────────────────────
 
-function AgentSessionCard({ agent, projectId }: { agent: Job; projectId: string }) {
-  const isRunning = agent.status === 'running'
+function AgentCard({
+  agent,
+  projectId,
+  onOpenSession,
+}: {
+  agent: AgentSession
+  projectId: string
+  onOpenSession: (sessionId: string) => void
+}) {
+  const isRunning = agent.agent.status === 'running'
 
   return (
-    <div className={`agent-session-card${isRunning ? ' agent-session-card--running' : ''}`}>
+    <div
+      className={`agent-session-card${isRunning ? ' agent-session-card--running' : ''}`}
+      onClick={() => onOpenSession(agent.sessionId)}
+      onKeyDown={(e) => { if (e.key === 'Enter') onOpenSession(agent.sessionId) }}
+      role="button"
+      tabIndex={0}
+      style={{ cursor: 'pointer' }}
+    >
       <div className="agent-session-card__header">
         <Circle
           size={8}
           fill={
             isRunning
               ? 'var(--accent)'
-              : agent.status === 'error'
+              : agent.agent.status === 'error'
                 ? 'var(--red)'
                 : 'var(--text-tertiary)'
           }
@@ -81,62 +89,39 @@ function AgentSessionCard({ agent, projectId }: { agent: Job; projectId: string 
           className={isRunning ? 'pulse-dot' : ''}
         />
         <Bot size={14} strokeWidth={1.5} className="agent-session-card__icon" />
-        <span className="agent-session-card__name">{agent.name}</span>
+        <span className="agent-session-card__name">{agent.agent.name}</span>
       </div>
 
-      {agent.description && <p className="agent-session-card__desc">{agent.description}</p>}
-
-      {/* Metadata row: schedule, tokens, last run */}
-      <div className="agent-session-card__meta">
-        {agent.trigger.type === 'cron' && (
-          <span className="agent-session-card__pill" title={`Schedule: ${agent.trigger.schedule}`}>
-            <Clock size={10} strokeWidth={1.5} />
-            {cronToHuman(agent.trigger.schedule)}
-          </span>
-        )}
-        {agent.tokensUsedLastRun > 0 && (
-          <span className="agent-session-card__pill" title="Tokens used last run">
-            {formatTokens(agent.tokensUsedLastRun)} tok
-          </span>
-        )}
-        {agent.lastRun && (
-          <span className="agent-session-card__pill" title={`Last run: ${agent.lastRun.status}`}>
-            {agent.lastRun.status === 'success' ? '✓' : '✗'}{' '}
-            {formatRelativeTime(agent.lastRun.startedAt)}
-          </span>
-        )}
-        {agent.runCount > 0 && (
-          <span className="agent-session-card__pill" title="Total runs">
-            <History size={10} strokeWidth={1.5} />
-            {agent.runCount}
-          </span>
-        )}
-      </div>
-
-      {/* Token budget bar */}
-      {agent.tokenBudgetMonthly > 0 && (
-        <div className="agent-session-card__budget">
-          <div className="agent-session-card__budget-bar">
-            <div
-              className="agent-session-card__budget-fill"
-              style={{
-                width: `${Math.min(100, (agent.tokensUsedThisMonth / agent.tokenBudgetMonthly) * 100)}%`,
-              }}
-            />
-          </div>
-          <span className="agent-session-card__budget-label">
-            {formatTokens(agent.tokensUsedThisMonth)} / {formatTokens(agent.tokenBudgetMonthly)}
-          </span>
-        </div>
+      {agent.agent.description && (
+        <p className="agent-session-card__desc">{agent.agent.description}</p>
       )}
 
-      {/* Actions */}
+      <div className="agent-session-card__meta">
+        {agent.agent.schedule?.cron && (
+          <span className="agent-session-card__pill" title={`Schedule: ${agent.agent.schedule.cron}`}>
+            <Clock size={10} strokeWidth={1.5} />
+            {cronToHuman(agent.agent.schedule.cron)}
+          </span>
+        )}
+        {agent.agent.lastRunAt && (
+          <span className="agent-session-card__pill" title="Last run">
+            ✓ {formatRelativeTime(agent.agent.lastRunAt)}
+          </span>
+        )}
+        {agent.agent.runCount > 0 && (
+          <span className="agent-session-card__pill" title="Total runs">
+            <History size={10} strokeWidth={1.5} />
+            {agent.agent.runCount}
+          </span>
+        )}
+      </div>
+
       <div className="agent-session-card__actions">
         {isRunning ? (
           <button
             type="button"
             className="agent-session-card__btn"
-            onClick={() => connection.sendAgentAction(projectId, agent.id, 'stop')}
+            onClick={(e) => { e.stopPropagation(); connection.sendAgentAction(projectId, agent.sessionId, 'stop') }}
           >
             <Square size={11} strokeWidth={1.5} /> Stop
           </button>
@@ -144,7 +129,7 @@ function AgentSessionCard({ agent, projectId }: { agent: Job; projectId: string 
           <button
             type="button"
             className="agent-session-card__btn agent-session-card__btn--primary"
-            onClick={() => connection.sendAgentAction(projectId, agent.id, 'start')}
+            onClick={(e) => { e.stopPropagation(); connection.sendAgentAction(projectId, agent.sessionId, 'start') }}
           >
             <Play size={11} strokeWidth={1.5} /> Run
           </button>
@@ -152,7 +137,7 @@ function AgentSessionCard({ agent, projectId }: { agent: Job; projectId: string 
         <button
           type="button"
           className="agent-session-card__btn agent-session-card__btn--danger"
-          onClick={() => connection.sendAgentAction(projectId, agent.id, 'delete')}
+          onClick={(e) => { e.stopPropagation(); connection.sendAgentAction(projectId, agent.sessionId, 'delete') }}
         >
           <Trash2 size={11} strokeWidth={1.5} /> Delete
         </button>
@@ -177,7 +162,7 @@ function SessionsAndAgents({
   onDeleteSession: (id: string) => void
 }) {
   const agents = useStore((s) => s.projectAgents)
-  const runningCount = agents.filter((a) => a.status === 'running').length
+  const runningCount = agents.filter((a) => a.agent.status === 'running').length
 
   // Fetch agents on mount and when projectId changes
   useEffect(() => {
@@ -236,13 +221,20 @@ function SessionsAndAgents({
           <div className="project-landing__section-header">
             <Bot size={13} strokeWidth={1.5} className="project-landing__section-icon" />
             <span className="project-landing__section-label">Agents</span>
-            <span className={`project-landing__section-count${runningCount > 0 ? ' project-landing__section-count--active' : ''}`}>
+            <span
+              className={`project-landing__section-count${runningCount > 0 ? ' project-landing__section-count--active' : ''}`}
+            >
               {runningCount > 0 ? `${runningCount} running` : agents.length}
             </span>
           </div>
           <div className="project-landing__agents-list">
             {agents.map((agent) => (
-              <AgentSessionCard key={agent.id} agent={agent} projectId={projectId} />
+              <AgentCard
+                key={agent.sessionId}
+                agent={agent}
+                projectId={projectId}
+                onOpenSession={onOpenSession}
+              />
             ))}
           </div>
         </div>

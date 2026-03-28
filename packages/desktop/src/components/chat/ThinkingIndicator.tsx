@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '../../lib/store.js'
 
 const VIBES = [
@@ -57,7 +57,7 @@ function formatTokens(n: number): string {
 
 export function ThinkingIndicator() {
   const agentStatus = useStore((s) => s.agentStatus)
-  const agentStatusDetail = useStore((s) => s.agentStatusDetail)
+  const _agentStatusDetail = useStore((s) => s.agentStatusDetail)
   const workingStartedAt = useStore((s) => s.workingStartedAt)
   const turnUsage = useStore((s) => s.turnUsage)
   const [elapsed, setElapsed] = useState(0)

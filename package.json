@@ -9,6 +9,7 @@
     "cli:dev": "pnpm --filter @anton/cli dev",
     "cli:build": "pnpm --filter @anton/cli build",
     "desktop:dev": "pnpm --filter @anton/desktop dev",
+    "desktop:app": "pnpm --filter @anton/desktop tauri dev",
     "desktop:build": "pnpm --filter @anton/desktop build",
     "protocol:build": "pnpm --filter @anton/protocol build",
     "build": "pnpm -r build",

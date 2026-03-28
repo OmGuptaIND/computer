@@ -199,12 +199,12 @@ function handleAdd(args: string[]) {
   const id = args[0]
   if (!id) {
     console.log(`\n  Usage: ${theme.brand('anton connector add <id>')} [options]`)
-    console.log(`\n  Options:`)
+    console.log('\n  Options:')
     console.log(`    ${theme.dim('--url <url>')}               Base URL (for SearXNG, etc.)`)
     console.log(`    ${theme.dim('--api-key <key>')}           API key (for Brave Search, etc.)`)
     console.log(`    ${theme.dim('--env KEY=value')}           Environment variable (for MCP connectors)`)
     console.log(`    ${theme.dim('--name <name>')}             Display name`)
-    console.log(`\n  Examples:`)
+    console.log('\n  Examples:')
     console.log(`    ${theme.brand('anton connector add searxng --url https://search.example.com')}`)
     console.log(`    ${theme.brand('anton connector add brave-search --api-key BSA...')}`)
     console.log(`    ${theme.brand('anton connector add github --env GITHUB_TOKEN=ghp_...')}\n`)
@@ -230,7 +230,7 @@ function handleAdd(args: string[]) {
       console.log(`\n  ${reg.icon} ${theme.bold(reg.name)}`)
       console.log(`  ${reg.description}`)
       console.log(`\n  Requires: ${reg.requires}`)
-      console.log(`\n  Example:`)
+      console.log('\n  Example:')
       console.log(`    ${theme.brand(`$ ${reg.example}`)}\n`)
     } else {
       console.log(`\n  ${theme.error('Must provide --url, --api-key, or --env KEY=value')}\n`)

@@ -683,6 +683,44 @@ export function saveSessionTasks(id: string, tasks: PersistedTaskItem[], basePat
   writeFileSync(join(dir, 'tasks.json'), JSON.stringify(tasks, null, 2), 'utf-8')
 }
 
+/**
+ * Append a single message to an existing conversation's messages.jsonl
+ * and update meta.json (messageCount, lastActiveAt).
+ * Used for delivering agent results to the parent conversation.
+ */
+export function appendMessageToSession(
+  id: string,
+  message: { role: string; content: string; agentName?: string; agentSessionId?: string },
+  basePath?: string,
+): boolean {
+  const dir = basePath ? join(basePath, id) : sessionDir(id)
+  const msgPath = join(dir, 'messages.jsonl')
+  const mPath = join(dir, 'meta.json')
+  if (!existsSync(dir) || !existsSync(msgPath)) return false
+
+  // Append message
+  const line: SessionMessage = {
+    role: message.role,
+    content: message.content,
+    timestamp: Date.now(),
+    ...(message.agentName ? { agentName: message.agentName } : {}),
+    ...(message.agentSessionId ? { agentSessionId: message.agentSessionId } : {}),
+  }
+  appendFileSync(msgPath, `${JSON.stringify(line)}\n`)
+
+  // Update meta
+  if (existsSync(mPath)) {
+    try {
+      const meta: SessionMeta = JSON.parse(readFileSync(mPath, 'utf-8'))
+      meta.messageCount = (meta.messageCount ?? 0) + 1
+      meta.lastActiveAt = Date.now()
+      writeFileSync(mPath, JSON.stringify(meta, null, 2), 'utf-8')
+    } catch { /* skip meta update on error */ }
+  }
+
+  return true
+}
+
 /** Load session with full messages (for pi SDK resume) */
 export function loadSession(id: string, basePath?: string): PersistedSession | null {
   // If basePath given, load from custom location (project sessions)

@@ -19,11 +19,12 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
-import type { Project, ProjectSource, ProjectType } from '@anton/protocol'
-import { type SessionMeta, ensureWorkspaceRoot, getAntonDir, getWorkspaceRoot } from './config.js'
+import type { AgentMetadata, AgentSession, Project, ProjectSource, ProjectType } from '@anton/protocol'
+import { type SessionMeta, ensureWorkspaceRoot, getAntonDir } from './config.js'
 import type { AgentConfig } from './config.js'
 
 export type { Project } from '@anton/protocol'
+export type { AgentMetadata, AgentSession } from '@anton/protocol'
 
 const PROJECTS_DIR = join(getAntonDir(), 'projects')
 const INDEX_PATH = join(PROJECTS_DIR, 'index.json')
@@ -139,7 +140,7 @@ export function createProject(input: {
     },
     stats: {
       sessionCount: 0,
-      activeJobs: 0,
+      activeAgents: 0,
       lastActive: now,
     },
   }
@@ -149,7 +150,7 @@ export function createProject(input: {
   mkdirSync(dir, { recursive: true })
   mkdirSync(join(dir, 'conversations'), { recursive: true })
   mkdirSync(join(dir, 'jobs'), { recursive: true })
-  mkdirSync(join(dir, 'notifications'), { recursive: true })
+  // notifications dir removed — agent results flow through conversations
   mkdirSync(join(dir, 'context'), { recursive: true })
   mkdirSync(join(dir, 'files'), { recursive: true })
 
@@ -453,6 +454,74 @@ export function appendSessionHistory(
   }
   const historyPath = join(contextDir, 'session-history.jsonl')
   appendFileSync(historyPath, `${JSON.stringify(entry)}\n`, 'utf-8')
+}
+
+// ── Agent persistence (agent.json in conversation directory) ─────────
+
+/** Load agent metadata from a conversation directory, if it exists */
+export function loadAgentMetadata(projectId: string, sessionId: string): AgentMetadata | null {
+  const agentPath = join(getProjectSessionsDir(projectId), sessionId, 'agent.json')
+  if (!existsSync(agentPath)) return null
+  try {
+    return JSON.parse(readFileSync(agentPath, 'utf-8'))
+  } catch {
+    return null
+  }
+}
+
+/** Save agent metadata to a conversation directory */
+export function saveAgentMetadata(projectId: string, sessionId: string, agent: AgentMetadata): void {
+  const dir = join(getProjectSessionsDir(projectId), sessionId)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'agent.json'), JSON.stringify(agent, null, 2), 'utf-8')
+}
+
+/** Delete agent metadata (and optionally the whole conversation directory) */
+export function deleteAgentSession(projectId: string, sessionId: string): boolean {
+  const dir = join(getProjectSessionsDir(projectId), sessionId)
+  if (!existsSync(dir)) return false
+  rmSync(dir, { recursive: true, force: true })
+  return true
+}
+
+/** List all agents in a project (conversations that have agent.json) */
+export function listProjectAgents(projectId: string): AgentSession[] {
+  const agents: AgentSession[] = []
+  const dir = getProjectSessionsDir(projectId)
+  if (!existsSync(dir)) return agents
+
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const agentPath = join(dir, entry.name, 'agent.json')
+    if (!existsSync(agentPath)) continue
+
+    try {
+      const agent: AgentMetadata = JSON.parse(readFileSync(agentPath, 'utf-8'))
+      // Also read meta.json for conversation title/lastActiveAt
+      const metaPath = join(dir, entry.name, 'meta.json')
+      let title: string | undefined
+      let lastActiveAt: number | undefined
+      if (existsSync(metaPath)) {
+        try {
+          const meta: SessionMeta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+          title = meta.title
+          lastActiveAt = meta.lastActiveAt
+        } catch { /* skip */ }
+      }
+
+      agents.push({
+        sessionId: entry.name,
+        projectId,
+        agent,
+        title,
+        lastActiveAt,
+      })
+    } catch {
+      // skip corrupt agent.json
+    }
+  }
+
+  return agents.sort((a, b) => (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0))
 }
 
 /** Update project stats (e.g. after session creation) */

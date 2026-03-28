@@ -1,13 +1,9 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Check,
   ChevronDown,
   ChevronRight,
-  Circle,
-  Loader2,
   PanelRight,
 } from 'lucide-react'
-import type React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../../lib/store.js'
 import { ArtifactCard } from './ArtifactCard.js'
@@ -235,7 +231,6 @@ function ToolTreeItem({ action, isLast }: ToolTreeItemProps) {
   const typeLabel = getToolTypeLabel(toolName, input)
   const target = getToolTarget(toolName, input)
   const isError = action.result?.isError
-  const isPending = !action.result
   const meta = getToolMeta(toolName, input, action.result?.content, isError)
   const faviconUrl = getToolFavicon(toolName, input)
   const artifact = artifacts.find((a) => a.toolCallId === action.call.id)
@@ -274,9 +269,6 @@ function ToolTreeItem({ action, isLast }: ToolTreeItemProps) {
         )}
         <span className="tool-tree__type">{typeLabel}</span>
         {target && <span className="tool-tree__target">{target}</span>}
-        {isPending && (
-          <Loader2 size={12} strokeWidth={1.5} className="tool-tree__spinner" />
-        )}
         {artifact && (
           <button
             type="button"
@@ -351,7 +343,6 @@ export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
   }, [defaultExpanded])
 
   const errorCount = actions.filter((a) => a.result?.isError).length
-  const pendingCount = actions.filter((a) => !a.result).length
 
   const headerText = getGroupHeader(actions)
 
@@ -361,15 +352,6 @@ export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
     const input = actions[0].call.toolInput as Record<string, unknown> | undefined
     return getToolFavicon(actions[0].call.toolName || '', input)
   }, [actions])
-
-  let statusIcon: React.ReactNode
-  if (pendingCount > 0) {
-    statusIcon = <Loader2 size={14} strokeWidth={1.5} className="tool-tree__spinner" />
-  } else if (errorCount > 0) {
-    statusIcon = <Circle size={14} strokeWidth={1.5} className="tool-tree__status--error" />
-  } else {
-    statusIcon = <Check size={14} strokeWidth={1.5} className="tool-tree__status--done" />
-  }
 
   return (
     <motion.div
@@ -389,7 +371,6 @@ export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
         ) : (
           <ChevronRight size={14} strokeWidth={1.5} className="tool-tree__chevron" />
         )}
-        <span className="tool-tree__status-icon">{statusIcon}</span>
         {headerFavicon && (
           <img
             src={headerFavicon}

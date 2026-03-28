@@ -1,4 +1,4 @@
-import { Plug, Search as SearchIcon } from 'lucide-react'
+import { Plug, } from 'lucide-react'
 
 // Brand SVG icons for each built-in connector
 // Each renders at the given size prop (default 24)

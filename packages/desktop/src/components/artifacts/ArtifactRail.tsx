@@ -23,18 +23,15 @@ export function ArtifactRail() {
   const artifacts = useStore((s) => s.artifacts)
   const activeArtifactId = useStore((s) => s.activeArtifactId)
   const setActiveArtifact = useStore((s) => s.setActiveArtifact)
-  const setArtifactViewMode = useStore((s) => s.setArtifactViewMode)
-  const setSidePanelView = useStore((s) => s.setSidePanelView)
-  const setArtifactPanelOpen = useStore((s) => s.setArtifactPanelOpen)
   const [dismissed, setDismissed] = useState(false)
 
   if (artifacts.length === 0 || dismissed) return null
 
   const handleClick = (id: string) => {
     setActiveArtifact(id)
-    setArtifactViewMode('detail')
-    setSidePanelView('artifacts')
-    setArtifactPanelOpen(true)
+    // Scroll to the artifact card in the chat
+    const el = document.querySelector(`[data-artifact-id="${id}"]`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
   // Show newest first

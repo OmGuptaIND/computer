@@ -82,6 +82,15 @@ export type SessionEvent =
   | { type: 'sub_agent_progress'; toolCallId: string; content: string }
   | { type: 'tasks_update'; tasks: import('@anton/protocol').TaskItem[] }
   | { type: 'token_update'; usage: TokenUsage }
+  | {
+      type: 'browser_state'
+      url: string
+      title: string
+      screenshot?: string
+      lastAction: import('@anton/protocol').BrowserAction
+      elementCount?: number
+    }
+  | { type: 'browser_close' }
 
 export interface SessionInfo {
   id: string
@@ -373,6 +382,22 @@ export class Session {
       saveSessionTasks(this.id, this._lastTasks, basePath)
     }
     this.pushEvent?.({ type: 'tasks_update', tasks })
+  }
+
+  /** Push a browser_state event into the live event stream (called by browser tool). */
+  emitBrowserState(state: {
+    url: string
+    title: string
+    screenshot?: string
+    lastAction: import('@anton/protocol').BrowserAction
+    elementCount?: number
+  }) {
+    this.pushEvent?.({ type: 'browser_state', ...state })
+  }
+
+  /** Push a browser_close event into the live event stream. */
+  emitBrowserClose() {
+    this.pushEvent?.({ type: 'browser_close' })
   }
 
   /**
@@ -677,7 +702,11 @@ export class Session {
    */
   steer(message: string) {
     const wrapped = `<user_steering>\nThe user sent this message while you were working. Briefly acknowledge it (1-2 sentences), share your thought on how it affects your current task, then continue your work incorporating this new context.\n\nUser message: "${message}"\n</user_steering>`
-    this.piAgent.steer({ role: 'user', content: [{ type: 'text', text: wrapped }], timestamp: Date.now() })
+    this.piAgent.steer({
+      role: 'user',
+      content: [{ type: 'text', text: wrapped }],
+      timestamp: Date.now(),
+    })
   }
 
   /** Cancel any running work and persist current state. */
@@ -1294,6 +1323,7 @@ export function createSession(
     projectType?: string
     mcpManager?: import('./mcp/mcp-manager.js').McpManager
     onJobAction?: import('./tools/job.js').JobActionHandler
+    onDeliverResult?: import('./tools/deliver-result.js').DeliverResultHandler
     maxDurationMs?: number
     /** Domain for the agent (e.g. "slug.antoncomputer.in"). Passed to publish tool. */
     domain?: string
@@ -1316,9 +1346,16 @@ export function createSession(
     onTasksUpdate: (tasks) => {
       sessionRef.session?.emitTasksUpdate(tasks)
     },
+    onBrowserState: (state) => {
+      sessionRef.session?.emitBrowserState(state)
+    },
+    onBrowserClose: () => {
+      sessionRef.session?.emitBrowserClose()
+    },
     defaultWorkingDirectory: opts?.projectWorkspacePath,
     projectId: opts?.projectId,
     onJobAction: opts?.onJobAction,
+    onDeliverResult: opts?.onDeliverResult,
     domain: opts?.domain,
   }
 
@@ -1366,6 +1403,7 @@ export function resumeSession(
     projectType?: string
     mcpManager?: import('./mcp/mcp-manager.js').McpManager
     onJobAction?: import('./tools/job.js').JobActionHandler
+    onDeliverResult?: import('./tools/deliver-result.js').DeliverResultHandler
     maxDurationMs?: number
   },
 ): Session | null {
@@ -1385,9 +1423,16 @@ export function resumeSession(
     onTasksUpdate: (tasks) => {
       sessionRef.session?.emitTasksUpdate(tasks)
     },
+    onBrowserState: (state) => {
+      sessionRef.session?.emitBrowserState(state)
+    },
+    onBrowserClose: () => {
+      sessionRef.session?.emitBrowserClose()
+    },
     defaultWorkingDirectory: opts?.projectWorkspacePath,
     projectId: opts?.projectId,
     onJobAction: opts?.onJobAction,
+    onDeliverResult: opts?.onDeliverResult,
   }
 
   const session = new Session({

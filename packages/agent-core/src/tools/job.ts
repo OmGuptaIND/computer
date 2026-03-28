@@ -1,37 +1,34 @@
 /**
- * Job management tool — lets the agent create, start, stop, and monitor jobs.
+ * Agent tool — lets a conversation create, manage, and control agents.
  *
- * Uses a callback pattern (like onTasksUpdate) to bridge agent-core → agent-server.
- * The server provides the actual JobManager implementation via the callback.
+ * An agent is just another conversation that runs on a schedule.
+ * Uses a callback pattern to bridge agent-core → agent-server.
  */
 
-export interface JobToolInput {
-  operation: 'create' | 'list' | 'start' | 'stop' | 'delete' | 'logs' | 'status'
+export interface AgentToolInput {
+  operation: 'create' | 'list' | 'start' | 'stop' | 'delete' | 'status'
   // Create params
   name?: string
   description?: string
-  kind?: 'task' | 'long-running' | 'agent'
-  command?: string
-  prompt?: string // agent prompt (for kind: 'agent')
-  args?: string[]
+  prompt?: string // instructions for the agent
   schedule?: string // cron expression
+  // Action params
+  agentId?: string // session ID of the agent
+}
+
+// Keep old name as alias for backward compat with server handler signature
+export type JobToolInput = AgentToolInput & {
+  // Legacy fields — ignored but kept so the handler type doesn't break
+  kind?: string
+  command?: string
+  args?: string[]
   workingDirectory?: string
   env?: Record<string, string>
   timeout?: number
-  restartPolicy?: 'never' | 'on-failure' | 'always'
+  restartPolicy?: string
   maxRestarts?: number
-  // Action params
   jobId?: string
-  // Logs params
-  tail?: number // default 50
+  tail?: number
 }
 
 export type JobActionHandler = (projectId: string, input: JobToolInput) => Promise<string>
-
-export function executeJob(
-  projectId: string,
-  input: JobToolInput,
-  handler: JobActionHandler,
-): Promise<string> {
-  return handler(projectId, input)
-}

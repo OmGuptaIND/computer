@@ -1,5 +1,6 @@
 export { SYSTEM_PROMPT, buildTools, needsConfirmation, type ToolCallbacks } from './agent.js'
 export type { JobActionHandler, JobToolInput } from './tools/job.js'
+export type { DeliverResultHandler } from './tools/deliver-result.js'
 export { McpClient, McpManager, type McpServerConfig, type ConnectorStatus } from './mcp/index.js'
 export {
   type CompactionConfig,

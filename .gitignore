@@ -9,6 +9,8 @@ admin-openrc.sh
 public-openrc.sh
 public-openrc-system.sh
 kolla/clouds.yml
+packages/desktop/src-tauri/target
+packages/desktop/src-tauri/gen
 
 frontend/.source
 

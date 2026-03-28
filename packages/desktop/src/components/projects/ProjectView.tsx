@@ -213,10 +213,10 @@ export function ProjectView() {
         </button>
 
         <div className="project-chat-view__actions">
-          {project.stats.activeJobs > 0 && (
+          {project.stats.activeAgents > 0 && (
             <span className="project-chat-view__badge">
               <Zap size={12} strokeWidth={1.5} />
-              {project.stats.activeJobs}
+              {project.stats.activeAgents}
             </span>
           )}
           <button type="button" className="project-chat-view__btn" title="Settings">

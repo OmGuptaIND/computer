@@ -71,7 +71,7 @@ export function MarkdownRenderer({ content, citations }: Props) {
           code: CodeBlock,
           a: ({ href, children }) => {
             if (href?.startsWith('cite:')) {
-              const index = parseInt(href.slice(5), 10)
+              const index = Number.parseInt(href.slice(5), 10)
               const source = citations?.find((s) => s.index === index)
               return <CitationPill index={index} source={source} />
             }

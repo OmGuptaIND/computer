@@ -9,7 +9,7 @@
  * Pack definitions: ~/.anton/references/_packs.yaml → embedded defaults
  */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, } from 'node:fs'
 import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { getAntonDir } from './config.js'
