@@ -1,16 +1,16 @@
 {
-  "version": "1.0.25",
-  "gitHash": "9fb3e0d",
+  "version": "1.0.26",
+  "gitHash": "",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
-  "changelog": "Features:\n- redesign AskUserDialog with multi-step navigation, updated option selection, and explicit submit/skip actions.\n\nOther:\n- add projects thing",
-  "publishedAt": "2026-03-26T11:44:20.330Z",
+  "changelog": "Features:\n- introduce code mode UI, enhance agent prompts with project types and references, and improve agent shell execution context.\n\nFixes:\n- some serious bugs\n\nOther:\n- refactor: replace job management system with a new agent-based architecture and update UI navigation\n- Agent Sessions and much more\n- Add: multiple features include agent and conversation interrupts\n- Add system prompts for coding agent.",
+  "publishedAt": "2026-03-28T19:08:55.722Z",
   "binaries": {
-    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.25/anton-agent-linux-x64",
-    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.25/anton-agent-linux-arm64"
+    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.26/anton-agent-linux-x64",
+    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.26/anton-agent-linux-arm64"
   },
   "sidecar_binaries": {
-    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.25/anton-sidecar-linux-amd64",
-    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.25/anton-sidecar-linux-arm64"
+    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.26/anton-sidecar-linux-amd64",
+    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.26/anton-sidecar-linux-arm64"
   },
-  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.25/anton-cli.mjs"
+  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.26/anton-cli.mjs"
 }

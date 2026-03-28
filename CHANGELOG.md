@@ -10,6 +10,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
+## [1.0.26] - 2026-03-29
+
+### Features
+- introduce code mode UI, enhance agent prompts with project types and references, and improve agent shell execution context.
+
+### Fixes
+- some serious bugs
+
+### Other
+- refactor: replace job management system with a new agent-based architecture and update UI navigation
+- Agent Sessions and much more
+- Add: multiple features include agent and conversation interrupts
+- Add system prompts for coding agent.
+---
+
 ## [1.0.25] - 2026-03-26
 
 ### Features
@@ -145,7 +160,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
-[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.25...HEAD
+[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.26...HEAD
+[1.0.26]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.26
 [1.0.25]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.25
 [1.0.24]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.24
 [1.0.23]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.23
