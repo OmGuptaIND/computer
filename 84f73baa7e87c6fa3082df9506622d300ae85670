@@ -1,0 +1,23 @@
+packages/desktop/src/components/connectors/ConnectorIcons.tsx
+  1afb51970bf2ed8c 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "84f73baa7e87c6fa3082df9506622d300ae85670",
+  "prompts": {
+    "1afb51970bf2ed8c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6dc1e3e9-b9c9-4a32-bfa5-832f6eb33a2b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
