@@ -4,7 +4,7 @@
 
 import { execSync } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { ICONS, theme } from '../lib/theme.js'
 
 // ── Constants ───────────────────────────────────────────────────
@@ -15,8 +15,29 @@ export const ANTON_USER = 'anton'
 export const ANTON_DIR = `/home/${ANTON_USER}/.anton`
 export const AGENT_BIN = '/usr/local/bin/anton-agent'
 export const SIDECAR_BIN = '/usr/local/bin/anton-sidecar'
-export const ENV_FILE = '/etc/anton-agent.env'
 export const AGENT_SERVICE_PATH = '/etc/systemd/system/anton-agent.service'
+
+/**
+ * Detect the env file path used by the running agent service.
+ * Priority: systemd service EnvironmentFile → ~/.anton/agent.env
+ */
+function detectEnvFile(): string {
+  // 1. Check what the systemd service actually uses
+  try {
+    const serviceContent = readFileSync('/etc/systemd/system/anton-agent.service', 'utf-8')
+    const match = serviceContent.match(/^EnvironmentFile=(.+)$/m)
+    if (match?.[1] && existsSync(match[1])) return match[1]
+  } catch {}
+
+  // 2. Prefer the Ansible-managed location
+  const antonEnv = `${ANTON_DIR}/agent.env`
+  if (existsSync(antonEnv)) return antonEnv
+
+  // 3. Fall back to canonical path (same as Ansible)
+  return `${ANTON_DIR}/agent.env`
+}
+
+export const ENV_FILE = detectEnvFile()
 export const SIDECAR_SERVICE_PATH = '/etc/systemd/system/anton-sidecar.service'
 export const AGENT_SERVICE = 'anton-agent'
 export const SIDECAR_SERVICE = 'anton-sidecar'

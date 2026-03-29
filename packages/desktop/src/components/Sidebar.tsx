@@ -169,10 +169,7 @@ export function Sidebar({ onViewChange, onOpenSettings, onOpenMachineInfo }: Pro
                         onClick={() => {
                           switchConversation(conv.id)
                           if (conv.sessionId) {
-                            connection.sendSessionResume(conv.sessionId)
-                            if (conv.messages.length === 0) {
-                              connection.sendSessionHistory(conv.sessionId)
-                            }
+                            useStore.getState().requestSessionHistory(conv.sessionId)
                           }
                           onViewChange('agent')
                           if (currentView !== 'chat') {
@@ -183,10 +180,7 @@ export function Sidebar({ onViewChange, onOpenSettings, onOpenMachineInfo }: Pro
                           if (e.key === 'Enter' || e.key === ' ') {
                             switchConversation(conv.id)
                             if (conv.sessionId) {
-                              connection.sendSessionResume(conv.sessionId)
-                              if (conv.messages.length === 0) {
-                                connection.sendSessionHistory(conv.sessionId)
-                              }
+                              useStore.getState().requestSessionHistory(conv.sessionId)
                             }
                             onViewChange('agent')
                           }
@@ -367,12 +361,8 @@ function ProjectFolder({ projectId, name, isActive, sessions, onClick }: Project
       store.switchConversation(conv.id)
     }
 
-    // Resume on server
-    connection.sendSessionResume(sessionId)
-    // Only fetch history if no local messages (switchConversation handles background-completed refresh)
-    if (!conv || conv.messages.length === 0) {
-      connection.sendSessionHistory(sessionId)
-    }
+    // Always fetch history from server — server is authoritative
+    store.requestSessionHistory(sessionId)
 
     // Set the active project session (triggers embedded chat in ProjectView)
     setActiveProjectSession(sessionId)
@@ -451,28 +441,29 @@ function ProjectFolder({ projectId, name, isActive, sessions, onClick }: Project
 
       {isActive && (
         <div className="sidebar-project-folder__threads">
-          {sessions.length > 0 ? (
-            sessions.map((session) => (
-              <div
-                key={session.id}
-                onClick={() => handleThreadClick(session.id)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleThreadClick(session.id) }}
-                className={`sidebar-recent__item${activeProjectSessionId === session.id ? ' sidebar-recent__item--active' : ''}`}
-              >
-                <span className="sidebar-recent__title">
-                  {session.title || 'New conversation'}
-                </span>
-                <button
-                  type="button"
-                  className="sidebar-recent__delete"
-                  onClick={(e) => handleDeleteThread(e, session.id)}
-                  aria-label="Delete conversation"
+          {sessions.length > 0 ? sessions.map((session) => {
+              const conv = useStore.getState().findConversationBySession(session.id)
+              return (
+                <div
+                  key={session.id}
+                  onClick={() => handleThreadClick(session.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleThreadClick(session.id) }}
+                  className={`sidebar-recent__item${activeProjectSessionId === session.id ? ' sidebar-recent__item--active' : ''}`}
                 >
-                  <X size={14} strokeWidth={1.5} />
-                </button>
-              </div>
-            ))
-          ) : (
+                  <span className="sidebar-recent__title">
+                    {session.title || 'New conversation'}
+                  </span>
+                  <button
+                    type="button"
+                    className="sidebar-recent__delete"
+                    onClick={(e) => handleDeleteThread(e, session.id)}
+                    aria-label="Delete conversation"
+                  >
+                    <X size={14} strokeWidth={1.5} />
+                  </button>
+                </div>
+              )
+            }) : (
             <div className="sidebar-project-folder__empty">No threads</div>
           )}
         </div>

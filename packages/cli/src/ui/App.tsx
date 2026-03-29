@@ -53,9 +53,6 @@ export function App({ machine }: AppProps) {
   const [currentProvider, setCurrentProvider] = useState('anthropic')
   const [currentModel, setCurrentModel] = useState('claude-sonnet-4-6')
   const [sessions, setSessions] = useState<SessionInfo[]>([])
-  const [_hasAutoResumed, setHasAutoResumed] = useState(false)
-  const hasAutoResumedRef = useRef(false)
-
   // Token usage state
   const [turnUsage, setTurnUsage] = useState<TokenUsage | null>(null)
   const [sessionUsage, setSessionUsage] = useState<TokenUsage | null>(null)
@@ -153,25 +150,8 @@ export function App({ machine }: AppProps) {
           addMessage({ role: 'agent', content: `Session started: ${msg.provider}/${msg.model}` })
           setOverlay('none')
           break
-        case 'session_resumed':
-          setCurrentSessionId(msg.id)
-          setCurrentProvider(msg.provider)
-          setCurrentModel(msg.model)
-          addMessage({
-            role: 'agent',
-            content: `Session resumed: "${msg.title}" (${msg.messageCount} messages)`,
-          })
-          setOverlay('none')
-          break
         case 'sessions_list_response':
           setSessions(msg.sessions)
-          // Auto-resume the most recent session on first connect
-          if (!hasAutoResumedRef.current && msg.sessions.length > 0) {
-            hasAutoResumedRef.current = true
-            setHasAutoResumed(true)
-            const latest = msg.sessions[0] // already sorted by lastActiveAt desc
-            conn.sendSessionResume(latest.id)
-          }
           break
         case 'session_destroyed':
           setSessions((prev) => prev.filter((s) => s.id !== msg.id))
@@ -306,12 +286,11 @@ export function App({ machine }: AppProps) {
   )
 
   const handleSessionSelect = useCallback(
-    (id: string) => {
-      conn.sendSessionResume(id)
+    (_id: string) => {
       setMessages([])
       setOverlay('none')
     },
-    [conn],
+    [],
   )
 
   const handleNewSession = useCallback(() => {

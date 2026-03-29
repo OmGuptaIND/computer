@@ -201,8 +201,10 @@ function AppSetup({
   onBack: () => void
 }) {
   const [envValues, setEnvValues] = useState<Record<string, string>>({})
+  const [optionalValues, setOptionalValues] = useState<Record<string, string>>({})
   const [testing, setTesting] = useState(false)
   const [showDetails, setShowDetails] = useState(false)
+  const [oauthWaiting, setOauthWaiting] = useState(false)
   const [testResult, setTestResult] = useState<{
     success: boolean
     tools: string[]
@@ -210,7 +212,41 @@ function AppSetup({
   } | null>(null)
 
   const isConfigured = existing != null
+  const isOAuth = entry.type === 'oauth'
   const allEnvFilled = entry.requiredEnv.every((k) => envValues[k])
+
+  const handleOAuthConnect = () => {
+    setOauthWaiting(true)
+    connection.sendConnectorOAuthStart(entry.oauthProvider || entry.id)
+
+    const unsub = connection.onMessage((_channel, msg) => {
+      if (msg.type === 'connector_oauth_url') {
+        // Open the authorization URL in the system browser
+        const url = (msg as { url: string }).url
+        if ((window as any).__TAURI__) {
+          import('@tauri-apps/plugin-shell').then(({ open }) => open(url))
+        } else {
+          window.open(url, '_blank')
+        }
+      }
+      if (msg.type === 'connector_oauth_complete') {
+        const complete = msg as { success: boolean; error?: string }
+        setOauthWaiting(false)
+        unsub()
+        if (complete.success) {
+          onBack()
+        } else {
+          setTestResult({ success: false, tools: [], error: complete.error || 'Authorization failed' })
+        }
+      }
+    })
+
+    // 2-minute timeout for the full OAuth flow
+    setTimeout(() => {
+      setOauthWaiting(false)
+      unsub()
+    }, 120_000)
+  }
 
   const handleConnect = () => {
     const env: Record<string, string> = {}
@@ -230,6 +266,12 @@ function AppSetup({
       }
     }
 
+    // Collect optional fields into metadata
+    const metadata: Record<string, string> = {}
+    for (const field of entry.optionalFields ?? []) {
+      if (optionalValues[field.key]) metadata[field.key] = optionalValues[field.key]
+    }
+
     connection.sendConnectorAdd({
       id: entry.id,
       name: entry.name,
@@ -241,6 +283,7 @@ function AppSetup({
       env,
       ...(apiKey ? { apiKey } : {}),
       ...(baseUrl ? { baseUrl } : {}),
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
       enabled: true,
     })
 
@@ -260,8 +303,23 @@ function AppSetup({
   }
 
   const handleDisconnect = () => {
-    connection.sendConnectorRemove(entry.id)
-    onBack()
+    if (isOAuth) {
+      connection.sendConnectorOAuthDisconnect(entry.oauthProvider || entry.id)
+    } else {
+      connection.sendConnectorRemove(entry.id)
+    }
+
+    const unsub = connection.onMessage((_channel, msg) => {
+      if (msg.type === 'connector_removed') {
+        unsub()
+        onBack()
+      }
+    })
+
+    setTimeout(() => {
+      unsub()
+      onBack()
+    }, 5_000)
   }
 
   const handleTest = () => {
@@ -316,8 +374,31 @@ function AppSetup({
           </div>
         )}
 
-        {/* Connect button (not yet configured) */}
-        {!isConfigured && !showDetails && (
+        {/* OAuth one-click connect */}
+        {!isConfigured && isOAuth && (
+          <button
+            type="button"
+            className="app-detail__connect"
+            onClick={handleOAuthConnect}
+            disabled={oauthWaiting}
+          >
+            {oauthWaiting ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <ExternalLink size={16} strokeWidth={2} />
+            )}
+            {oauthWaiting ? 'Waiting for authorization...' : `Connect with ${entry.name}`}
+          </button>
+        )}
+
+        {oauthWaiting && (
+          <p className="app-detail__oauth-hint">
+            A browser window should open. Authorize the app, then come back here.
+          </p>
+        )}
+
+        {/* Connect button for non-OAuth (not yet configured) */}
+        {!isConfigured && !isOAuth && !showDetails && (
           <button
             type="button"
             className="app-detail__connect"
@@ -329,7 +410,7 @@ function AppSetup({
         )}
 
         {/* Setup guide + Env fields (shown after clicking Connect or Show Details) */}
-        {!isConfigured && showDetails && (
+        {!isConfigured && !isOAuth && showDetails && (
           <div className="app-detail__fields">
             {entry.setupGuide && (
               <div className="app-detail__setup-guide">
@@ -360,6 +441,23 @@ function AppSetup({
                   value={envValues[envKey] || ''}
                   onChange={(e) =>
                     setEnvValues((prev) => ({ ...prev, [envKey]: e.target.value }))
+                  }
+                />
+              </div>
+            ))}
+            {(entry.optionalFields ?? []).map((field) => (
+              <div key={field.key} className="app-detail__field">
+                <label htmlFor={`opt-${field.key}`}>
+                  {field.label} <span className="app-detail__field-optional">(optional)</span>
+                </label>
+                {field.hint && <p className="app-detail__field-hint">{field.hint}</p>}
+                <input
+                  id={`opt-${field.key}`}
+                  type="text"
+                  placeholder={field.label}
+                  value={optionalValues[field.key] || ''}
+                  onChange={(e) =>
+                    setOptionalValues((prev) => ({ ...prev, [field.key]: e.target.value }))
                   }
                 />
               </div>
@@ -420,8 +518,8 @@ function AppSetup({
           </div>
         )}
 
-        {/* Show Details toggle */}
-        {!isConfigured && !showDetails && (
+        {/* Show Details toggle (only for non-OAuth) */}
+        {!isConfigured && !isOAuth && !showDetails && (
           <button
             type="button"
             className="app-detail__show-details"

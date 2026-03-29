@@ -99,6 +99,7 @@ sync: _check-ansible
 				pnpm install --no-frozen-lockfile 2>&1 | tail -3 && \
 				pnpm --filter @anton/protocol build && \
 				pnpm --filter @anton/agent-config build && \
+				pnpm --filter @anton/connectors build && \
 				pnpm --filter @anton/agent-core build && \
 				pnpm --filter @anton/agent-server build && \
 				pnpm --filter @anton/agent build && \
@@ -110,27 +111,23 @@ sync: _check-ansible
 		ssh $$SSH_OPTS "$$USER@$$IP" "\
 			sudo mv /tmp/anton-sidecar /usr/local/bin/anton-sidecar && \
 			sudo chmod +x /usr/local/bin/anton-sidecar && \
-			if [ ! -f /etc/anton-agent.env ]; then \
+			ENV_PATH=\$$(grep EnvironmentFile /etc/systemd/system/anton-agent.service 2>/dev/null | cut -d= -f2 || echo '/home/anton/.anton/agent.env'); \
+			if [ ! -f \$$ENV_PATH ]; then \
 				TOKEN=\$$(grep '^token:' /home/anton/.anton/config.yaml 2>/dev/null | awk '{print \$$2}'); \
-				printf 'ANTON_TOKEN=%s\nANTON_DIR=/home/anton/.anton\n' \"\$$TOKEN\" | sudo tee /etc/anton-agent.env > /dev/null; \
-				sudo chmod 600 /etc/anton-agent.env; \
-				echo '    Created /etc/anton-agent.env'; \
+				printf 'ANTON_TOKEN=%s\nANTON_DIR=/home/anton/.anton\n' \"\$$TOKEN\" | sudo tee \$$ENV_PATH > /dev/null; \
+				sudo chmod 600 \$$ENV_PATH; \
+				echo \"    Created \$$ENV_PATH\"; \
 			fi && \
 			if [ ! -f /etc/systemd/system/anton-sidecar.service ]; then \
-				printf '[Unit]\nDescription=Anton Sidecar (Health & Status)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nEnvironmentFile=/etc/anton-agent.env\nEnvironment=SIDECAR_PORT=9878\nEnvironment=AGENT_PORT=9876\nExecStart=/usr/local/bin/anton-sidecar\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\n' | sudo tee /etc/systemd/system/anton-sidecar.service > /dev/null && \
+				printf \"[Unit]\nDescription=Anton Sidecar (Health & Status)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nEnvironmentFile=\$$ENV_PATH\nEnvironment=SIDECAR_PORT=9878\nEnvironment=AGENT_PORT=9876\nExecStart=/usr/local/bin/anton-sidecar\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\n\" | sudo tee /etc/systemd/system/anton-sidecar.service > /dev/null && \
 				sudo systemctl daemon-reload && sudo systemctl enable anton-sidecar; \
 			fi && \
 			sudo systemctl restart anton-sidecar 2>/dev/null || true"; \
 		echo "  → Writing version.json..."; \
 		ssh $$SSH_OPTS "$$USER@$$IP" "\
 			sudo -u anton bash -c \"echo '{\\\"version\\\": \\\"$$PKG_VERSION\\\", \\\"gitHash\\\": \\\"$$GIT_HASH\\\", \\\"branch\\\": \\\"local-sync\\\", \\\"deployedAt\\\": \\\"$$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\", \\\"deployedBy\\\": \\\"sync\\\"}' > /home/anton/.anton/version.json\""; \
-		echo "  → Ensuring Caddy sidecar route..."; \
-		ssh $$SSH_OPTS "$$USER@$$IP" "\
-			if [ -f /etc/caddy/Caddyfile ] && ! grep -q '_anton' /etc/caddy/Caddyfile; then \
-				sudo sed -i 's|reverse_proxy localhost:9876|handle_path /_anton/* {\n        reverse_proxy localhost:9878\n    }\n    reverse_proxy localhost:9876|' /etc/caddy/Caddyfile && \
-				sudo systemctl reload caddy 2>/dev/null || true; \
-				echo '    Caddyfile updated with sidecar route'; \
-			fi"; \
+		echo "  → Ensuring Caddy routes..."; \
+		ssh $$SSH_OPTS "$$USER@$$IP" "sudo python3 $$REMOTE_DIR/scripts/ensure_caddy.py"; \
 		echo "  → Restarting services on $$host..."; \
 		ssh $$SSH_OPTS "$$USER@$$IP" "sudo systemctl restart anton-agent 2>/dev/null || true; sudo systemctl restart anton-sidecar 2>/dev/null || true"; \
 		echo "  → $$host done ✓"; \

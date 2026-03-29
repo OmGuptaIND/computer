@@ -29,6 +29,7 @@ import {
   computerRestartCommand,
   computerUninstallCommand,
 } from './commands/computer-lifecycle.js'
+import { computerConfigCommand } from './commands/computer-config.js'
 import { computerSetupCommand } from './commands/computer-setup.js'
 import { connectorCommand } from './commands/connector.js'
 import { connectCommand } from './commands/connect.js'
@@ -264,11 +265,14 @@ async function main() {
           yes: hasFlag('--yes') || hasFlag('-y'),
           purge: hasFlag('--purge'),
         })
+      } else if (subcommand === 'config') {
+        await computerConfigCommand(args.slice(2))
       } else {
         console.log('\n  Usage:')
         console.log(
           `    ${theme.brand('anton computer setup')}        Set up agent on this machine`,
         )
+        console.log(`    ${theme.brand('anton computer config')}       Manage agent configuration`)
         console.log(`    ${theme.brand('anton computer status')}       Show agent + sidecar health`)
         console.log(`    ${theme.brand('anton computer logs')}         View logs (agent|sidecar|deploy|all)`)
         console.log(`    ${theme.brand('anton computer start')}        Start services`)

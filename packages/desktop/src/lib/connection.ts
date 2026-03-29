@@ -154,10 +154,6 @@ export class Connection {
     this.send(Channel.AI, { type: 'session_create', id, ...opts })
   }
 
-  sendSessionResume(id: string) {
-    this.send(Channel.AI, { type: 'session_resume', id })
-  }
-
   sendSessionsList() {
     this.send(Channel.AI, { type: 'sessions_list' })
   }
@@ -166,8 +162,8 @@ export class Connection {
     this.send(Channel.AI, { type: 'session_destroy', id })
   }
 
-  sendSessionHistory(id: string) {
-    this.send(Channel.AI, { type: 'session_history', id })
+  sendSessionHistory(id: string, opts?: { before?: number; limit?: number }) {
+    this.send(Channel.AI, { type: 'session_history', id, ...opts })
   }
 
   sendAiMessageToSession(
@@ -305,7 +301,7 @@ export class Connection {
     name: string
     description?: string
     icon?: string
-    type: 'mcp' | 'api'
+    type: 'mcp' | 'api' | 'oauth'
     command?: string
     args?: string[]
     env?: Record<string, string>
@@ -334,6 +330,14 @@ export class Connection {
 
   sendConnectorRegistryList() {
     this.send(Channel.AI, { type: 'connector_registry_list' })
+  }
+
+  sendConnectorOAuthStart(provider: string) {
+    this.send(Channel.AI, { type: 'connector_oauth_start', provider })
+  }
+
+  sendConnectorOAuthDisconnect(provider: string) {
+    this.send(Channel.AI, { type: 'connector_oauth_disconnect', provider })
   }
 
   // ── Filesystem ─────────────────────────────────────────────────

@@ -149,21 +149,6 @@ export interface SessionCreatedMessage {
   model: string
 }
 
-export interface SessionResumeMessage {
-  type: 'session_resume'
-  id: string
-}
-
-export interface SessionResumedMessage {
-  type: 'session_resumed'
-  id: string
-  provider: string
-  model: string
-  messageCount: number
-  title: string
-  lastTasks?: TaskItem[]
-}
-
 export interface ContextInfoMessage {
   type: 'context_info'
   sessionId: string
@@ -207,6 +192,10 @@ export interface SessionDestroyedMessage {
 export interface SessionHistoryMessage {
   type: 'session_history'
   id: string
+  /** Load entries with seq < this value (for pagination). Omit for latest page. */
+  before?: number
+  /** Max entries to return (default: 200) */
+  limit?: number
 }
 
 export interface SessionHistoryEntry {
@@ -221,10 +210,30 @@ export interface SessionHistoryEntry {
   attachments?: SessionImageAttachment[]
 }
 
+export interface SessionHistoryArtifact {
+  id: string
+  type: 'file' | 'output' | 'artifact'
+  renderType: string
+  title?: string
+  filename?: string
+  filepath?: string
+  language: string
+  content: string
+  toolCallId: string
+}
+
 export interface SessionHistoryResponse {
   type: 'session_history_response'
   id: string
   messages: SessionHistoryEntry[]
+  /** Seq of the last message in the full session history */
+  lastSeq: number
+  /** Total number of entries in the full session */
+  totalCount: number
+  /** True if there are older messages before the returned page */
+  hasMore: boolean
+  /** Artifacts extracted from full history (only included on first page) */
+  artifacts?: SessionHistoryArtifact[]
 }
 
 export interface ChatImageAttachmentInput {
@@ -750,13 +759,15 @@ export interface ConnectorConfigPayload {
   name: string
   description?: string
   icon?: string
-  type: 'mcp' | 'api'
+  type: 'mcp' | 'api' | 'oauth'
   command?: string
   args?: string[]
   env?: Record<string, string>
   apiKey?: string
   baseUrl?: string
+  metadata?: Record<string, string>
   enabled: boolean
+  oauthProvider?: string
 }
 
 export interface ConnectorStatusPayload {
@@ -764,7 +775,7 @@ export interface ConnectorStatusPayload {
   name: string
   description?: string
   icon?: string
-  type: 'mcp' | 'api'
+  type: 'mcp' | 'api' | 'oauth'
   connected: boolean
   enabled: boolean
   toolCount: number
@@ -778,11 +789,14 @@ export interface ConnectorRegistryEntryPayload {
   description: string
   icon: string
   category: string
-  type: 'mcp' | 'api'
+  type: 'mcp' | 'api' | 'oauth'
   command?: string
   args?: string[]
   requiredEnv: string[]
+  optionalFields?: { key: string; label: string; hint?: string }[]
   featured?: boolean
+  oauthProvider?: string
+  oauthScopes?: string[]
   setupGuide?: {
     steps: string[]
     url: string
@@ -868,6 +882,30 @@ export interface ConnectorRegistryListResponse {
   entries: ConnectorRegistryEntryPayload[]
 }
 
+// OAuth connector flow
+export interface ConnectorOAuthStartMessage {
+  type: 'connector_oauth_start'
+  provider: string
+}
+
+export interface ConnectorOAuthUrlMessage {
+  type: 'connector_oauth_url'
+  provider: string
+  url: string
+}
+
+export interface ConnectorOAuthCompleteMessage {
+  type: 'connector_oauth_complete'
+  provider: string
+  success: boolean
+  error?: string
+}
+
+export interface ConnectorOAuthDisconnectMessage {
+  type: 'connector_oauth_disconnect'
+  provider: string
+}
+
 // ── Usage stats ─────────────────────────────────────────────────────
 
 export interface UsageStatsMessage {
@@ -937,8 +975,6 @@ export type AiMessage =
   // Session management
   | SessionCreateMessage
   | SessionCreatedMessage
-  | SessionResumeMessage
-  | SessionResumedMessage
   | SessionsListMessage
   | SessionsListResponse
   | SessionDestroyMessage
@@ -1029,6 +1065,10 @@ export type AiMessage =
   | ConnectorTestResponse
   | ConnectorRegistryListMessage
   | ConnectorRegistryListResponse
+  | ConnectorOAuthStartMessage
+  | ConnectorOAuthUrlMessage
+  | ConnectorOAuthCompleteMessage
+  | ConnectorOAuthDisconnectMessage
   // Browser automation
   | AiBrowserStateMessage
   | AiBrowserCloseMessage

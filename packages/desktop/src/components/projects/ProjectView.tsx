@@ -1,5 +1,6 @@
+import type { AgentSession } from '@anton/protocol'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Settings, Trash2, Zap } from 'lucide-react'
+import { Bot, Settings, Trash2, Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { connection } from '../../lib/connection.js'
 import { useStore } from '../../lib/store.js'
@@ -18,6 +19,7 @@ export function ProjectView() {
   const projectSessionsLoading = useStore((s) => s.projectSessionsLoading)
   const artifactPanelOpen = useStore((s) => s.artifactPanelOpen)
   const pendingPlan = useStore((s) => s.pendingPlan)
+  const agentSession: AgentSession | null = useStore((s) => s.getActiveAgentSession())
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   // Ensure activeConversationId matches the project session when viewing a session.
@@ -104,12 +106,47 @@ export function ProjectView() {
       store.switchConversation(conv.id)
     }
 
-    connection.sendSessionResume(sessionId)
-    // Only fetch history if we have no local messages (first open or cleared localStorage)
+    // Always fetch history from server — server is authoritative.
     // switchConversation handles _sessionsNeedingHistoryRefresh for background-completed sessions
-    if (!conv || conv.messages.length === 0) {
-      connection.sendSessionHistory(sessionId)
+    useStore.getState().requestSessionHistory(sessionId)
+    setActiveSessionId(sessionId)
+  }
+
+  const handleOpenAgent = (agentSessionId: string) => {
+    // Always create a new conversation when clicking an agent.
+    // Each click = fresh conversation with the agent's context.
+    const sessionId = `proj_${project.id}_sess_${Date.now().toString(36)}`
+    const store = useStore.getState()
+    const agent = store.projectAgents.find((a) => a.sessionId === agentSessionId)
+    const title = agent ? agent.agent.name : 'Agent conversation'
+
+    store.newConversation(title, sessionId, project.id, agentSessionId)
+
+    connection.sendSessionCreate(sessionId, {
+      provider: store.currentProvider,
+      model: store.currentModel,
+      projectId: project.id,
+    })
+
+    // Optimistically add to projectSessions so sidebar updates immediately
+    store.setProjectSessions([
+      {
+        id: sessionId,
+        title,
+        provider: store.currentProvider,
+        model: store.currentModel,
+        messageCount: 0,
+        createdAt: Date.now(),
+        lastActiveAt: Date.now(),
+      },
+      ...store.projectSessions,
+    ])
+
+    const conv = store.findConversationBySession(sessionId)
+    if (conv) {
+      store.switchConversation(conv.id)
     }
+
     setActiveSessionId(sessionId)
   }
 
@@ -154,6 +191,7 @@ export function ProjectView() {
           sessionsLoading={projectSessionsLoading}
           onNewSession={handleNewSession}
           onOpenSession={handleOpenSession}
+          onOpenAgent={handleOpenAgent}
           onDeleteSession={handleDeleteSession}
           onBack={handleBackToProjects}
         />
@@ -210,6 +248,13 @@ export function ProjectView() {
           </div>
           <span className="project-chat-view__sep">/</span>
           <span className="project-chat-view__name">{project.name}</span>
+          {agentSession && (
+            <>
+              <span className="project-chat-view__sep">/</span>
+              <Bot size={13} strokeWidth={1.5} />
+              <span className="project-chat-view__name">{agentSession.agent.name}</span>
+            </>
+          )}
         </button>
 
         <div className="project-chat-view__actions">

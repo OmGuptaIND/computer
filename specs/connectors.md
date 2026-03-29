@@ -2,150 +2,224 @@
 
 ## Overview
 
-Connectors integrate external services (Slack, Gmail, GitHub, etc.) into the agent via MCP servers or direct API keys. The UI groups connectors by category with brand icons and supports adding custom MCP/API connectors.
+Connectors integrate external services (Slack, Gmail, GitHub, etc.) into the agent. Three connector types:
+
+| Type | How it works | Auth | Example |
+|------|-------------|------|---------|
+| `oauth` | Direct API calls, one-click OAuth flow | OAuth 2.0 via proxy | Slack, GitHub |
+| `mcp` | Spawns MCP server subprocess (stdio JSON-RPC) | Manual env vars | Telegram, custom servers |
+| `api` | Simple HTTP calls with API key | Manual API key | SearXNG, Brave Search |
+
+**OAuth connectors are the default for core services.** MCP and API remain as escape hatches for custom/community connectors.
 
 ## Architecture
 
 ```
-Registry (agent-config)  →  Server (agent-server)  →  Desktop UI (desktop)
-     ↕                           ↕
-ConnectorConfig            McpManager / API proxy
+Desktop UI                Agent Server (VPS)              OAuth Proxy (CF Worker)
+────────────              ──────────────────              ──────────────────────
+Click "Connect"           Generate state nonce
+  → WS: oauth_start      Build authorize URL
+  ← WS: oauth_url        ─────────────────────────────→  302 to provider
+Open browser                                              User authorizes
+                          POST /_anton/oauth/cb  ←──────  Exchange code → token
+                          Encrypt + store token
+                          Activate connector
+  ← WS: oauth_complete   Tools available in session
 ```
 
-- **Registry**: static list of built-in connectors (`CONNECTOR_REGISTRY` in `packages/agent-config/src/config.ts`)
-- **Server**: handles add/remove/toggle/test via WebSocket messages, manages MCP client connections
-- **Desktop**: renders the connector cards, setup modals, and custom connector forms
+## OAuth Flow (One-Click Connectors)
 
-## Adding a New Built-in Connector
+### Components
 
-### 1. Add the registry entry
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| OAuth Proxy | Separate CF Worker project | Holds client_id/secret, handles code exchange |
+| OAuthFlow | `agent-server/src/oauth/oauth-flow.ts` | State management, token refresh |
+| TokenStore | `agent-server/src/oauth/token-store.ts` | AES-256-GCM encrypted token storage |
+| ConnectorManager | `packages/connectors/connector-manager.ts` | Manages active direct connectors |
+| Direct connectors | `packages/connectors/slack/`, `github/` | Typed API clients + tool definitions |
 
-In `packages/agent-config/src/config.ts`, add to `CONNECTOR_REGISTRY`:
+### Token Storage
 
-```ts
-{
-  id: 'your-service',           // unique kebab-case id
-  name: 'Your Service',         // display name
-  description: 'What it does',  // one-line description
-  icon: '🔧',                   // emoji fallback (used in non-UI contexts)
-  category: 'productivity',     // one of: messaging | productivity | development | social | other
-  type: 'mcp',                  // 'mcp' for MCP servers, 'api' for simple API key services
-  command: 'npx',               // MCP only: command to run
-  args: ['-y', '@your/mcp-server'],  // MCP only: command arguments
-  requiredEnv: ['YOUR_API_KEY'],     // env vars the user must provide
-}
+Tokens are stored encrypted on each user's VPS:
+
+```
+~/.anton/tokens/
+  slack.enc        # AES-256-GCM encrypted
+  github.enc       # AES-256-GCM encrypted
+  google.enc       # (future)
 ```
 
-### 2. Add the brand SVG icon
+- Encryption key derived from `config.token` via HKDF (`sha256`, salt: `anton-token-store`)
+- Format: `iv (12 bytes) + auth tag (16 bytes) + ciphertext`
+- File permissions: `0600`
+- Tokens never leave the user's VPS unencrypted
 
-In `packages/desktop/src/components/connectors/ConnectorIcons.tsx`:
+### OAuth Proxy
 
-1. Create a new component (e.g. `YourServiceIcon`) with an inline SVG
-2. Add it to the `ICON_MAP` keyed by the connector's `id`
+The proxy is a stateless Cloudflare Worker. It holds OAuth app credentials (client_id/secret) and handles the authorization redirect + code-for-token exchange.
 
-```tsx
-function YourServiceIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      {/* brand SVG paths */}
-    </svg>
-  )
-}
+**Key points:**
+- Proxy stores NOTHING after the exchange
+- Tokens are POSTed to the agent's callback URL, then forgotten
+- State parameter is HMAC-signed to prevent CSRF
+- Open source — anyone can deploy their own
 
-// In ICON_MAP:
-const ICON_MAP: Record<string, ...> = {
-  // ...existing entries
-  'your-service': YourServiceIcon,
-}
+**Endpoints:**
+- `GET /oauth/:provider/authorize` — 302 redirect to provider consent
+- `GET /oauth/:provider/callback` — exchange code, POST token to agent
+- `POST /oauth/:provider/refresh` — refresh expired tokens
+- `GET /providers` — list configured providers
+
+### Environment Variables
+
+Set on the agent server (in `~/.anton/agent.env`):
+
+```
+OAUTH_PROXY_URL=https://your-proxy.workers.dev
+OAUTH_CALLBACK_BASE_URL=https://yourname.antoncomputer.in
 ```
 
-The `ConnectorIcon` component will automatically pick it up. Unknown IDs fall back to a generic Plug icon.
+Configure via CLI: `sudo anton computer config oauth`
 
-### 3. Category assignment
+### Direct Connector Tools
 
-Categories control how connectors are grouped in the Apps tab:
+OAuth connectors use direct API calls instead of MCP subprocesses:
 
-| Category       | Use for                                    |
-| -------------- | ------------------------------------------ |
-| `messaging`    | Chat, email, notifications (Slack, Telegram) |
-| `productivity` | Docs, calendar, storage (Gmail, Notion, Drive) |
-| `development`  | Code, issues, CI/CD (GitHub, Linear)       |
-| `social`       | Social media platforms                     |
-| `other`        | Anything else                              |
+**Slack** (`packages/connectors/src/slack/`):
+- `slack_list_channels`, `slack_send_message`, `slack_get_history`
+- `slack_get_thread`, `slack_list_users`, `slack_search`, `slack_add_reaction`
 
-## Connector Types
+**GitHub** (`packages/connectors/src/github/`):
+- `github_list_repos`, `github_get_repo`, `github_list_issues`, `github_get_issue`
+- `github_create_issue`, `github_add_comment`, `github_list_prs`, `github_get_pr`
+- `github_search_code`, `github_search_issues`
 
-### MCP Connectors (`type: 'mcp'`)
+Tool naming: `{service}_{action}` (no `mcp_` prefix).
 
-Run an MCP server process. The agent communicates via the MCP protocol to discover and invoke tools.
+## MCP Connectors (`type: 'mcp'`)
+
+Run an MCP server process. The agent communicates via JSON-RPC 2.0 over stdio.
 
 - Requires `command` and `args` fields
 - `requiredEnv` values are passed as environment variables to the spawned process
-- The server manages the MCP client lifecycle (connect, disconnect, reconnect)
+- Tool naming: `mcp_{serverId}_{toolName}`
+- Auto-reconnect on process crash (5s delay)
+- Health checks every 60s
 
-### API Connectors (`type: 'api'`)
+## API Connectors (`type: 'api'`)
 
 Simple API key-based integrations. The first `requiredEnv` value maps to `apiKey`.
 
-- No `command`/`args` needed
-- The agent uses the API key directly for HTTP requests
+## Adding a New Built-in Connector
+
+### OAuth Connector (recommended for core services)
+
+1. **Add provider to OAuth proxy** (`oauth-proxy/src/providers/`):
+   ```ts
+   export const yourservice: OAuthProviderConfig = {
+     authorizeUrl: 'https://...',
+     tokenUrl: 'https://...',
+     scopes: ['read', 'write'],
+     pkce: false,
+   }
+   ```
+
+2. **Register OAuth app** with the provider, set redirect URL to `https://<proxy>/oauth/yourservice/callback`
+
+3. **Set CF Worker secrets**: `wrangler secret put YOURSERVICE_CLIENT_ID`, etc.
+
+4. **Add direct connector** (`packages/connectors/src/yourservice/`):
+   - `api.ts` — typed HTTP client
+   - `tools.ts` — AgentTool definitions
+   - `index.ts` — DirectConnector implementation
+
+5. **Add to factory** (`packages/connectors/src/index.ts`):
+   ```ts
+   CONNECTOR_FACTORIES['yourservice'] = () => new YourServiceConnector()
+   ```
+
+6. **Add registry entry** (`packages/agent-config/src/config.ts`):
+   ```ts
+   { id: 'yourservice', type: 'oauth', oauthProvider: 'yourservice', ... }
+   ```
+
+7. **Add brand icon** (`packages/desktop/src/components/connectors/ConnectorIcons.tsx`)
+
+### MCP Connector (for community/custom services)
+
+1. Add registry entry with `type: 'mcp'`, `command`, `args`, `requiredEnv`
+2. Add brand icon
+3. That's it — MCP protocol handles tool discovery automatically
 
 ## Protocol Messages
 
-| Direction | Message                          | Purpose                        |
-| --------- | -------------------------------- | ------------------------------ |
-| C → S     | `connectors_list`                | Request all connector statuses |
-| C → S     | `connector_add`                  | Add/connect a connector        |
-| C → S     | `connector_remove`               | Remove a connector             |
-| C → S     | `connector_toggle`               | Enable/disable a connector     |
-| C → S     | `connector_test`                 | Test connection, list tools    |
-| C → S     | `connector_registry_list`        | Request built-in registry      |
-| S → C     | `connectors_list_response`       | Full connector status list     |
-| S → C     | `connector_added`                | Confirmation with status       |
-| S → C     | `connector_status`               | Status update                  |
-| S → C     | `connector_test_response`        | Test result with tools list    |
-| S → C     | `connector_registry_list_response` | Built-in registry entries    |
+| Direction | Message | Purpose |
+|-----------|---------|---------|
+| C → S | `connectors_list` | Request all connector statuses |
+| C → S | `connector_add` | Add a connector (MCP/API) |
+| C → S | `connector_remove` | Remove a connector |
+| C → S | `connector_toggle` | Enable/disable a connector |
+| C → S | `connector_test` | Test connection, list tools |
+| C → S | `connector_registry_list` | Request built-in registry |
+| C → S | `connector_oauth_start` | Start OAuth flow for a provider |
+| C → S | `connector_oauth_disconnect` | Disconnect OAuth connector |
+| S → C | `connectors_list_response` | Full connector status list |
+| S → C | `connector_added` | Confirmation with status |
+| S → C | `connector_status` | Status update |
+| S → C | `connector_test_response` | Test result with tools list |
+| S → C | `connector_registry_list_response` | Built-in registry entries |
+| S → C | `connector_oauth_url` | Auth URL for desktop to open |
+| S → C | `connector_oauth_complete` | OAuth flow result |
 
-## Custom Connectors
+## Security
 
-Users can add custom connectors via the UI without modifying code:
+### Token Isolation
 
-- **Custom MCP**: provide name, command, args, and env vars (or paste JSON config)
-- **Custom API**: provide name, base URL, and API key
+- OAuth tokens encrypted at rest (AES-256-GCM) in `~/.anton/tokens/`
+- Each user's tokens are on their own VPS, encrypted with their own agent token
+- OAuth proxy is stateless — holds app credentials, not user tokens
+- Direct API calls use token from encrypted store via closure — never in system prompt
 
-Custom connectors are persisted in the project config and survive restarts.
+### MCP Credential Handling (Legacy)
 
-## Security: Credential Isolation (Known Limitation)
+MCP connectors still use plaintext env vars in config. This is acceptable for:
+- Single-user trust boundary
+- User-owned machines
+- Connectors the user explicitly installed
 
-### Current State
+### Caddy Routing
 
-Connector credentials (API keys, tokens, OAuth paths) are stored **in plaintext** in the agent config file and passed as environment variables to MCP server child processes. This means:
+The `/_anton/oauth/callback` route MUST go to the agent (port 9876), not the sidecar:
 
-- Any tool or sub-agent running in the same environment can read the config file and extract credentials
-- MCP server processes inherit env vars, which are visible via `/proc/<pid>/environ` on Linux
-- There is no access control between connectors — a GitHub connector's token is accessible to code running in the Slack connector's context
-- The agent's system prompt and tool outputs could theoretically leak credential values if a prompt injection succeeds
+```
+handle /_anton/oauth/* {
+    reverse_proxy localhost:9876
+}
+handle_path /_anton/* {
+    reverse_proxy localhost:9878
+}
+```
 
-### Threat Model
+## Environment File Path
 
-The current design assumes a **single-user trust boundary**: the user owns the machine, trusts all configured connectors, and accepts that credentials share a flat namespace. This is acceptable for local development but insufficient for:
+**Canonical path:** `~/.anton/agent.env` (same as Ansible)
 
-- Multi-tenant deployments (shared VMs, cloud-hosted agents)
-- Untrusted MCP servers (community/third-party connectors)
-- Environments where least-privilege is required (enterprise, compliance)
+The CLI auto-detects the path by reading the systemd service's `EnvironmentFile` directive. Falls back to `~/.anton/agent.env`.
 
-### Future Mitigations
+## Key Files
 
-For production hardening, consider:
-
-1. **Secret store integration** — Use OS keychain (macOS Keychain, Linux Secret Service) or a vault (HashiCorp Vault, AWS Secrets Manager) instead of plaintext config. Credentials are fetched at runtime and never written to disk.
-
-2. **Scoped environment injection** — Only pass each connector its own required env vars, not the full set. Currently all env vars are available to all processes.
-
-3. **Process sandboxing** — Run MCP servers in isolated containers or namespaces with restricted filesystem/network access. Each connector only sees its own credentials.
-
-4. **Credential rotation** — Support short-lived tokens with automatic refresh instead of long-lived API keys.
-
-5. **Audit logging** — Log which connector accessed which credential and when, to detect misuse.
-
-6. **User confirmation for sensitive operations** — Require explicit user approval before a connector performs destructive or high-privilege actions (sending emails, deleting repos, etc.).
+| File | Purpose |
+|------|---------|
+| `packages/agent-config/src/config.ts` | ConnectorConfig, ConnectorRegistryEntry, CONNECTOR_REGISTRY |
+| `packages/connectors/src/` | Direct API connectors (Slack, GitHub) |
+| `packages/connectors/src/connector-manager.ts` | ConnectorManager — activation, tool aggregation |
+| `packages/agent-server/src/oauth/token-store.ts` | Encrypted token storage |
+| `packages/agent-server/src/oauth/oauth-flow.ts` | OAuth state machine, token refresh |
+| `packages/agent-server/src/oauth/oauth-callback.ts` | HTTP callback handler |
+| `packages/agent-server/src/server.ts` | WS handlers, HTTP callback route, session wiring |
+| `packages/agent-core/src/agent.ts` | `buildTools()` — merges MCP + direct connector tools |
+| `packages/agent-core/src/session.ts` | Passes connectorManager to buildTools |
+| `packages/protocol/src/messages.ts` | OAuth message types |
+| `packages/desktop/src/components/connectors/ConnectorsPage.tsx` | OAuth UI flow |
+| `packages/cli/src/commands/computer-config.ts` | `anton computer config oauth` |

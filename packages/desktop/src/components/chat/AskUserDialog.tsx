@@ -130,7 +130,12 @@ export function AskUserDialog({ questions, onSubmit }: Props) {
         >
           {/* Header: question + step indicator */}
           <div className="ask-dialog__header">
-            <span className="ask-dialog__question">{q.question}</span>
+            <div className="ask-dialog__header-text">
+              <span className="ask-dialog__question">{q.question}</span>
+              {q.description && (
+                <span className="ask-dialog__description">{q.description}</span>
+              )}
+            </div>
             {total > 1 && (
               <span className="ask-dialog__step-badge">{step + 1}/{total}</span>
             )}
@@ -201,31 +206,35 @@ export function AskUserDialog({ questions, onSubmit }: Props) {
             </div>
           )}
 
-          {/* Footer */}
-          <div className="ask-dialog__footer">
-            {step > 0 ? (
-              <button
-                type="button"
-                className="ask-dialog__btn ask-dialog__btn--back"
-                onClick={() => {
-                  setStep((s) => Math.max(0, s - 1))
-                  setShowCustomInput(false)
-                }}
-              >
-                <ArrowLeft size={14} strokeWidth={1.5} />
-                Back
-              </button>
-            ) : (
-              <div />
-            )}
-            <button
-              type="button"
-              className="ask-dialog__btn ask-dialog__btn--skip"
-              onClick={handleSkip}
-            >
-              Skip
-            </button>
-          </div>
+          {/* Footer — only show when there's navigation or skip is useful */}
+          {(step > 0 || allowFreeText) && (
+            <div className="ask-dialog__footer">
+              {step > 0 ? (
+                <button
+                  type="button"
+                  className="ask-dialog__btn ask-dialog__btn--back"
+                  onClick={() => {
+                    setStep((s) => Math.max(0, s - 1))
+                    setShowCustomInput(false)
+                  }}
+                >
+                  <ArrowLeft size={14} strokeWidth={1.5} />
+                  Back
+                </button>
+              ) : (
+                <div />
+              )}
+              {allowFreeText && (
+                <button
+                  type="button"
+                  className="ask-dialog__btn ask-dialog__btn--skip"
+                  onClick={handleSkip}
+                >
+                  Skip
+                </button>
+              )}
+            </div>
+          )}
         </motion.div>
       </AnimatePresence>
     </div>

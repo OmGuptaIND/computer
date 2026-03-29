@@ -44,6 +44,16 @@ export interface Project {
 
 export type AgentStatus = 'idle' | 'running' | 'paused' | 'error'
 
+/** A single agent run record for debug visibility */
+export interface AgentRunRecord {
+  startedAt: number
+  completedAt: number | null
+  status: 'success' | 'error' | 'timeout'
+  error?: string
+  durationMs?: number
+  trigger: 'cron' | 'manual'
+}
+
 /** Agent metadata — stored as agent.json in the conversation directory */
 export interface AgentMetadata {
   /** Agent display name */
@@ -71,6 +81,8 @@ export interface AgentMetadata {
   /** Total number of completed runs */
   runCount: number
   createdAt: number
+  /** Recent run history for debug visibility (last 20 runs) */
+  runHistory?: AgentRunRecord[]
 }
 
 /** Agent session = conversation metadata + agent config */

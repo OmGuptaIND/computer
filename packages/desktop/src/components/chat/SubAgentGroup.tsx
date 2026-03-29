@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Check, ChevronDown, ChevronRight, Circle, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { type ChatMessage, useStore } from '../../lib/store.js'
 import { ToolTreeItem, getGroupHeader } from './ActionsGroup.js'
@@ -34,15 +34,6 @@ export function SubAgentGroup({ task, actions, result, defaultExpanded = false }
 
   const taskPreview = task.length > 80 ? `${task.slice(0, 77)}...` : task
 
-  let statusIcon: React.ReactNode
-  if (isPending) {
-    statusIcon = <Loader2 size={14} strokeWidth={1.5} className="tool-tree__spinner" />
-  } else if (isError) {
-    statusIcon = <Circle size={14} strokeWidth={1.5} className="tool-tree__status--error" />
-  } else {
-    statusIcon = <Check size={14} strokeWidth={1.5} className="tool-tree__status--done" />
-  }
-
   // Build summary like "Read · Shell · 4 tool calls"
   const actionsSummary = actions.length > 0 ? getGroupHeader(actions) : null
 
@@ -60,7 +51,6 @@ export function SubAgentGroup({ task, actions, result, defaultExpanded = false }
         ) : (
           <ChevronRight size={14} strokeWidth={1.5} className="tool-tree__chevron" />
         )}
-        <span className="tool-tree__status-icon">{statusIcon}</span>
         <span className="sub-agent__label">Agent</span>
         <span className="sub-agent__task">{taskPreview}</span>
       </button>

@@ -98,7 +98,7 @@ export interface ConnectorStatusInfo {
   name: string
   description?: string
   icon?: string
-  type: 'mcp' | 'api'
+  type: 'mcp' | 'api' | 'oauth'
   connected: boolean
   enabled: boolean
   toolCount: number
@@ -112,11 +112,14 @@ export interface ConnectorRegistryInfo {
   description: string
   icon: string
   category: string
-  type: 'mcp' | 'api'
+  type: 'mcp' | 'api' | 'oauth'
   command?: string
   args?: string[]
   requiredEnv: string[]
+  optionalFields?: { key: string; label: string; hint?: string }[]
   featured?: boolean
+  oauthProvider?: string
+  oauthScopes?: string[]
   setupGuide?: {
     steps: string[]
     url: string
@@ -147,6 +150,28 @@ export type SidebarTab = 'history' | 'skills'
 // ── Citation parsing ─────────────────────────────────────────────
 
 function parseCitationSources(output: string): CitationSource[] {
+  // Primary: extract structured JSON from <!-- citations:[...] --> block
+  const marker = '<!-- citations:'
+  const start = output.indexOf(marker)
+  if (start !== -1) {
+    const jsonStart = start + marker.length
+    const end = output.indexOf(' -->', jsonStart)
+    if (end !== -1) {
+      try {
+        const raw: Array<{ i: number; t: string; d: string; u: string }> =
+          JSON.parse(output.slice(jsonStart, end))
+        return raw.map((s) => ({
+          index: s.i,
+          title: s.t,
+          url: s.u,
+          domain: s.d,
+        }))
+      } catch {
+        /* fall through to legacy parser */
+      }
+    }
+  }
+  // Legacy fallback: regex parse for old session history
   const sources: CitationSource[] = []
   const regex = /\[(\d+)\]\s+(.+?)\s*\|\s*(\S+)\s*—\s*(https?:\/\/\S+)/g
   for (const match of output.matchAll(regex)) {
@@ -224,6 +249,7 @@ interface AppState {
   // Turn timing
   workingStartedAt: number | null
   lastTurnDurationMs: number | null
+  turnStatsConversationId: string | null // which conversation the turn stats belong to
   workingSessionId: string | null // which session is currently processing
 
   // Agent status detail & steps
@@ -250,7 +276,7 @@ interface AppState {
 
   // Citations: maps assistant message ID → sources extracted from web_search
   citations: Map<string, CitationSource[]>
-  _pendingCitationSources: CitationSource[]
+  _pendingCitationSourcesQueue: CitationSource[][]
   _pendingWebSearchToolCallIds: Set<string>
 
   // Browser viewer
@@ -276,6 +302,14 @@ interface AppState {
   // Session streaming & history tracking
   _activeStreamingSessions: Set<string>
   _sessionsNeedingHistoryRefresh: Set<string>
+  // Sync-first protocol: sessions currently loading history from server
+  _syncingSessionIds: Set<string>
+  // Messages received while a session was still syncing (queued for replay)
+  _pendingSyncMessages: Map<string, Array<Record<string, unknown>>>
+  // Pagination: whether a session has older messages to load
+  _sessionHasMore: Map<string, boolean>
+  // Sessions currently loading older messages (scroll-up pagination)
+  _loadingOlderSessions: Set<string>
 
   // Pending confirmation
   pendingConfirm: { id: string; command: string; reason: string; sessionId?: string } | null
@@ -358,7 +392,7 @@ interface AppState {
   setProviders: (providers: ProviderInfo[], defaults: { provider: string; model: string }) => void
 
   // Conversation actions
-  newConversation: (title?: string, sessionId?: string, projectId?: string) => string
+  newConversation: (title?: string, sessionId?: string, projectId?: string, agentSessionId?: string) => string
   appendConversation: (title?: string, sessionId?: string, projectId?: string) => string
   switchConversation: (id: string) => void
   deleteConversation: (id: string) => void
@@ -368,8 +402,12 @@ interface AppState {
   appendAssistantTextToSession: (sessionId: string, content: string) => void
   replaceAssistantText: (search: string, replacement: string, sessionId?: string) => void
   getActiveConversation: () => Conversation | null
+  getActiveAgentSession: () => import('@anton/protocol').AgentSession | null
   findConversationBySession: (sessionId: string) => Conversation | undefined
   loadSessionMessages: (sessionId: string, messages: ChatMessage[]) => void
+  prependSessionMessages: (sessionId: string, messages: ChatMessage[]) => void
+  requestSessionHistory: (sessionId: string) => void
+  loadOlderMessages: (sessionId: string) => void
   updateConversationTitle: (sessionId: string, title: string) => void
 
   // Response model tracking
@@ -471,6 +509,7 @@ export const useStore = create<AppState>((set, get) => {
     sessionUsage: null,
     workingStartedAt: null,
     lastTurnDurationMs: null,
+    turnStatsConversationId: null,
     workingSessionId: null,
     agentStatusDetail: null,
     agentSteps: [],
@@ -482,7 +521,7 @@ export const useStore = create<AppState>((set, get) => {
     _hiddenToolCallIds: new Set(),
     _toolCallNames: new Map(),
     citations: new Map(),
-    _pendingCitationSources: [],
+    _pendingCitationSourcesQueue: [],
     _pendingWebSearchToolCallIds: new Set(),
     browserState: null,
     artifacts: [],
@@ -494,6 +533,10 @@ export const useStore = create<AppState>((set, get) => {
     sessionStatuses: new Map(),
     _activeStreamingSessions: new Set(),
     _sessionsNeedingHistoryRefresh: new Set(),
+    _syncingSessionIds: new Set(),
+    _pendingSyncMessages: new Map(),
+    _sessionHasMore: new Map(),
+    _loadingOlderSessions: new Set(),
     pendingConfirm: null,
     pendingPlan: null,
     sidePanelView: 'artifacts' as const,
@@ -670,7 +713,7 @@ export const useStore = create<AppState>((set, get) => {
       } else if (status === 'idle' && prev === 'working') {
         const started = get().workingStartedAt
         const duration = started ? Date.now() - started : null
-        set({ agentStatus: status, lastTurnDurationMs: duration, workingSessionId: null })
+        set({ agentStatus: status, lastTurnDurationMs: duration, turnStatsConversationId: get().activeConversationId, workingSessionId: null })
       } else {
         set({
           agentStatus: status,
@@ -716,9 +759,9 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
-    newConversation: (title, sessionId, projectId) => {
+    newConversation: (title, sessionId, projectId, agentSessionId) => {
       const { currentProvider, currentModel } = get()
-      const conv = createConversation(title, sessionId, projectId, currentProvider, currentModel)
+      const conv = createConversation(title, sessionId, projectId, currentProvider, currentModel, agentSessionId)
       set((state) => {
         const conversations = [conv, ...state.conversations]
         saveConversations(conversations)
@@ -799,6 +842,10 @@ export const useStore = create<AppState>((set, get) => {
         const needsRefresh = new Set(get()._sessionsNeedingHistoryRefresh)
         needsRefresh.delete(conv.sessionId)
         updates._sessionsNeedingHistoryRefresh = needsRefresh
+        // Mark syncing and request history (will be set in a separate setState)
+        const syncing = new Set(get()._syncingSessionIds)
+        syncing.add(conv.sessionId)
+        updates._syncingSessionIds = syncing
         connection.sendSessionHistory(conv.sessionId)
       }
 
@@ -893,7 +940,7 @@ export const useStore = create<AppState>((set, get) => {
         saveConversations(conversations)
         // Associate pending citation sources with new assistant message
         const citationUpdate: Record<string, unknown> = {}
-        if (newMsgId && state._pendingCitationSources.length > 0) {
+        if (newMsgId && state._pendingCitationSources?.length > 0) {
           const newCitations = new Map(state.citations)
           newCitations.set(newMsgId, state._pendingCitationSources)
           citationUpdate.citations = newCitations
@@ -943,7 +990,7 @@ export const useStore = create<AppState>((set, get) => {
         saveConversations(conversations)
         // Associate pending citation sources with new assistant message
         const citationUpdate: Record<string, unknown> = {}
-        if (newMsgId && state._pendingCitationSources.length > 0) {
+        if (newMsgId && state._pendingCitationSources?.length > 0) {
           const newCitations = new Map(state.citations)
           newCitations.set(newMsgId, state._pendingCitationSources)
           citationUpdate.citations = newCitations
@@ -986,42 +1033,132 @@ export const useStore = create<AppState>((set, get) => {
       return conversations.find((c) => c.id === activeConversationId) || null
     },
 
+    getActiveAgentSession: () => {
+      const state = get()
+      const conv = state.conversations.find((c) => c.id === state.activeConversationId)
+      if (!conv?.agentSessionId) return null
+      return state.projectAgents.find((a) => a.sessionId === conv.agentSessionId) ?? null
+    },
+
     findConversationBySession: (sessionId) => {
       return get().conversations.find((c) => c.sessionId === sessionId)
     },
 
     loadSessionMessages: (sessionId, serverMessages) => {
+      // Grab queued messages before clearing sync state
+      const queuedMessages = get()._pendingSyncMessages.get(sessionId) ?? []
+
       set((state) => {
         const conv = state.conversations.find((c) => c.sessionId === sessionId)
         if (!conv) return state
 
-        const localMessages = conv.messages
-        const isStreaming = state._activeStreamingSessions.has(sessionId)
-
-        let mergedMessages: ChatMessage[]
-
-        if (localMessages.length === 0) {
-          // No local messages — use server history as-is (first load)
-          mergedMessages = serverMessages
-        } else if (isStreaming) {
-          // Session is actively streaming — client has newer data than server.
-          // Skip the server response to avoid overwriting in-progress data.
-          return state
-        } else {
-          // Session is idle. Server is authoritative for completed turns.
-          // Use server data unless local has more (turn just ended but
-          // server response was queued before persist completed)
-          mergedMessages =
-            serverMessages.length >= localMessages.length ? serverMessages : localMessages
-        }
-
+        // Server is always authoritative. Replace local state unconditionally.
+        // This fixes sync issues where stale localStorage data diverged from
+        // the server's persisted history (e.g. after client disconnect/reconnect).
         const conversations = state.conversations.map((c) => {
           if (c.sessionId !== sessionId) return c
-          return { ...c, messages: mergedMessages, updatedAt: Date.now() }
+          return { ...c, messages: serverMessages, updatedAt: Date.now() }
         })
         saveConversations(conversations)
-        return { conversations }
+
+        // Clear syncing flag and pending queue — history has been loaded
+        const syncing = new Set(state._syncingSessionIds)
+        syncing.delete(sessionId)
+        const pending = new Map(state._pendingSyncMessages)
+        pending.delete(sessionId)
+
+        return { conversations, _syncingSessionIds: syncing, _pendingSyncMessages: pending }
       })
+
+      // Replay any messages that arrived while we were syncing
+      if (queuedMessages.length > 0) {
+        console.log(
+          `[Sync] Replaying ${queuedMessages.length} queued messages for ${sessionId}`,
+        )
+        for (const queued of queuedMessages) {
+          handleWsMessage(Channel.AI, queued)
+        }
+      }
+    },
+
+    requestSessionHistory: (sessionId) => {
+      // Mark session as syncing and send the request.
+      // While syncing, incoming streaming messages are queued.
+      set((state) => {
+        const syncing = new Set(state._syncingSessionIds)
+        syncing.add(sessionId)
+        return { _syncingSessionIds: syncing }
+      })
+      connection.sendSessionHistory(sessionId)
+
+      // Safety timeout: clear syncing flag if server never responds
+      // (e.g. session not found, error response instead of history)
+      setTimeout(() => {
+        const state = get()
+        if (state._syncingSessionIds.has(sessionId)) {
+          console.warn(`[Sync] Timeout for ${sessionId}, clearing sync flag`)
+          const syncing = new Set(state._syncingSessionIds)
+          syncing.delete(sessionId)
+          const pending = new Map(state._pendingSyncMessages)
+          const queued = pending.get(sessionId) ?? []
+          pending.delete(sessionId)
+          set({ _syncingSessionIds: syncing, _pendingSyncMessages: pending })
+          // Replay any queued messages
+          for (const msg of queued) {
+            handleWsMessage(Channel.AI, msg)
+          }
+        }
+      }, 5000)
+    },
+
+    prependSessionMessages: (sessionId, olderMessages) => {
+      set((state) => {
+        const conv = state.conversations.find((c) => c.sessionId === sessionId)
+        if (!conv) return state
+
+        // Prepend older messages, avoiding duplicates by seq-based ID
+        const existingIds = new Set(conv.messages.map((m) => m.id))
+        const newMessages = olderMessages.filter((m) => !existingIds.has(m.id))
+        const conversations = state.conversations.map((c) => {
+          if (c.sessionId !== sessionId) return c
+          return { ...c, messages: [...newMessages, ...c.messages], updatedAt: Date.now() }
+        })
+        saveConversations(conversations)
+
+        // Clear loading flag
+        const loading = new Set(state._loadingOlderSessions)
+        loading.delete(sessionId)
+        return { conversations, _loadingOlderSessions: loading }
+      })
+    },
+
+    loadOlderMessages: (sessionId) => {
+      const state = get()
+      // Don't load if already loading or no more messages
+      if (state._loadingOlderSessions.has(sessionId)) return
+      if (state._sessionHasMore.get(sessionId) === false) return
+
+      const conv = state.conversations.find((c) => c.sessionId === sessionId)
+      if (!conv || conv.messages.length === 0) return
+
+      // Find the lowest seq in current messages to paginate before it
+      // Message IDs are like hist_3_..., tc_xxx, tr_xxx — extract seq from hist_ prefix
+      let minSeq = Number.MAX_SAFE_INTEGER
+      for (const m of conv.messages) {
+        const match = m.id.match(/^hist_(\d+)_/)
+        if (match) {
+          minSeq = Math.min(minSeq, Number.parseInt(match[1], 10))
+        }
+      }
+      if (minSeq === Number.MAX_SAFE_INTEGER) return
+
+      set((state) => {
+        const loading = new Set(state._loadingOlderSessions)
+        loading.add(sessionId)
+        return { _loadingOlderSessions: loading }
+      })
+
+      connection.sendSessionHistory(sessionId, { before: minSeq, limit: 200 })
     },
 
     updateConversationTitle: (sessionId, title) => {
@@ -1167,6 +1304,7 @@ export const useStore = create<AppState>((set, get) => {
         sessionUsage: null,
         workingStartedAt: null,
         lastTurnDurationMs: null,
+        turnStatsConversationId: null,
         lastResponseProvider: null,
         lastResponseModel: null,
         providers: [],
@@ -1183,6 +1321,14 @@ export const useStore = create<AppState>((set, get) => {
         projectAgents: [],
         projectAgentsLoading: false,
         selectedAgentId: null,
+        // Clear stale streaming/sync state so reconnection doesn't think
+        // old sessions are still streaming (which would block history sync)
+        _activeStreamingSessions: new Set(),
+        _sessionsNeedingHistoryRefresh: new Set(),
+        _syncingSessionIds: new Set(),
+        _pendingSyncMessages: new Map(),
+        _sessionHasMore: new Map(),
+        _loadingOlderSessions: new Set(),
       })
       // DO NOT clear conversations or active conversation — preserve chat history
       // On reconnect, session_history will sync the server's persisted state
@@ -1196,7 +1342,8 @@ connection.onStatusChange((status) => {
   useStore.getState().setConnectionStatus(status)
 })
 
-connection.onMessage((channel, msg) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function handleWsMessage(channel: number, msg: any) {
   const store = useStore.getState()
 
   // Debug logging for all messages
@@ -1301,6 +1448,35 @@ connection.onMessage((channel, msg) => {
     }
   }
 
+  // ── Sync-first gate ─────────────────────────────────────────
+  // If this session is still loading history from the server, queue streaming
+  // messages so they appear AFTER the full history has been loaded.
+  // Exceptions: session_history_response (the sync itself), done, error, tasks_update
+  const syncExempt = new Set([
+    'session_history_response',
+    'sessions_list_response',
+    'session_created',
+    'session_destroyed',
+    'context_info',
+    'usage_stats_response',
+    'project_sessions_list_response',
+    'providers_list_response',
+  ])
+  if (
+    msgSessionId &&
+    store._syncingSessionIds.has(msgSessionId) &&
+    !syncExempt.has(msg.type)
+  ) {
+    // Queue this message for replay after history loads
+    const pending = new Map(store._pendingSyncMessages)
+    const queue = pending.get(msgSessionId) ?? []
+    queue.push(msg)
+    pending.set(msgSessionId, queue)
+    useStore.setState({ _pendingSyncMessages: pending })
+    console.log(`[Sync] Queued ${msg.type} for ${msgSessionId} (syncing)`)
+    return
+  }
+
   switch (msg.type) {
     // ── Steering ack — user message sent while agent was working ──
     case 'steer_ack':
@@ -1315,7 +1491,9 @@ connection.onMessage((channel, msg) => {
 
     // ── Chat messages ──────────────────────────────────────────
     case 'text': {
-      console.log(`[WS] AI text chunk: "${msg.content?.slice(0, 80)}..."`)
+      const textContent = msg.content ?? ''
+      if (!textContent) break
+      console.log(`[WS] AI text chunk: "${textContent.slice(0, 80)}..."`)
       // Track that this session is actively streaming
       const textSessionId = msgSessionId || activeConv?.sessionId
       if (textSessionId && !store._activeStreamingSessions.has(textSessionId)) {
@@ -1323,7 +1501,7 @@ connection.onMessage((channel, msg) => {
         streaming.add(textSessionId)
         useStore.setState({ _activeStreamingSessions: streaming })
       }
-      appendText(msg.content)
+      appendText(textContent)
       break
     }
 
@@ -1518,6 +1696,24 @@ connection.onMessage((channel, msg) => {
       break
 
     case 'error': {
+      // Clear syncing flag if this error is for a session we're waiting on
+      if (msgSessionId && store._syncingSessionIds.has(msgSessionId)) {
+        const syncing = new Set(store._syncingSessionIds)
+        syncing.delete(msgSessionId)
+        const pending = new Map(store._pendingSyncMessages)
+        pending.delete(msgSessionId)
+        useStore.setState({ _syncingSessionIds: syncing, _pendingSyncMessages: pending })
+      }
+
+      // Session permanently gone — remove the stale conversation from the sidebar
+      if (msg.code === 'session_not_found' && msgSessionId) {
+        const staleConv = store.conversations.find((c) => c.sessionId === msgSessionId)
+        if (staleConv) {
+          store.deleteConversation(staleConv.id)
+        }
+        break
+      }
+
       // Only add error messages to a conversation if we know which session it belongs to.
       // Errors without sessionId are non-session-scoped (project ops, connector ops, etc.)
       // and should NOT be dumped into whatever conversation happens to be active.
@@ -1752,36 +1948,6 @@ connection.onMessage((channel, msg) => {
       break
     }
 
-    case 'session_resumed': {
-      // Session resumed — update session ID but preserve the user's global model selection.
-      // The resumed session may have been created with a different model, but the user's
-      // current preference (from the model selector) should not be overwritten.
-      // Only update currentSessionId; persist the session's model on its conversation.
-      const resumedConv = store.findConversationBySession(msg.id)
-      if (resumedConv) {
-        // Update the conversation's stored model and title to match what the server has
-        const convs = store.conversations.map((c: Conversation) =>
-          c.sessionId === msg.id
-            ? {
-                ...c,
-                provider: msg.provider,
-                model: msg.model,
-                // Sync title from server if the server has a real title and local is still default
-                ...(msg.title && msg.title !== 'New conversation' && c.title === 'New conversation'
-                  ? { title: msg.title }
-                  : {}),
-                updatedAt: Date.now(),
-              }
-            : c,
-        )
-        saveConversations(convs)
-        useStore.setState({ conversations: convs, currentSessionId: msg.id })
-      } else {
-        useStore.setState({ currentSessionId: msg.id })
-      }
-      break
-    }
-
     case 'context_info': {
       // Store context info on the conversation linked to this session
       const convs = store.conversations.map((c: Conversation) =>
@@ -1911,24 +2077,57 @@ connection.onMessage((channel, msg) => {
       const allMessages = [...historyMessages, ...askUserSummaries].sort(
         (a, b) => a.timestamp - b.timestamp,
       )
-      store.loadSessionMessages(msg.id, allMessages)
+      // Determine if this is a first page (sync) or an older-page (scroll-up pagination)
+      const isFirstPage = !store._loadingOlderSessions.has(msg.id)
 
-      // Reconstruct artifacts from history tool call/result pairs
-      // (artifact events are transient and not persisted in history)
-      const toolCalls = new Map<string, ChatMessage>()
-      for (const m of historyMessages) {
-        if (m.id.startsWith('tc_') && m.toolName) {
-          toolCalls.set(m.id.slice(3), m)
-        }
+      // Update hasMore for this session
+      const hasMoreMap = new Map(store._sessionHasMore)
+      hasMoreMap.set(msg.id, msg.hasMore ?? false)
+      useStore.setState({ _sessionHasMore: hasMoreMap })
+
+      if (isFirstPage) {
+        // First page: replace messages (server authoritative)
+        store.loadSessionMessages(msg.id, allMessages)
+      } else {
+        // Older page: prepend to existing messages
+        store.prependSessionMessages(msg.id, allMessages)
       }
-      for (const m of historyMessages) {
-        if (m.id.startsWith('tr_')) {
-          const baseId = m.id.slice(3)
-          const call = toolCalls.get(baseId)
-          if (call && !m.isError) {
-            const artifact = extractArtifact(call, m)
-            if (artifact) {
-              store.addArtifact(artifact)
+
+      // Use server-sent artifacts if available (first page includes all artifacts)
+      if (msg.artifacts && Array.isArray(msg.artifacts) && msg.artifacts.length > 0) {
+        store.clearArtifacts()
+        for (const a of msg.artifacts) {
+          store.addArtifact({
+            id: a.id,
+            type: a.type as 'file' | 'output' | 'artifact',
+            renderType: a.renderType as import('./artifacts.js').ArtifactRenderType,
+            title: a.title,
+            filename: a.filename,
+            filepath: a.filepath,
+            language: a.language,
+            content: a.content,
+            toolCallId: a.toolCallId,
+            timestamp: Date.now(),
+          })
+        }
+      } else if (isFirstPage) {
+        // Fallback: reconstruct artifacts from messages (backward compat)
+        store.clearArtifacts()
+        const toolCalls = new Map<string, ChatMessage>()
+        for (const m of historyMessages) {
+          if (m.id.startsWith('tc_') && m.toolName) {
+            toolCalls.set(m.id.slice(3), m)
+          }
+        }
+        for (const m of historyMessages) {
+          if (m.id.startsWith('tr_')) {
+            const baseId = m.id.slice(3)
+            const call = toolCalls.get(baseId)
+            if (call && !m.isError) {
+              const artifact = extractArtifact(call, m)
+              if (artifact) {
+                store.addArtifact(artifact)
+              }
             }
           }
         }
@@ -1936,12 +2135,18 @@ connection.onMessage((channel, msg) => {
 
       // Reconstruct citations from web_search tool results in history
       {
+        const citToolCalls = new Map<string, ChatMessage>()
+        for (const m of historyMessages) {
+          if (m.id.startsWith('tc_') && m.toolName) {
+            citToolCalls.set(m.id.slice(3), m)
+          }
+        }
         const newCitations = new Map(store.citations)
         let pendingSources: CitationSource[] = []
         for (const m of allMessages) {
           if (m.id.startsWith('tr_')) {
             const baseId = m.id.slice(3)
-            const call = toolCalls.get(baseId)
+            const call = citToolCalls.get(baseId)
             if (call?.toolName === 'web_search' && !m.isError) {
               const sources = parseCitationSources(m.content)
               if (sources.length > 0) pendingSources = sources
@@ -2094,7 +2299,9 @@ connection.onMessage((channel, msg) => {
       store.setConnectorRegistry(msg.entries)
       break
   }
-})
+}
+
+connection.onMessage(handleWsMessage)
 
 // ── Convenience hooks ───────────────────────────────────────────────
 

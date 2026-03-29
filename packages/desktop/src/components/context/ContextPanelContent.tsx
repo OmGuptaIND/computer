@@ -1,4 +1,4 @@
-import { Brain, Clock, Cpu, Database, FileText, FolderOpen, GitBranch, Layers } from 'lucide-react'
+import { Activity, Brain, Clock, Cpu, Database, FileText, FolderOpen, GitBranch, Layers } from 'lucide-react'
 import { useStore } from '../../lib/store.js'
 
 export function ContextPanelContent() {
@@ -6,6 +6,11 @@ export function ContextPanelContent() {
   const sessionUsage = useStore((s) => s.sessionUsage)
   const currentProvider = useStore((s) => s.currentProvider)
   const currentModel = useStore((s) => s.currentModel)
+  const syncingSessionIds = useStore((s) => s._syncingSessionIds)
+  const pendingSyncMessages = useStore((s) => s._pendingSyncMessages)
+  const activeStreamingSessions = useStore((s) => s._activeStreamingSessions)
+  const connectionStatus = useStore((s) => s.connectionStatus)
+  const agentStatus = useStore((s) => s.agentStatus)
 
   const contextInfo = activeConv?.contextInfo
   const sessionId = activeConv?.sessionId
@@ -135,6 +140,29 @@ export function ContextPanelContent() {
           </div>
         </Section>
       )}
+
+      {/* Sync & Debug */}
+      <Section icon={Activity} title="Sync Status">
+        <div className="context-panel__kv">
+          <KVRow label="Connection" value={connectionStatus} />
+          <KVRow label="Agent" value={agentStatus} />
+          <KVRow
+            label="Session syncing"
+            value={sessionId && syncingSessionIds.has(sessionId) ? 'yes' : 'no'}
+          />
+          <KVRow
+            label="Streaming"
+            value={sessionId && activeStreamingSessions.has(sessionId) ? 'yes' : 'no'}
+          />
+          <KVRow label="Local messages" value={String(activeConv?.messages.length ?? 0)} />
+          <KVRow
+            label="Queued (sync)"
+            value={String(sessionId ? (pendingSyncMessages.get(sessionId)?.length ?? 0) : 0)}
+          />
+          <KVRow label="Syncing sessions" value={String(syncingSessionIds.size)} />
+          <KVRow label="Streaming sessions" value={String(activeStreamingSessions.size)} />
+        </div>
+      </Section>
 
       {/* Empty state */}
       {!sessionId && totalMemories === 0 && (

@@ -3,6 +3,9 @@ import { connection } from '../lib/connection.js'
 import type { Skill } from '../lib/skills.js'
 import type { ChatImageAttachment } from '../lib/store.js'
 import { useStore } from '../lib/store.js'
+import { Loader2 } from 'lucide-react'
+import { AgentChatHeader } from './chat/AgentChatHeader.js'
+import { AgentEmptyState } from './chat/AgentEmptyState.js'
 import { ChatInput } from './chat/ChatInput.js'
 import { ConfirmDialog } from './chat/ConfirmDialog.js'
 import { ContextIndicator } from './chat/ContextIndicator.js'
@@ -12,6 +15,7 @@ import { SkillDialog } from './skills/SkillDialog.js'
 
 export function AgentChat() {
   const activeConv = useStore((s) => s.getActiveConversation())
+  const agentSession = useStore((s) => s.getActiveAgentSession())
   const addMessage = useStore((s) => s.addMessage)
   const newConversation = useStore((s) => s.newConversation)
   const pendingConfirm = useStore((s) => {
@@ -83,9 +87,6 @@ export function AgentChat() {
           model: store.currentModel,
         })
       }
-    } else if (activeConvSessionId && !store.currentSessionId) {
-      // Restored conversation — resume its server session
-      connection.sendSessionResume(activeConvSessionId)
     }
   }, [activeConvId, activeConvProjectId, activeConvSessionId, activeView])
 
@@ -145,11 +146,23 @@ export function AgentChat() {
         timestamp: Date.now(),
       })
 
+      // For agent conversations, inject agent context on the first message
+      let outboundText = text
+      const freshConv = useStore.getState().getActiveConversation()
+      if (freshConv?.agentSessionId && freshConv.messages.length <= 1) {
+        const agent = useStore.getState().projectAgents.find(
+          (a) => a.sessionId === freshConv.agentSessionId,
+        )
+        if (agent) {
+          outboundText = `<agent_context>\nAgent: ${agent.agent.name}\nDescription: ${agent.agent.description}\nInstructions: ${agent.agent.instructions}\n</agent_context>\n\n${text}`
+        }
+      }
+
       if (sessionId) {
-        connection.sendAiMessageToSession(text, sessionId, outboundAttachments)
+        connection.sendAiMessageToSession(outboundText, sessionId, outboundAttachments)
       } else {
         // Absolute fallback — should not normally happen
-        connection.sendAiMessage(text, outboundAttachments)
+        connection.sendAiMessage(outboundText, outboundAttachments)
       }
     },
     [addMessage, newConversation],
@@ -211,14 +224,29 @@ export function AgentChat() {
   )
 
   const messages = activeConv?.messages || []
+  const isSyncing = useStore((s) => {
+    const sid = s.getActiveConversation()?.sessionId
+    return sid ? s._syncingSessionIds.has(sid) : false
+  })
 
   return (
     <div className="chat-shell">
       <ContextIndicator contextInfo={activeConv?.contextInfo} sessionId={activeConv?.sessionId} />
-      {messages.length === 0 ? (
+      {isSyncing && messages.length === 0 ? (
+        /* First load — nothing local to show yet, show a subtle spinner */
+        <div className="chat-shell__sync-loader">
+          <Loader2 size={20} strokeWidth={1.5} className="chat-shell__sync-spinner" />
+        </div>
+      ) : messages.length === 0 && agentSession ? (
+        <AgentEmptyState agent={agentSession} />
+      ) : messages.length === 0 ? (
         <EmptyState onSend={handleSend} onSkillSelect={setSelectedSkill} />
       ) : (
-        <MessageList messages={messages} />
+        /* Show existing messages while syncing in background — replaced seamlessly when server responds */
+        <>
+          {agentSession && <AgentChatHeader agent={agentSession} />}
+          <MessageList messages={messages} />
+        </>
       )}
 
       {pendingConfirm && (
@@ -232,7 +260,7 @@ export function AgentChat() {
         </div>
       )}
 
-      {messages.length > 0 && (
+      {(messages.length > 0 || agentSession) && (
         <ChatInput
           onSend={handleSend}
           onSteer={handleSteer}

@@ -180,10 +180,6 @@ export class Connection {
     })
   }
 
-  sendSessionResume(id: string) {
-    this.send(Channel.AI, { type: 'session_resume', id })
-  }
-
   sendSessionsList() {
     this.send(Channel.AI, { type: 'sessions_list' })
   }

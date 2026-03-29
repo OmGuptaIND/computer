@@ -114,19 +114,19 @@ function GoogleDriveIcon({ size = 24 }: { size?: number }) {
   )
 }
 
-function BraveSearchIcon({ size = 24 }: { size?: number }) {
+function ExaSearchIcon({ size = 24 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="10" fill="#FB542B" opacity="0.12" />
-      <circle cx="12" cy="11" r="5" stroke="#FB542B" strokeWidth="1.5" fill="none" />
-      <line x1="15.5" y1="14.5" x2="19" y2="18" stroke="#FB542B" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="11" cy="11" r="6" stroke="#6366F1" strokeWidth="1.5" fill="none" />
+      <line x1="15.5" y1="15.5" x2="20" y2="20" stroke="#6366F1" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M9 11h4M11 9v4" stroke="#6366F1" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   )
 }
 
 // Map connector IDs to their brand icon components
 const ICON_MAP: Record<string, (props: { size?: number }) => JSX.Element> = {
-  'brave-search': BraveSearchIcon,
+  'exa-search': ExaSearchIcon,
   telegram: TelegramIcon,
   gmail: GmailIcon,
   'google-calendar': GoogleCalendarIcon,

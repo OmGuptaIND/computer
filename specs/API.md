@@ -242,39 +242,6 @@ Agent confirms session was created.
 }
 ```
 
-### `session_resume`
-
-Client resumes an existing session from disk.
-
-| | |
-|---|---|
-| Direction | Client → Agent |
-| Response | `session_resumed` or `error` |
-| Side effect | Loads session from `~/.anton/sessions/` if not in memory |
-
-```typescript
-{ type: "session_resume", id: string }
-```
-
-### `session_resumed`
-
-Agent confirms session was resumed.
-
-| | |
-|---|---|
-| Direction | Agent → Client |
-
-```typescript
-{
-  type: "session_resumed",
-  id: string,
-  provider: string,
-  model: string,
-  messageCount: number,  // total messages in history
-  title: string          // auto-generated or user-set title
-}
-```
-
 ### `sessions_list`
 
 Client requests all sessions.
@@ -993,10 +960,8 @@ The expected sequence after WebSocket opens:
 4. Client → sessions_list
 5. Agent  → providers_list_response { providers, defaults }
 6. Agent  → sessions_list_response { sessions }
-7. Client → session_resume { id: latest_session }
-8. Client → session_history { id: latest_session }
-9. Agent  → session_resumed { id, provider, model, messageCount, title }
-10. Agent → session_history_response { id, messages }
+7. Client → session_history { id: latest_session }
+8. Agent  → session_history_response { id, messages }
 
    — Ready for chat —
 

@@ -125,6 +125,11 @@ export interface AgentConfig {
 
   connectors: ConnectorConfig[]
 
+  oauth?: {
+    proxyUrl: string // URL of the OAuth proxy (CF Worker)
+    callbackBaseUrl?: string // Agent's public URL for receiving callbacks
+  }
+
   workspace?: {
     root: string // default: ~/Anton — user-visible directory for all projects
   }
@@ -161,7 +166,7 @@ export interface ConnectorConfig {
   name: string
   description?: string
   icon?: string // emoji or URL
-  type: 'mcp' | 'api' // mcp = stdio server, api = simple API key service
+  type: 'mcp' | 'api' | 'oauth' // mcp = stdio server, api = simple API key, oauth = OAuth flow
 
   // For MCP connectors (type: 'mcp')
   command?: string
@@ -171,6 +176,12 @@ export interface ConnectorConfig {
   // For API key connectors (type: 'api')
   apiKey?: string
   baseUrl?: string
+
+  // For OAuth connectors (type: 'oauth') — tokens stored separately in TokenStore
+  oauthProvider?: string
+
+  // Extra per-connector key-value data (e.g. ownerChatId for Telegram)
+  metadata?: Record<string, string>
 
   enabled: boolean
 }
@@ -298,6 +309,14 @@ export function loadConfig(): AgentConfig {
   if (tokenOverride) config.token = tokenOverride
   if (flags.port) config.port = flags.port
 
+  // OAuth env var overrides
+  if (process.env.OAUTH_PROXY_URL || process.env.OAUTH_CALLBACK_BASE_URL) {
+    config.oauth = {
+      proxyUrl: process.env.OAUTH_PROXY_URL || config.oauth?.proxyUrl || '',
+      callbackBaseUrl: process.env.OAUTH_CALLBACK_BASE_URL || config.oauth?.callbackBaseUrl,
+    }
+  }
+
   return config
 }
 
@@ -335,7 +354,7 @@ function createDefaultConfig(): AgentConfig {
         'registry.npmjs.org',
         'api.anthropic.com',
         'api.openai.com',
-        'api.search.brave.com',
+        'api.exa.ai',
       ],
     },
     skills: [],
@@ -1171,11 +1190,14 @@ export interface ConnectorRegistryEntry {
   description: string
   icon: string
   category: 'messaging' | 'productivity' | 'development' | 'social' | 'other'
-  type: 'mcp' | 'api'
+  type: 'mcp' | 'api' | 'oauth'
   command?: string
   args?: string[]
   requiredEnv: string[]
+  optionalFields?: { key: string; label: string; hint?: string }[]
   featured?: boolean
+  oauthProvider?: string // provider key for the OAuth proxy
+  oauthScopes?: string[] // display-only scopes for the UI
   setupGuide?: {
     steps: string[]
     url: string
@@ -1185,61 +1207,47 @@ export interface ConnectorRegistryEntry {
 
 export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
   {
-    id: 'searxng',
-    name: 'Web Search',
+    id: 'exa-search',
+    name: 'Web Search (Exa)',
     description:
-      'Free web search powered by SearXNG. Search the web for current information, research topics, and find resources.',
+      'Semantic web search powered by Exa. Returns full page content as markdown with highlights and summaries.',
     icon: '🔍',
     category: 'productivity',
     type: 'api',
-    requiredEnv: ['SEARXNG_URL'],
+    requiredEnv: ['EXA_SEARCH_URL', 'EXA_SEARCH_TOKEN'],
     featured: true,
     setupGuide: {
       steps: [
-        'You need a running SearXNG instance',
-        'Self-host with Docker: docker run -p 8080:8080 searxng/searxng',
-        "Or use your deployment's provided SearXNG URL",
-        'Paste the URL below (e.g. https://search.yourdomain.com)',
+        'Enter your search proxy URL (e.g. https://anton-search-proxy.your-worker.workers.dev)',
+        'Enter the proxy bearer token for authentication',
       ],
-      url: 'https://docs.searxng.org/admin/installation.html',
-      urlLabel: 'SearXNG Docs',
-    },
-  },
-  {
-    id: 'brave-search',
-    name: 'Brave Search',
-    description: 'Premium web search powered by Brave. Faster results with better ranking.',
-    icon: '🦁',
-    category: 'productivity',
-    type: 'api',
-    requiredEnv: ['BRAVE_SEARCH_API_KEY'],
-    setupGuide: {
-      steps: [
-        'Go to the Brave Search API dashboard',
-        'Sign up or log in to your account',
-        'Create a new API key under "API Keys"',
-        'Copy the key and paste it below',
-      ],
-      url: 'https://api.search.brave.com/app/keys',
-      urlLabel: 'Get API Key',
+      url: 'https://exa.ai',
+      urlLabel: 'Exa Docs',
     },
   },
   {
     id: 'telegram',
     name: 'Telegram',
-    description: 'Send and receive Telegram messages',
+    description: 'Send and receive Telegram messages via your bot',
     icon: '📱',
     category: 'messaging',
-    type: 'mcp',
-    command: 'npx',
-    args: ['-y', 'telegram-mcp-server'],
+    type: 'api',
     requiredEnv: ['TELEGRAM_BOT_TOKEN'],
+    optionalFields: [
+      {
+        key: 'OWNER_CHAT_ID',
+        label: 'Your Chat ID',
+        hint: 'Message @userinfobot on Telegram to get your personal chat ID. Anton will use this to send you messages.',
+      },
+    ],
+    featured: true,
     setupGuide: {
       steps: [
         'Open Telegram and search for @BotFather',
         'Send /newbot and follow the prompts to create a bot',
         'Copy the bot token provided by BotFather',
         'Paste the token below',
+        '(Optional) Message @userinfobot to get your Chat ID so Anton can message you directly',
       ],
       url: 'https://core.telegram.org/bots#botfather',
       urlLabel: 'BotFather Docs',
@@ -1248,44 +1256,16 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
   {
     id: 'gmail',
     name: 'Gmail',
-    description: 'Access, search, and send emails',
+    description: 'Read, search, and send emails from your Gmail account',
     icon: '📧',
     category: 'productivity',
-    type: 'mcp',
-    command: 'npx',
-    args: ['-y', '@anthropic/mcp-server-gmail'],
-    requiredEnv: ['GMAIL_CREDENTIALS_PATH'],
+    type: 'oauth',
+    oauthProvider: 'gmail',
+    oauthScopes: ['https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/gmail.send'],
+    requiredEnv: [],
     featured: true,
     setupGuide: {
-      steps: [
-        'Go to Google Cloud Console and create a project',
-        'Enable the Gmail API for your project',
-        'Create OAuth 2.0 credentials (Desktop app type)',
-        'Download the credentials JSON file',
-        'Paste the file path below',
-      ],
-      url: 'https://console.cloud.google.com/apis/credentials',
-      urlLabel: 'Google Cloud Console',
-    },
-  },
-  {
-    id: 'google-calendar',
-    name: 'Google Calendar',
-    description: 'Manage events and schedules',
-    icon: '📅',
-    category: 'productivity',
-    type: 'mcp',
-    command: 'npx',
-    args: ['-y', '@anthropic/mcp-server-google-calendar'],
-    requiredEnv: ['GOOGLE_CALENDAR_CREDENTIALS_PATH'],
-    setupGuide: {
-      steps: [
-        'Go to Google Cloud Console and create a project',
-        'Enable the Google Calendar API',
-        'Create OAuth 2.0 credentials (Desktop app type)',
-        'Download the credentials JSON file',
-        'Paste the file path below',
-      ],
+      steps: ['Click Connect to authorize with your Google account'],
       url: 'https://console.cloud.google.com/apis/credentials',
       urlLabel: 'Google Cloud Console',
     },
@@ -1296,21 +1276,15 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     description: 'Read and write Notion pages and databases',
     icon: '📝',
     category: 'productivity',
-    type: 'mcp',
-    command: 'npx',
-    args: ['-y', '@anthropic/mcp-server-notion'],
-    requiredEnv: ['NOTION_API_KEY'],
+    type: 'oauth',
+    oauthProvider: 'notion',
+    oauthScopes: [],
+    requiredEnv: [],
     featured: true,
     setupGuide: {
-      steps: [
-        'Go to Notion Integrations page',
-        'Click "New integration" and give it a name',
-        'Copy the "Internal Integration Secret"',
-        'Share your Notion pages with the integration',
-        'Paste the secret below',
-      ],
+      steps: ['Click Connect to authorize with your Notion account'],
       url: 'https://www.notion.so/profile/integrations',
-      urlLabel: 'Create Integration',
+      urlLabel: 'Notion Integrations',
     },
   },
   {
@@ -1319,20 +1293,15 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     description: 'Manage repositories, issues, and pull requests',
     icon: '🐙',
     category: 'development',
-    type: 'mcp',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-github'],
-    requiredEnv: ['GITHUB_TOKEN'],
+    type: 'oauth',
+    oauthProvider: 'github',
+    oauthScopes: ['repo', 'read:org', 'read:user'],
+    requiredEnv: [],
     featured: true,
     setupGuide: {
-      steps: [
-        'Go to GitHub Settings > Developer settings > Personal access tokens',
-        'Click "Generate new token" (fine-grained recommended)',
-        'Select the repositories and permissions you need',
-        'Copy the generated token and paste it below',
-      ],
-      url: 'https://github.com/settings/tokens?type=beta',
-      urlLabel: 'Generate Token',
+      steps: ['Click Connect to authorize with your GitHub account'],
+      url: 'https://github.com/settings/connections/applications',
+      urlLabel: 'GitHub Apps',
     },
   },
   {
@@ -1341,21 +1310,15 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     description: 'Send messages and manage Slack channels',
     icon: '💬',
     category: 'messaging',
-    type: 'mcp',
-    command: 'npx',
-    args: ['-y', '@anthropic/mcp-server-slack'],
-    requiredEnv: ['SLACK_BOT_TOKEN'],
+    type: 'oauth',
+    oauthProvider: 'slack',
+    oauthScopes: ['channels:read', 'chat:write', 'users:read'],
+    requiredEnv: [],
     featured: true,
     setupGuide: {
-      steps: [
-        'Go to the Slack API dashboard and create a new app',
-        'Under "OAuth & Permissions", add the required bot scopes',
-        'Install the app to your workspace',
-        'Copy the "Bot User OAuth Token" (starts with xoxb-)',
-        'Paste the token below',
-      ],
+      steps: ['Click Connect to authorize with your Slack workspace'],
       url: 'https://api.slack.com/apps',
-      urlLabel: 'Slack API Dashboard',
+      urlLabel: 'Slack Apps',
     },
   },
   {

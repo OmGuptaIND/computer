@@ -79,7 +79,7 @@ Returns confirmation string: `Published "{title}" → https://{domain}/a/{slug}`
 ### Domain Resolution
 
 The `DOMAIN` env var (set by cloud-init) flows through:
-1. `cloud-init.sh` → writes to `/etc/anton-agent.env`
+1. `cloud-init.sh` → writes to `~/.anton/agent.env`
 2. `server.ts` → reads `process.env.DOMAIN`, passes to `createSession()`
 3. `session.ts` → passes to `ToolCallbacks.domain`
 4. `agent.ts` → `publish` tool uses `callbacks?.domain` in `executePublish()`

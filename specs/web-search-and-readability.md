@@ -4,7 +4,7 @@
 
 Two capabilities that bring Anton closer to parity with Claude Code's web features:
 
-1. **Web Search** — Search the web via Brave Search API, configured as a connector in Settings
+1. **Web Search** — Semantic web search via Exa, proxied through a Cloudflare Worker
 2. **Smart Content Extraction** — Browser tool upgraded with Readability + Turndown for clean markdown output instead of raw HTML
 
 ## Web Search (`web_search` tool)
@@ -12,65 +12,72 @@ Two capabilities that bring Anton closer to parity with Claude Code's web featur
 ### How it works
 
 - The `web_search` tool is **always registered** in every session
-- When a search connector is configured, it performs real web searches
+- When the Exa search connector is configured, it performs real web searches via the CF worker proxy
 - When not configured, it returns a helpful error guiding the user to Settings → Connectors
 - This means Anton always *knows* it can search — it just might need the user to enable it first
-- **Priority order**: SearXNG (free) is preferred over Brave (paid) when both are configured
 
-### Search providers
+### Architecture
 
-#### SearXNG (free, self-hosted) — recommended for deployments
+```
+Agent → CF Worker (anton-search-proxy) → Exa API (api.exa.ai)
+```
 
-- Self-hosted meta search engine: aggregates results from Google, Bing, DuckDuckGo
-- No API keys, no per-user cost — you host one instance, all users get search
-- Deploy via Docker: `docker run -p 8080:8080 searxng/searxng`
-- JSON API: `GET /search?q=query&format=json`
-- Connector ID: `searxng`, requires `SEARXNG_URL`
+The CF worker:
+- Holds the `EXA_API_KEY` secret — the agent never sees the Exa key directly
+- Authenticates requests via `PROXY_TOKEN` bearer auth
+- Proxies to `POST https://api.exa.ai/search` with content extraction enabled
+- Returns clean results with full page content as markdown
 
-#### Brave Search (paid) — for individual users
+### Why Exa over SearXNG / Brave
 
-- Endpoint: `https://api.search.brave.com/res/v1/web/search`
-- Auth: `X-Subscription-Token` header with API key
-- Pricing: starts at $4/month at https://brave.com/search/api/
-- Returns: titles, URLs, description snippets, and age of results
-- Connector ID: `brave-search`, requires `BRAVE_SEARCH_API_KEY`
+- **Semantic search** — uses embeddings-based neural search, not just keyword matching
+- **Full content extraction** — returns page content as clean markdown, not just snippets
+- **Highlights & summaries** — LLM-identified relevant excerpts per result
+- **Categories** — can focus on news, research papers, companies, people, etc.
+- **Consistent results** — unlike SearXNG which aggregates unreliably from multiple engines
+- **No self-hosting** — no Docker container to maintain
 
 ### Tool parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `query` | string | required | Search query |
-| `count` | number | 10 | Number of results (max 20) |
-| `offset` | number | 0 | Pagination offset |
-| `freshness` | enum | — | `pd` (day), `pw` (week), `pm` (month), `py` (year) |
-| `country` | string | — | Country code, e.g. "US", "GB" |
+| `numResults` | number | 10 | Number of results (max 30) |
+| `category` | string | — | Focus: "news", "research paper", "company", "personal site", "financial report", "people" |
+| `startPublishedDate` | string | — | ISO date filter (after) |
+| `endPublishedDate` | string | — | ISO date filter (before) |
 
 ### Connector setup
 
-Brave Search appears in the **Connectors** registry (Settings → Connectors → Apps tab):
-- Type: `api` (not MCP — no subprocess needed)
-- Required: `BRAVE_SEARCH_API_KEY`
-- When the user enters their API key and clicks Connect, it's stored in `~/.anton/config.yaml` under `connectors`
+Exa Search appears in the **Connectors** registry (Settings → Connectors → Apps tab):
+- Type: `api`
+- Required: `EXA_SEARCH_URL` (proxy URL) and `EXA_SEARCH_TOKEN` (proxy bearer token)
+- When the user enters the URL and token and clicks Connect, it's stored in `~/.anton/config.yaml` under `connectors`
 - The connector shows as "Connected — 1 tool available" in the UI
 
 ### Config format
 
 ```yaml
-# ~/.anton/config.yaml — Option A: SearXNG (free)
+# ~/.anton/config.yaml
 connectors:
-  - id: searxng
-    name: Web Search
+  - id: exa-search
+    name: Web Search (Exa)
     type: api
-    baseUrl: "https://search.yourdomain.com"
+    baseUrl: "https://anton-search-proxy.your-worker.workers.dev"
+    apiKey: "your-proxy-token"
     enabled: true
+```
 
-# Option B: Brave Search (paid)
-connectors:
-  - id: brave-search
-    name: Brave Search
-    type: api
-    apiKey: "BSA..."
-    enabled: true
+### CF Worker deployment
+
+The search proxy worker lives in the `anton` repo at `search-proxy/`:
+
+```bash
+cd search-proxy
+npm install
+wrangler secret put EXA_API_KEY      # your Exa API key
+wrangler secret put PROXY_TOKEN      # token the agent uses to authenticate
+wrangler deploy
 ```
 
 ## Smart Content Extraction (upgraded `browser` tool)
@@ -112,14 +119,12 @@ Each matched element is converted to markdown individually.
 
 | File | Change |
 |------|--------|
-| `packages/agent-core/src/tools/web-search.ts` | New — Brave Search API client |
+| `packages/agent-core/src/tools/web-search.ts` | Rewritten — Exa search via CF worker proxy |
 | `packages/agent-core/src/tools/browser.ts` | Rewritten — Readability + Turndown pipeline |
-| `packages/agent-core/src/agent.ts` | Always-register web_search tool with graceful fallback |
-| `packages/agent-config/src/config.ts` | Brave Search in connector registry + network allowlist |
-| `packages/agent-config/prompts/system.md` | Updated tool descriptions |
-| `packages/agent-server/src/server.ts` | API connectors show as "connected" in UI |
-| `packages/desktop/src/components/connectors/ConnectorsPage.tsx` | API connector env→apiKey mapping |
-| `packages/agent-core/package.json` | Added @mozilla/readability, turndown, linkedom |
+| `packages/agent-core/src/agent.ts` | Always-register web_search tool with Exa connector |
+| `packages/agent-config/src/config.ts` | Exa Search in connector registry + network allowlist |
+| `packages/cli/src/commands/connector.ts` | CLI examples for exa-search connector |
+| `packages/desktop/src/components/connectors/ConnectorIcons.tsx` | Exa search icon |
 
 ## Dependencies added
 

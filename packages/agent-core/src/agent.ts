@@ -45,6 +45,37 @@ import { executeWebSearch } from './tools/web-search.js'
 // Re-export for session.ts
 export { needsConfirmation } from './tools/shell.js'
 
+/** Turn a 5-field cron expression into a short human-readable string. */
+function humanizeCron(expr: string): string {
+  const parts = expr.trim().split(/\s+/)
+  if (parts.length !== 5) return expr
+  const [min, hour, dom, mon, dow] = parts
+
+  // Every N minutes
+  if (min.startsWith('*/') && hour === '*' && dom === '*' && mon === '*' && dow === '*') {
+    const n = Number(min.slice(2))
+    return n === 1 ? 'every minute' : `every ${n} minutes`
+  }
+  // Every N hours
+  if (min !== '*' && hour.startsWith('*/') && dom === '*' && mon === '*' && dow === '*') {
+    const n = Number(hour.slice(2))
+    return n === 1 ? 'every hour' : `every ${n} hours`
+  }
+  // Daily at HH:MM
+  if (min !== '*' && hour !== '*' && !hour.includes('/') && dom === '*' && mon === '*' && dow === '*') {
+    const h = Number(hour)
+    const m = String(min).padStart(2, '0')
+    const ampm = h >= 12 ? 'PM' : 'AM'
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return `daily at ${h12}:${m} ${ampm}`
+  }
+  // Weekdays
+  if (dow === '1-5' && dom === '*' && mon === '*') {
+    return `weekdays at ${hour}:${String(min).padStart(2, '0')}`
+  }
+  return expr
+}
+
 export type AskUserHandler = (questions: AskUserQuestion[]) => Promise<Record<string, string>>
 
 /**
@@ -131,6 +162,7 @@ export function buildTools(
   config: AgentConfig,
   callbacks?: ToolCallbacks,
   mcpManager?: import('./mcp/mcp-manager.js').McpManager,
+  connectorManager?: { getAllTools(): AgentTool[] },
 ): AgentTool[] {
   const tools: AgentTool[] = [
     // ── Core tools ──────────────────────────────────────────────────
@@ -982,11 +1014,13 @@ export function buildTools(
             const askUser = getAskUser()
             if (askUser) {
               const scheduleDesc = params.schedule
-                ? `Runs on schedule: \`${params.schedule}\``
-                : 'Manual only (you trigger it)'
+                ? `Schedule: ${humanizeCron(params.schedule)}`
+                : 'Trigger: manual only'
               const answers = await askUser([{
-                question: `Create agent "${params.name || 'Untitled'}"?\n\n${params.description || ''}\n\n${scheduleDesc}`,
+                question: `Create agent "${params.name || 'Untitled'}"?`,
+                description: [params.description, scheduleDesc].filter(Boolean).join('\n'),
                 options: ['Yes, create it', 'No, cancel'],
+                allowFreeText: false,
               }])
               // Check if user rejected
               const answer = Object.values(answers)[0]
@@ -1001,8 +1035,10 @@ export function buildTools(
             const askUser = getAskUser()
             if (askUser) {
               const answers = await askUser([{
-                question: `Delete agent "${params.agent_id}"? This will remove the agent and its conversation history.`,
+                question: `Delete agent "${params.agent_id}"?`,
+                description: 'This will remove the agent and its conversation history.',
                 options: ['Yes, delete it', 'No, keep it'],
+                allowFreeText: false,
               }])
               const answer = Object.values(answers)[0]
               if (answer && (answer.toLowerCase().includes('no') || answer.toLowerCase().includes('keep'))) {
@@ -1058,58 +1094,46 @@ export function buildTools(
     )
   }
 
-  // ── Web search (always registered — SearXNG free, Brave paid, or setup instructions) ──
+  // ── Web search (Exa via CF worker proxy) ──────────────────────────
   {
-    // Prefer SearXNG (free, self-hosted), fall back to Brave (paid)
-    const searxng = config.connectors.find((c) => c.id === 'searxng' && c.enabled && c.baseUrl)
-    const brave = config.connectors.find((c) => c.id === 'brave-search' && c.enabled && c.apiKey)
-    const provider: import('./tools/web-search.js').SearchProvider | null = searxng?.baseUrl
-      ? { type: 'searxng', baseUrl: searxng.baseUrl }
-      : brave?.apiKey
-        ? { type: 'brave', apiKey: brave.apiKey }
-        : null
+    const exa = config.connectors.find((c) => c.id === 'exa-search' && c.enabled && c.baseUrl && c.apiKey)
+    const provider: import('./tools/web-search.js').SearchProvider | null = exa?.baseUrl && exa?.apiKey
+      ? { baseUrl: exa.baseUrl, token: exa.apiKey }
+      : null
 
     tools.push(
       defineTool({
         name: 'web_search',
         label: 'Web Search',
         description:
-          'Search the web for current information. Returns titles, URLs, and snippets. ' +
+          'Search the web using Exa semantic search. Returns titles, URLs, and full page content as markdown. ' +
           'Use for researching topics, discovering resources, and answering questions that need up-to-date data. ' +
-          'If not configured, tells the user how to enable it.',
+          'Results include extracted page content, not just snippets.',
         parameters: Type.Object({
           query: Type.String({ description: 'Search query' }),
-          count: Type.Optional(
-            Type.Number({ description: 'Number of results (default: 10, max: 20)' }),
+          numResults: Type.Optional(
+            Type.Number({ description: 'Number of results (default: 10, max: 30)' }),
           ),
-          offset: Type.Optional(Type.Number({ description: 'Offset for pagination (default: 0)' })),
-          freshness: Type.Optional(
-            Type.Union(
-              [Type.Literal('pd'), Type.Literal('pw'), Type.Literal('pm'), Type.Literal('py')],
-              {
-                description:
-                  'Filter by freshness: pd=past day, pw=past week, pm=past month, py=past year (Brave only)',
-              },
-            ),
-          ),
-          country: Type.Optional(
+          category: Type.Optional(
             Type.String({
-              description: 'Country code for results, e.g. "US", "GB", "DE" (Brave only)',
+              description:
+                'Focus area: "news", "research paper", "company", "personal site", "financial report", "people"',
             }),
+          ),
+          startPublishedDate: Type.Optional(
+            Type.String({ description: 'Filter results published after this ISO date (e.g. "2025-01-01T00:00:00.000Z")' }),
+          ),
+          endPublishedDate: Type.Optional(
+            Type.String({ description: 'Filter results published before this ISO date' }),
           ),
         }),
         async execute(_toolCallId, params) {
           if (!provider) {
             return toolResult(
               'Web search is not configured. To enable it:\n\n' +
-                '**Free (self-hosted):**\n' +
                 '1. Go to Settings → Connectors\n' +
-                '2. Find "Web Search" (SearXNG) and click Connect\n' +
-                '3. Enter your SearXNG instance URL\n\n' +
-                '**Paid ($4/mo):**\n' +
-                '1. Go to Settings → Connectors\n' +
-                '2. Find "Brave Search" and click Connect\n' +
-                '3. Enter your API key from https://brave.com/search/api/\n\n' +
+                '2. Find "Web Search (Exa)" and click Connect\n' +
+                '3. Enter your search proxy URL and token\n\n' +
                 'In the meantime, you can use the browser tool to fetch specific URLs if you have them.',
               true,
             )
@@ -1127,6 +1151,15 @@ export function buildTools(
     if (mcpTools.length > 0) {
       console.log(`[buildTools] adding ${mcpTools.length} MCP tools from connectors`)
       tools.push(...mcpTools)
+    }
+  }
+
+  // ── Direct connector tools (OAuth-based connectors) ───────────────
+  if (connectorManager) {
+    const directTools = connectorManager.getAllTools()
+    if (directTools.length > 0) {
+      console.log(`[buildTools] adding ${directTools.length} direct connector tools`)
+      tools.push(...directTools)
     }
   }
 

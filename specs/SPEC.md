@@ -83,12 +83,10 @@ Sessions are independent agent instances, each with their own model, provider, a
 |------|-----------|---------|---------|
 | Create | Client → Agent | AI | `{ type: "session_create", id, provider?, model?, apiKey? }` |
 | Created | Agent → Client | AI | `{ type: "session_created", id, provider, model }` |
-| Resume | Client → Agent | AI | `{ type: "session_resume", id }` |
-| Resumed | Agent → Client | AI | `{ type: "session_resumed", id, provider, model, messageCount, title }` |
 | List | Client → Agent | AI | `{ type: "sessions_list" }` |
 | List Response | Agent → Client | AI | `{ type: "sessions_list_response", sessions: [...] }` |
-| History | Client → Agent | AI | `{ type: "session_history", id }` |
-| History Response | Agent → Client | AI | `{ type: "session_history_response", id, messages: [...] }` |
+| History | Client → Agent | AI | `{ type: "session_history", id, before?, limit? }` |
+| History Response | Agent → Client | AI | `{ type: "session_history_response", id, messages, lastSeq, totalCount, hasMore, artifacts? }` |
 | Destroy | Client → Agent | AI | `{ type: "session_destroy", id }` |
 | Destroyed | Agent → Client | AI | `{ type: "session_destroyed", id }` |
 
@@ -96,41 +94,36 @@ Sessions are independent agent instances, each with their own model, provider, a
 - `apiKey` in `session_create` overrides the server-stored key for that session only (never persisted)
 - Sessions auto-expire after `sessions.ttlDays` (default: 7 days)
 
-### Session History (v0.3.0)
+### Session History (v0.3.0, paginated v0.5.0)
 
-Clients can fetch the full message history for any session. The server reads the pi SDK message array and translates it to a client-friendly format:
+Clients fetch message history for any session. The server supports **paginated loading** — default 200 messages per page, starting from the latest. Older messages are loaded on demand as the user scrolls up.
 
 ```typescript
-// Request
+// Request — latest page (first load)
 { type: "session_history", id: "sess_abc123" }
+
+// Request — older page (scroll-up pagination)
+{ type: "session_history", id: "sess_abc123", before: 42, limit: 200 }
 
 // Response
 {
   type: "session_history_response",
   id: "sess_abc123",
-  messages: [
-    {
-      seq: 1,
-      role: "user",
-      content: "What changed in this screenshot?",
-      ts: 1711036800000,
-      attachments: [
-        {
-          id: "images/0001-01-screenshot.png",
-          name: "screenshot.png",
-          mimeType: "image/png",
-          storagePath: "images/0001-01-screenshot.png",
-          sizeBytes: 248193,
-          data: "<base64>"
-        }
-      ]
-    },
-    { seq: 2, role: "assistant", content: "I'll set up nginx...", ts: 1711036802000 },
-    { seq: 3, role: "tool_call", content: "Running: shell", toolName: "shell", toolInput: { command: "apt install nginx" }, toolId: "tc_1", ts: 1711036802500 },
-    { seq: 4, role: "tool_result", content: "Reading package lists...", toolId: "tc_1", ts: 1711036803000 }
-  ]
+  lastSeq: 150,
+  totalCount: 150,
+  hasMore: true,         // older messages exist
+  messages: [ ... ],     // last 200 entries (or entries with seq < before)
+  artifacts: [ ... ]     // all artifacts from full history (first page only)
 }
 ```
+
+Request fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | string | Session ID |
+| before | number? | Return entries with `seq < before` (for pagination). Omit for latest page. |
+| limit | number? | Max entries to return (default: 200) |
 
 History entry fields:
 
@@ -146,7 +139,58 @@ History entry fields:
 | isError | boolean? | Whether tool result is an error |
 | attachments | object[]? | Image attachments, with VM-relative `storagePath` and optional base64 `data` |
 
-This allows clients to be thin — all message history lives on the server. The desktop and CLI fetch history on session resume instead of storing messages locally.
+Response metadata:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| lastSeq | number | Seq of the last message in the full session |
+| totalCount | number | Total entries in the full session |
+| hasMore | boolean | True if older messages exist before the returned page |
+| artifacts | object[]? | Artifacts extracted from full history (only on first page) |
+
+**Artifact fields** (returned in `artifacts` array on first page):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | string | Artifact ID |
+| type | string | `"file"`, `"output"`, `"artifact"` |
+| renderType | string | `"code"`, `"html"`, `"markdown"`, `"svg"`, `"mermaid"` |
+| title | string? | Display title |
+| filename | string? | Filename |
+| filepath | string? | Full file path (used for dedup) |
+| language | string | Language for syntax highlighting |
+| content | string | Full artifact content |
+| toolCallId | string | Links to the tool call that created it |
+
+This allows clients to be thin — all message history lives on the server. The first page includes all artifacts so the sidebar is immediately populated. Older messages are fetched on demand as the user scrolls up.
+
+### Sync-First Protocol (v0.4.0)
+
+When a client connects or switches conversations, it MUST sync history before rendering new streaming messages. This prevents stale localStorage from diverging with the server.
+
+**Rules:**
+1. Server is always authoritative — client replaces local state with server history, unconditionally
+2. On disconnect, clients MUST clear `_activeStreamingSessions` to prevent stale streaming flags from blocking sync on reconnect
+3. While waiting for `session_history_response`, incoming streaming messages (text, tool_call, tool_result, etc.) are queued
+4. After history loads, queued messages are replayed in order
+5. The UI shows a loading skeleton while sync is in progress
+
+**Flow:**
+```
+Client                          Server
+  |                               |
+  |--- session_history {id} ----->|
+  |    [mark session syncing]     |
+  |                               |
+  |    (streaming msgs arrive)    |
+  |    [queued, not rendered]     |
+  |                               |
+  |<-- session_history_response --|
+  |    [replace local state]      |
+  |    [clear syncing flag]       |
+  |    [replay queued msgs]       |
+  |    [render full history]      |
+```
 
 ### Chat Messages (with session support)
 
@@ -383,8 +427,7 @@ Clients SHOULD perform these steps after `auth_ok`:
 
 1. Send `providers_list` — get available providers and which have API keys
 2. Send `sessions_list` — get existing sessions sorted by `lastActiveAt` desc
-3. Auto-resume the most recent session (send `session_resume` + `session_history`)
-4. If no sessions exist, create a new one with `session_create`
+3. If no sessions exist, create a new one with `session_create`
 
 ### On New Conversation
 
@@ -395,10 +438,12 @@ Clients SHOULD perform these steps after `auth_ok`:
 
 ### On Switch Conversation
 
-1. Send `session_resume` for the target session
-2. Wait for `session_resumed` response
-3. Send `session_history` to fetch message history
-4. Render messages from the history response
+1. Mark session as syncing (show loading skeleton in chat area)
+2. Send `session_history` to fetch message history from server
+3. Queue any streaming messages that arrive during sync
+4. On `session_history_response`: replace local messages with server state
+5. Replay queued streaming messages
+6. Clear syncing flag (hide skeleton, render full conversation)
 
 ## Client Connection Defaults
 

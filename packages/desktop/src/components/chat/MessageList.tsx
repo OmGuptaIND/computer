@@ -1,5 +1,5 @@
 import { AnimatePresence } from 'framer-motion'
-import { ArrowDown } from 'lucide-react'
+import { ArrowDown, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type ChatMessage, useAgentStatus, useStore } from '../../lib/store.js'
 import { ActionsGroup } from './ActionsGroup.js'
@@ -32,8 +32,11 @@ function TurnStats() {
   const turnUsage = useStore((s) => s.turnUsage)
   const lastTurnDurationMs = useStore((s) => s.lastTurnDurationMs)
   const agentStatus = useStore((s) => s.agentStatus)
+  const activeConversationId = useStore((s) => s.activeConversationId)
+  const turnStatsConversationId = useStore((s) => s.turnStatsConversationId)
 
   if (agentStatus !== 'idle' || !turnUsage || !lastTurnDurationMs) return null
+  if (turnStatsConversationId !== activeConversationId) return null
 
   return (
     <div className="turn-stats">
@@ -56,6 +59,12 @@ export function MessageList({ messages }: Props) {
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const agentStatus = useAgentStatus()
   const grouped = useMemo(() => groupMessages(messages), [messages])
+
+  // Pagination: load older messages on scroll-to-top
+  const activeSessionId = useStore((s) => s.getActiveConversation()?.sessionId)
+  const hasMore = useStore((s) => activeSessionId ? (s._sessionHasMore.get(activeSessionId) ?? false) : false)
+  const isLoadingOlder = useStore((s) => activeSessionId ? s._loadingOlderSessions.has(activeSessionId) : false)
+  const prevScrollHeightRef = useRef(0)
 
   const prevMsgCountRef = useRef(0)
 
@@ -85,7 +94,7 @@ export function MessageList({ messages }: Props) {
     }
   }, [messages, scrollToBottom])
 
-  // Show/hide scroll button (recalculate on scroll AND content size changes)
+  // Show/hide scroll button + trigger pagination on scroll-to-top
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
@@ -93,6 +102,12 @@ export function MessageList({ messages }: Props) {
     const checkScroll = () => {
       const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
       setShowScrollBtn(distFromBottom > 200)
+
+      // Trigger loading older messages when scrolled near the top
+      if (container.scrollTop < 80 && hasMore && !isLoadingOlder && activeSessionId) {
+        prevScrollHeightRef.current = container.scrollHeight
+        useStore.getState().loadOlderMessages(activeSessionId)
+      }
     }
 
     container.addEventListener('scroll', checkScroll)
@@ -107,11 +122,30 @@ export function MessageList({ messages }: Props) {
       container.removeEventListener('scroll', checkScroll)
       observer.disconnect()
     }
-  }, [])
+  }, [hasMore, isLoadingOlder, activeSessionId])
+
+  // Maintain scroll position when older messages are prepended
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || prevScrollHeightRef.current === 0) return
+
+    const newHeight = container.scrollHeight
+    const heightDiff = newHeight - prevScrollHeightRef.current
+    if (heightDiff > 0) {
+      container.scrollTop += heightDiff
+    }
+    prevScrollHeightRef.current = 0
+  }, [messages.length])
 
   return (
     <div ref={containerRef} className="message-list">
       <div className="message-list__inner">
+        {/* Loading spinner for older messages */}
+        {isLoadingOlder && (
+          <div className="message-list__loading-older">
+            <Loader2 size={16} strokeWidth={1.5} className="message-list__loading-spinner" />
+          </div>
+        )}
         <AnimatePresence mode="popLayout">
           {grouped.map((item, idx) => {
             if (item.type === 'message') {

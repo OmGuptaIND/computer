@@ -115,13 +115,14 @@ YAML
 # ─────────────────────────────────────────────────────────────────
 # 7. Set up environment file (API keys)
 # ─────────────────────────────────────────────────────────────────
-cat > /etc/anton-agent.env <<ENV
+cat > ${ANTON_DIR}/agent.env <<ENV
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 ANTON_DIR=${ANTON_DIR}
 DOMAIN=${DOMAIN}
+OAUTH_PROXY_URL=https://oauth.antoncomputer.in
 ${ANTON_TOKEN:+ANTON_TOKEN=${ANTON_TOKEN}}
 ENV
-chmod 600 /etc/anton-agent.env
+chmod 600 ${ANTON_DIR}/agent.env
 log "CONFIG: agent env + config written"
 
 # ─────────────────────────────────────────────────────────────────
@@ -137,7 +138,7 @@ Wants=network-online.target
 Type=simple
 User=anton
 Group=anton
-EnvironmentFile=/etc/anton-agent.env
+EnvironmentFile=${ANTON_DIR}/agent.env
 ExecStart=/usr/local/bin/anton-agent --port ${AGENT_PORT}
 Restart=always
 RestartSec=5
@@ -185,6 +186,21 @@ ${DOMAIN} {
         uri strip_prefix /p
         root * /home/anton/Anton
         file_server
+    }
+
+    # OAuth callback → agent
+    handle /_anton/oauth/* {
+        reverse_proxy localhost:${AGENT_PORT}
+    }
+
+    # Telegram webhook → agent
+    handle /_anton/telegram/* {
+        reverse_proxy localhost:${AGENT_PORT}
+    }
+
+    # Sidecar
+    handle_path /_anton/* {
+        reverse_proxy localhost:9878
     }
 
     # Everything else → agent WebSocket

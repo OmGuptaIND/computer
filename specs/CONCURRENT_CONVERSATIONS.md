@@ -96,7 +96,7 @@ When a session needs user approval (tool confirm, ask_user questions, plan revie
 - Sessions persist to disk at `~/.anton/conversations/{sessionId}/`
 - Each session directory contains: `meta.json`, `messages.jsonl`, `images/`, `workspace/`, `memory/`
 - On disconnect, all active turns are cancelled and persisted
-- On reconnect, sessions can be resumed via `session_resume`
+- On reconnect, sessions are auto-loaded from disk when a message is sent to them
 
 ## Deletion
 

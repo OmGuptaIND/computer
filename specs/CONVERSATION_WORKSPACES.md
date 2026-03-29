@@ -143,7 +143,7 @@ interface ContextInfoMessage {
 }
 ```
 
-Sent after `session_created` / `session_resumed`.
+Sent after `session_created`.
 
 ### Desktop UI
 

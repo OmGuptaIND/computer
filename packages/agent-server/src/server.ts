@@ -40,6 +40,7 @@ import {
   updateProjectStats,
   appendMessageToSession,
   getProjectSessionsDir,
+  loadAgentMetadata,
 } from '@anton/agent-config'
 import { GIT_HASH, VERSION } from '@anton/agent-config'
 import {
@@ -63,6 +64,9 @@ import {
 import { Channel, decodeFrame, encodeFrame, parseJsonPayload } from '@anton/protocol'
 import type { AiMessage, ChannelId, ControlMessage, TerminalMessage } from '@anton/protocol'
 import { WebSocket, WebSocketServer } from 'ws'
+import { ConnectorManager, CONNECTOR_FACTORIES } from '@anton/connectors'
+import { OAuthFlow, TokenStore, oauthCallbackHandler } from './oauth/index.js'
+import { TelegramBotHandler } from './telegram-bot.js'
 import type { Scheduler } from './scheduler.js'
 import { Updater } from './updater.js'
 
@@ -83,10 +87,22 @@ export class AgentServer {
   private agentManager: import('./agents/agent-manager.js').AgentManager | null = null
   private updater: Updater = new Updater()
   private mcpManager: McpManager = new McpManager()
+  private oauthFlow: OAuthFlow
+  private tokenStore: TokenStore
+  private connectorManager: ConnectorManager
+  private telegramBot: TelegramBotHandler | null = null
   private ptys: Map<string, ChildProcess> = new Map()
 
   constructor(config: AgentConfig) {
     this.config = config
+
+    // Initialize OAuth infrastructure
+    this.tokenStore = new TokenStore(getAntonDir(), config.token)
+    this.oauthFlow = new OAuthFlow(config, this.tokenStore)
+    this.connectorManager = new ConnectorManager(
+      CONNECTOR_FACTORIES,
+      (provider) => this.oauthFlow.getToken(provider),
+    )
 
     // Clean expired sessions on startup
     const ttl = config.sessions?.ttlDays ?? 7
@@ -115,6 +131,24 @@ export class AgentServer {
 
     // ── Primary: plain WS on config.port (default 9876) ──
     const plainServer = createHttpServer((req, res) => {
+      // OAuth callback from the proxy
+      if (req.method === 'POST' && req.url === '/_anton/oauth/callback') {
+        oauthCallbackHandler(req, res, this.oauthFlow, (result) => {
+          this.handleOAuthComplete(result)
+        })
+        return
+      }
+
+      if (req.method === 'POST' && req.url === '/_anton/telegram/webhook') {
+        if (this.telegramBot) {
+          this.telegramBot.handle(req, res)
+        } else {
+          res.writeHead(404)
+          res.end('Telegram bot not configured')
+        }
+        return
+      }
+
       if (req.url === '/health') {
         const updateInfo = this.updater.getUpdateAvailable()
         res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -177,8 +211,20 @@ export class AgentServer {
     // Start MCP connectors
     await this.startMcpConnectors()
 
+    // Activate OAuth connectors that have stored tokens
+    await this.startOAuthConnectors()
+
+    // Activate API connectors with stored tokens from config or env
+    this.startApiConnectors()
+
+    // Start Telegram bot if token is configured
+    await this.startTelegramBot()
+
     console.log(`\n  Agent ID: ${this.config.agentId}`)
     console.log(`  Token:    ${this.config.token}\n`)
+
+    // Log all stored sessions for debugging sync issues
+    this.logStoredSessions()
   }
 
   // ── Connection handling ─────────────────────────────────────────
@@ -591,10 +637,6 @@ export class AgentServer {
         this.handleSessionCreate(msg)
         break
 
-      case 'session_resume':
-        this.handleSessionResume(msg)
-        break
-
       case 'sessions_list':
         this.handleSessionsList()
         break
@@ -701,6 +743,12 @@ export class AgentServer {
         break
       case 'connector_registry_list':
         this.handleConnectorRegistryList()
+        break
+      case 'connector_oauth_start':
+        this.handleConnectorOAuthStart(msg)
+        break
+      case 'connector_oauth_disconnect':
+        this.handleConnectorOAuthDisconnect(msg)
         break
 
       // ── Publish artifacts ──
@@ -844,6 +892,13 @@ export class AgentServer {
         }
       }
 
+      // Load agent instructions for scheduled agent sessions
+      let agentInstructionsForSession: string | undefined
+      if (msg.id.startsWith('agent--') && msg.projectId) {
+        const agentMeta = loadAgentMetadata(msg.projectId, msg.id)
+        if (agentMeta) agentInstructionsForSession = agentMeta.instructions
+      }
+
       const session = createSession(msg.id, this.config, {
         provider: msg.provider,
         model: msg.model,
@@ -854,11 +909,13 @@ export class AgentServer {
         projectWorkspacePath,
         projectType,
         mcpManager: this.mcpManager,
+        connectorManager: this.connectorManager,
         onJobAction: msg.projectId ? (this.buildAgentActionHandler(msg.id)) : undefined,
         onDeliverResult: (msg.projectId && msg.id.startsWith('agent--'))
           ? this.buildDeliverResultHandler(msg.id, msg.projectId)
           : undefined,
         domain: process.env.DOMAIN,
+        agentInstructions: agentInstructionsForSession,
       })
 
       this.wireSessionConfirmHandler(session)
@@ -901,117 +958,6 @@ export class AgentServer {
       this.sendToClient(Channel.AI, {
         type: 'error',
         message: `Failed to create session: ${(err as Error).message}`,
-        sessionId: msg.id,
-      })
-    }
-  }
-
-  private handleSessionResume(msg: { id: string }) {
-    try {
-      // Check if already in memory
-      let session = this.sessions.get(msg.id)
-
-      if (!session) {
-        // Extract projectId from session ID format
-        let projectId: string | undefined
-        const projMatch = msg.id.match(/^proj_(.+?)_sess_/)
-        if (projMatch) {
-          projectId = projMatch[1]
-        }
-
-        // Also handle agent-job-{projectId}-{jobId} format
-        // Use -job_ as delimiter since job IDs always start with job_
-        const agentMatch = msg.id.match(/^agent-job-(.+?)-(job_.+)$/)
-        if (agentMatch) {
-          projectId = agentMatch[1]
-        }
-
-        // Handle agent--{projectId}--{suffix} format
-        if (!projectId) {
-          const newAgentMatch = msg.id.match(/^agent--(.+?)--/)
-          if (newAgentMatch) {
-            projectId = newAgentMatch[1]
-          }
-        }
-
-        // Try loading from disk (project dir first if applicable, then global)
-        const resumeProject = projectId ? loadProject(projectId) : undefined
-        session =
-          resumeSession(msg.id, this.config, {
-            onSubAgentEvent: this.makeSubAgentEventHandler(msg.id),
-            mcpManager: this.mcpManager,
-            projectId,
-            projectContext: resumeProject
-              ? buildProjectContext(resumeProject, projectId!)
-              : undefined,
-            projectWorkspacePath: resumeProject?.workspacePath,
-            projectType: resumeProject?.type,
-            onJobAction: projectId ? (this.buildAgentActionHandler(msg.id)) : undefined,
-            onDeliverResult: (projectId && msg.id.startsWith('agent--'))
-              ? this.buildDeliverResultHandler(msg.id, projectId)
-              : undefined,
-          }) ?? undefined
-
-        // Fallback to global sessions
-        if (!session && projectId) {
-          session =
-            resumeSession(msg.id, this.config, {
-              onSubAgentEvent: this.makeSubAgentEventHandler(msg.id),
-              mcpManager: this.mcpManager,
-            }) ?? undefined
-        }
-
-        if (!session) {
-          this.sendToClient(Channel.AI, {
-            type: 'error',
-            message: `Session not found: ${msg.id}`,
-            sessionId: msg.id,
-          })
-          return
-        }
-        this.wireSessionConfirmHandler(session)
-        this.wirePlanConfirmHandler(session)
-        this.wireAskUserHandler(session)
-        this.sessions.set(msg.id, session)
-      }
-
-      const info = session.getInfo()
-      this.sendToClient(Channel.AI, {
-        type: 'session_resumed',
-        id: info.id,
-        provider: info.provider,
-        model: info.model,
-        messageCount: info.messageCount,
-        title: info.title,
-        lastTasks: info.lastTasks,
-      })
-
-      // Send tasks_update so UI restores the task checklist immediately
-      if (info.lastTasks && info.lastTasks.length > 0) {
-        this.sendToClient(Channel.AI, {
-          type: 'tasks_update',
-          tasks: info.lastTasks,
-          sessionId: msg.id,
-        })
-      }
-
-      // Send context info if available
-      if (session.contextInfo) {
-        this.sendToClient(Channel.AI, {
-          type: 'context_info',
-          sessionId: msg.id,
-          globalMemories: session.contextInfo.globalMemories,
-          conversationMemories: session.contextInfo.conversationMemories,
-          crossConversationMemories: session.contextInfo.crossConversationMemories,
-          projectId: session.contextInfo.projectId,
-        })
-      }
-
-      console.log(`Session resumed: ${msg.id} (${info.messageCount} messages)`)
-    } catch (err: unknown) {
-      this.sendToClient(Channel.AI, {
-        type: 'error',
-        message: `Failed to resume session: ${(err as Error).message}`,
         sessionId: msg.id,
       })
     }
@@ -1267,21 +1213,43 @@ export class AgentServer {
     console.log(`Session destroyed: ${msg.id}`)
   }
 
-  private handleSessionHistory(msg: { id: string }) {
+  private handleSessionHistory(msg: { id: string; before?: number; limit?: number }) {
     try {
       // Check if already in memory
       let session = this.sessions.get(msg.id)
 
       if (!session) {
-        // Try loading from disk
-        session =
-          resumeSession(msg.id, this.config, {
+        // Resolve projectId from session ID formats so we look in the right directory
+        let projectId: string | undefined
+        const projMatch = msg.id.match(/^proj_(.+?)_sess_/)
+        if (projMatch) projectId = projMatch[1]
+        if (!projectId) {
+          const agentMatch = msg.id.match(/^agent--(.+?)--/)
+          if (agentMatch) projectId = agentMatch[1]
+        }
+
+        // Try loading from disk (project dir first, then global fallback)
+        const resumeOpts = {
+          onSubAgentEvent: this.makeSubAgentEventHandler(msg.id),
+          mcpManager: this.mcpManager,
+        connectorManager: this.connectorManager,
+          projectId,
+        }
+        session = resumeSession(msg.id, this.config, resumeOpts) ?? undefined
+
+        // Fallback to global sessions dir if project-scoped lookup failed
+        if (!session && projectId) {
+          session = resumeSession(msg.id, this.config, {
             onSubAgentEvent: this.makeSubAgentEventHandler(msg.id),
             mcpManager: this.mcpManager,
+        connectorManager: this.connectorManager,
           }) ?? undefined
+        }
+
         if (!session) {
           this.sendToClient(Channel.AI, {
             type: 'error',
+            code: 'session_not_found',
             message: `Session not found: ${msg.id}`,
             sessionId: msg.id,
           })
@@ -1293,10 +1261,34 @@ export class AgentServer {
         this.sessions.set(msg.id, session)
       }
 
+      const limit = msg.limit ?? 200
+      const isFirstPage = msg.before === undefined
+
+      // Get full history to compute totalCount and lastSeq
+      const fullHistory = session.getHistory()
+      const totalCount = fullHistory.length
+      const lastSeq = totalCount > 0 ? fullHistory[totalCount - 1].seq : 0
+
+      // Get paginated page
+      const page = session.getHistory({ before: msg.before, limit })
+      const hasMore = page.length > 0 && page[0].seq > 1
+
+      console.log(
+        `[Session history] ${msg.id}: sending ${page.length}/${totalCount} entries` +
+          ` (lastSeq=${lastSeq}, hasMore=${hasMore}, before=${msg.before ?? 'latest'})`,
+      )
+
+      // On first page, include artifacts extracted from full history
+      const artifacts = isFirstPage ? session.getArtifacts() : undefined
+
       this.sendToClient(Channel.AI, {
         type: 'session_history_response',
         id: msg.id,
-        messages: session.getHistory(),
+        messages: page,
+        lastSeq,
+        totalCount,
+        hasMore,
+        artifacts,
       })
 
       // Restore task state after history
@@ -1483,7 +1475,7 @@ export class AgentServer {
 
     switch (msg.action) {
       case 'start':
-        this.agentManager.runAgent(msg.sessionId)
+        this.agentManager.runAgent(msg.sessionId, 'manual')
         break
       case 'stop': {
         const agent = this.agentManager.stopAgent(msg.sessionId)
@@ -1555,7 +1547,7 @@ export class AgentServer {
         }
         case 'start': {
           if (!input.jobId) return 'Error: job_id (session ID) is required for start'
-          const agent = await am.runAgent(input.jobId)
+          const agent = await am.runAgent(input.jobId, 'manual')
           if (!agent) return `Error: Agent not found: ${input.jobId}`
           return `Agent "${agent.agent.name}" started`
         }
@@ -1821,6 +1813,7 @@ export class AgentServer {
         session = createSession(DEFAULT_SESSION_ID, this.config, {
           onSubAgentEvent: this.makeSubAgentEventHandler(DEFAULT_SESSION_ID),
           mcpManager: this.mcpManager,
+        connectorManager: this.connectorManager,
           domain: process.env.DOMAIN,
         })
         this.wireSessionConfirmHandler(session)
@@ -1850,10 +1843,20 @@ export class AgentServer {
         }
 
         const chatResumeProject = projectId ? loadProject(projectId) : undefined
+
+        // Load agent instructions for scheduled agent sessions
+        const isAgentSession = sessionId.startsWith('agent--')
+        let agentInstructions: string | undefined
+        if (isAgentSession && projectId) {
+          const agentMeta = loadAgentMetadata(projectId, sessionId)
+          if (agentMeta) agentInstructions = agentMeta.instructions
+        }
+
         session =
           resumeSession(sessionId, this.config, {
             onSubAgentEvent: this.makeSubAgentEventHandler(sessionId),
             mcpManager: this.mcpManager,
+        connectorManager: this.connectorManager,
             projectId,
             projectContext: chatResumeProject
               ? buildProjectContext(chatResumeProject, projectId!)
@@ -1861,9 +1864,10 @@ export class AgentServer {
             projectWorkspacePath: chatResumeProject?.workspacePath,
             projectType: chatResumeProject?.type,
             onJobAction: projectId ? (this.buildAgentActionHandler(sessionId)) : undefined,
-            onDeliverResult: (projectId && sessionId.startsWith('agent--'))
+            onDeliverResult: (isAgentSession && projectId)
               ? this.buildDeliverResultHandler(sessionId, projectId)
               : undefined,
+            agentInstructions,
           }) ?? undefined
 
         // Also try global sessions as fallback
@@ -1872,6 +1876,7 @@ export class AgentServer {
             resumeSession(sessionId, this.config, {
               onSubAgentEvent: this.makeSubAgentEventHandler(sessionId),
               mcpManager: this.mcpManager,
+        connectorManager: this.connectorManager,
             }) ?? undefined
         }
 
@@ -1884,6 +1889,7 @@ export class AgentServer {
         } else {
           this.sendToClient(Channel.AI, {
             type: 'error',
+            code: 'session_not_found',
             message: `Session not found: ${sessionId}. Create it first with session_create.`,
             sessionId,
           })
@@ -2259,6 +2265,63 @@ export class AgentServer {
     }
   }
 
+  private async startOAuthConnectors(): Promise<void> {
+    const connected = this.oauthFlow.listConnected()
+    if (connected.length === 0) return
+
+    console.log(`  Activating ${connected.length} OAuth connector(s)...`)
+    for (const providerId of connected) {
+      if (this.connectorManager.hasFactory(providerId)) {
+        await this.connectorManager.activate(providerId)
+      }
+    }
+  }
+
+  private async startTelegramBot(): Promise<void> {
+    const token = this.getTelegramToken()
+    if (!token) return
+
+    const domain = process.env.DOMAIN
+    if (!domain) {
+      console.log('  Telegram bot token found but DOMAIN not set — skipping webhook registration')
+      return
+    }
+
+    this.telegramBot = new TelegramBotHandler({
+      token,
+      config: this.config,
+      mcpManager: this.mcpManager,
+      connectorManager: this.connectorManager,
+    })
+
+    const publicUrl = `https://${domain}`
+    await this.telegramBot.registerWebhook(publicUrl)
+  }
+
+  private getTelegramToken(): string | null {
+    // Check env var first, then saved connector config
+    if (process.env.TELEGRAM_BOT_TOKEN) return process.env.TELEGRAM_BOT_TOKEN
+    const saved = getConnectors(this.config).find((c) => c.id === 'telegram' && c.enabled)
+    return saved?.apiKey ?? null
+  }
+
+  /** Activate direct connectors that have a stored apiKey in config or a matching env var. */
+  private startApiConnectors(): void {
+    const apiConnectors = getConnectors(this.config).filter(
+      (c) => c.type === 'api' && c.enabled && this.connectorManager.hasFactory(c.id),
+    )
+
+    for (const c of apiConnectors) {
+      // Prefer stored apiKey from config, fall back to env var
+      const token = c.apiKey ?? process.env[`${c.id.toUpperCase()}_BOT_TOKEN`] ?? process.env[`${c.id.toUpperCase()}_API_KEY`]
+      if (token) {
+        this.connectorManager.activateWithToken(c.id, token)
+        this.applyConnectorMetadata(c.id, c.metadata)
+        console.log(`  Activated API connector: ${c.id}`)
+      }
+    }
+  }
+
   private connectorToMcpConfig(c: ConnectorConfig): McpServerConfig {
     return {
       id: c.id,
@@ -2273,18 +2336,22 @@ export class AgentServer {
 
   private buildConnectorStatus(c: ConnectorConfig) {
     const mcpStatus = this.mcpManager.getStatus().find((s) => s.id === c.id)
-    // API connectors are "connected" when they have an apiKey or baseUrl configured
-    const isApiConnected = c.type === 'api' && (!!c.apiKey || !!c.baseUrl) && c.enabled
+    const directStatus = this.connectorManager.getStatus().find((s) => s.id === c.id)
+    // OAuth connectors are "connected" when they have a stored token
+    const isOAuthConnected = c.type === 'oauth' && this.oauthFlow.hasToken(c.id) && c.enabled
+    const connected = mcpStatus?.connected ?? directStatus?.connected ?? isOAuthConnected
+    const toolCount = mcpStatus?.toolCount ?? directStatus?.toolCount ?? 0
+    const tools = mcpStatus?.tools ?? directStatus?.tools ?? []
     return {
       id: c.id,
       name: c.name,
       description: c.description,
       icon: c.icon,
       type: c.type,
-      connected: mcpStatus?.connected ?? isApiConnected,
+      connected,
       enabled: c.enabled,
-      toolCount: mcpStatus?.toolCount ?? (isApiConnected ? 1 : 0),
-      tools: mcpStatus?.tools ?? (isApiConnected ? ['web_search'] : []),
+      toolCount,
+      tools,
     }
   }
 
@@ -2302,6 +2369,18 @@ export class AgentServer {
 
       if (msg.connector.type === 'mcp' && msg.connector.command) {
         await this.mcpManager.addConnector(this.connectorToMcpConfig(msg.connector))
+      }
+
+      // Activate direct API connectors immediately using the provided token
+      if (msg.connector.type === 'api' && msg.connector.apiKey && this.connectorManager.hasFactory(msg.connector.id)) {
+        this.connectorManager.activateWithToken(msg.connector.id, msg.connector.apiKey)
+        this.applyConnectorMetadata(msg.connector.id, msg.connector.metadata)
+        this.refreshAllSessionTools()
+      }
+
+      // Start Telegram bot if just connected
+      if (msg.connector.id === 'telegram' && msg.connector.apiKey && !this.telegramBot) {
+        this.startTelegramBot().catch((err) => console.error('[TelegramBot] Failed to start:', err))
       }
 
       this.sendToClient(Channel.AI, {
@@ -2348,7 +2427,9 @@ export class AgentServer {
   private async handleConnectorRemove(msg: { id: string }): Promise<void> {
     try {
       await this.mcpManager.removeConnector(msg.id)
+      this.connectorManager.deactivate(msg.id)
       removeConnectorConfig(this.config, msg.id)
+      this.refreshAllSessionTools()
       this.sendToClient(Channel.AI, { type: 'connector_removed', id: msg.id })
       console.log(`Connector removed: ${msg.id}`)
     } catch (err) {
@@ -2386,6 +2467,21 @@ export class AgentServer {
 
   private async handleConnectorTest(msg: { id: string }): Promise<void> {
     try {
+      // Direct connectors (OAuth/API) — test via ConnectorManager
+      if (this.connectorManager.isActive(msg.id)) {
+        const result = await this.connectorManager.testConnection(msg.id)
+        const tools = this.connectorManager.getStatus().find((s) => s.id === msg.id)?.tools ?? []
+        this.sendToClient(Channel.AI, {
+          type: 'connector_test_response',
+          id: msg.id,
+          success: result.success,
+          tools,
+          error: result.error,
+        })
+        return
+      }
+
+      // MCP connectors
       const result = await this.mcpManager.testConnector(msg.id)
       this.sendToClient(Channel.AI, {
         type: 'connector_test_response',
@@ -2410,11 +2506,140 @@ export class AgentServer {
     })
   }
 
+  // ── OAuth connector handlers ──────────────────────────────────────
+
+  private handleConnectorOAuthStart(msg: { provider: string }): void {
+    const url = this.oauthFlow.startFlow(msg.provider)
+    if (!url) {
+      this.sendToClient(Channel.AI, {
+        type: 'connector_oauth_complete',
+        provider: msg.provider,
+        success: false,
+        error: 'OAuth proxy URL or callback base URL not configured. Set OAUTH_PROXY_URL and OAUTH_CALLBACK_BASE_URL environment variables.',
+      })
+      return
+    }
+    this.sendToClient(Channel.AI, {
+      type: 'connector_oauth_url',
+      provider: msg.provider,
+      url,
+    })
+  }
+
+  private handleConnectorOAuthDisconnect(msg: { provider: string }): void {
+    this.oauthFlow.disconnect(msg.provider)
+    // Also remove the connector config if it exists
+    const connector = getConnectors(this.config).find((c) => c.id === msg.provider)
+    if (connector) {
+      removeConnectorConfig(this.config, msg.provider)
+    }
+    this.sendToClient(Channel.AI, {
+      type: 'connector_removed',
+      id: msg.provider,
+    })
+    console.log(`OAuth connector disconnected: ${msg.provider}`)
+  }
+
+  private async handleOAuthComplete(result: { provider: string; success: boolean; error?: string }): Promise<void> {
+    if (result.success) {
+      // Auto-create a connector config for the OAuth provider
+      const existingConnector = getConnectors(this.config).find((c) => c.id === result.provider)
+      if (!existingConnector) {
+        const registryEntry = CONNECTOR_REGISTRY.find((r) => r.id === result.provider)
+        addConnector(this.config, {
+          id: result.provider,
+          name: registryEntry?.name || result.provider,
+          description: registryEntry?.description,
+          icon: registryEntry?.icon,
+          type: 'oauth',
+          enabled: true,
+        })
+      }
+
+      // Activate the direct connector so tools are immediately available
+      if (this.connectorManager.hasFactory(result.provider)) {
+        await this.connectorManager.activate(result.provider)
+        this.refreshAllSessionTools()
+      }
+
+      // Push updated connector status so the desktop store updates immediately
+      const registryEntry2 = CONNECTOR_REGISTRY.find((r) => r.id === result.provider)
+      const connStatus = this.connectorManager.getStatus().find((s) => s.id === result.provider)
+      const toolCount = connStatus?.toolCount ?? 0
+      this.sendToClient(Channel.AI, {
+        type: 'connector_added',
+        connector: {
+          id: result.provider,
+          name: registryEntry2?.name || result.provider,
+          description: registryEntry2?.description,
+          icon: registryEntry2?.icon,
+          type: 'oauth' as const,
+          connected: true,
+          enabled: true,
+          toolCount,
+        },
+      })
+
+      console.log(`OAuth connector connected: ${result.provider}`)
+    }
+
+    this.sendToClient(Channel.AI, {
+      type: 'connector_oauth_complete',
+      provider: result.provider,
+      success: result.success,
+      error: result.error,
+    })
+  }
+
+  /** Refresh connector tools on all active sessions so new connectors are available immediately. */
+  private refreshAllSessionTools(): void {
+    for (const session of this.sessions.values()) {
+      session.refreshConnectorTools()
+    }
+    this.telegramBot?.refreshAllSessionTools()
+  }
+
+  /** Apply connector-specific metadata after activation (e.g. ownerChatId for Telegram). */
+  private applyConnectorMetadata(id: string, metadata: Record<string, string> | undefined): void {
+    if (!metadata) return
+    const connector = this.connectorManager.getConnector(id)
+    if (!connector) return
+    if (id === 'telegram' && metadata.OWNER_CHAT_ID) {
+      const chatId = Number(metadata.OWNER_CHAT_ID)
+      if (!isNaN(chatId) && 'setOwnerChatId' in connector) {
+        (connector as { setOwnerChatId: (id: number) => void }).setOwnerChatId(chatId)
+        console.log(`  Telegram owner chat ID set: ${chatId}`)
+      }
+    }
+  }
+
   // ── Helpers ─────────────────────────────────────────────────────
 
   /** Public: forward agent manager events to client */
   broadcastAgentEvent(event: import('./agents/agent-manager.js').AgentEvent) {
     this.sendToClient(Channel.AI, event)
+  }
+
+  private logStoredSessions() {
+    try {
+      const metas = listSessionMetas()
+      if (metas.length === 0) {
+        console.log('[Sessions on disk] (none)')
+        return
+      }
+      console.log(`[Sessions on disk] ${metas.length} session(s):`)
+      for (const m of metas.slice(0, 20)) {
+        const ago = Math.round((Date.now() - m.lastActiveAt) / 60_000)
+        const agoStr =
+          ago < 60 ? `${ago}m ago` : ago < 1440 ? `${Math.round(ago / 60)}h ago` : `${Math.round(ago / 1440)}d ago`
+        console.log(
+          `  - ${m.id}: "${m.title}" (${m.messageCount} msgs, last active ${agoStr})`,
+        )
+      }
+      if (metas.length > 20) console.log(`  ... and ${metas.length - 20} more`)
+    } catch (err: unknown) {
+      console.error('[Sessions on disk] Failed to list:', (err as Error).message)
+    }
   }
 
   private sendToClient(channel: ChannelId, message: object) {

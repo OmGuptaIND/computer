@@ -35,22 +35,13 @@ interface RegistryEntry {
 
 const REGISTRY: RegistryEntry[] = [
   {
-    id: 'searxng',
-    name: 'Web Search (free)',
-    description: 'Search the web via self-hosted SearXNG',
+    id: 'exa-search',
+    name: 'Web Search (Exa)',
+    description: 'Semantic web search with full page content extraction',
     icon: '🔍',
     type: 'api',
-    requires: 'SearXNG instance URL',
-    example: 'anton connector add searxng --url https://search.example.com',
-  },
-  {
-    id: 'brave-search',
-    name: 'Brave Search',
-    description: 'Premium web search ($4/mo)',
-    icon: '🦁',
-    type: 'api',
-    requires: 'Brave Search API key (https://brave.com/search/api/)',
-    example: 'anton connector add brave-search --api-key BSA...',
+    requires: 'Search proxy URL and bearer token',
+    example: 'anton connector add exa-search --url https://search-proxy.workers.dev --api-key tok_...',
   },
   {
     id: 'telegram',
@@ -121,7 +112,7 @@ function saveConnectors(config: Record<string, unknown>, connectors: ConnectorEn
 const MCP_COMMANDS: Record<string, { command: string; args: string[] }> = {
   telegram: { command: 'npx', args: ['-y', 'telegram-mcp-server'] },
   github: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'] },
-  slack: { command: 'npx', args: ['-y', '@anthropic/mcp-server-slack'] },
+  slack: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-slack'] },
   notion: { command: 'npx', args: ['-y', '@anthropic/mcp-server-notion'] },
   linear: { command: 'npx', args: ['-y', 'mcp-server-linear'] },
   gmail: { command: 'npx', args: ['-y', '@anthropic/mcp-server-gmail'] },
@@ -205,8 +196,7 @@ function handleAdd(args: string[]) {
     console.log(`    ${theme.dim('--env KEY=value')}           Environment variable (for MCP connectors)`)
     console.log(`    ${theme.dim('--name <name>')}             Display name`)
     console.log('\n  Examples:')
-    console.log(`    ${theme.brand('anton connector add searxng --url https://search.example.com')}`)
-    console.log(`    ${theme.brand('anton connector add brave-search --api-key BSA...')}`)
+    console.log(`    ${theme.brand('anton connector add exa-search --url https://search-proxy.workers.dev --api-key tok_...')}`)
     console.log(`    ${theme.brand('anton connector add github --env GITHUB_TOKEN=ghp_...')}\n`)
 
     // Show registry

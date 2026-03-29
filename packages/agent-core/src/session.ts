@@ -109,8 +109,8 @@ const FALLBACK_MAX_MESSAGES = 100
 
 export class Session {
   readonly id: string
-  readonly provider: string
-  readonly model: string
+  provider: string
+  model: string
   readonly createdAt: number
 
   private piAgent: PiAgent
@@ -118,6 +118,9 @@ export class Session {
   private confirmHandler?: ConfirmHandler
   private planConfirmHandler?: PlanConfirmHandler
   private askUserHandler?: AskUserHandler
+  _connectorManager?: { getAllTools(): AgentTool[] }
+  _mcpManager?: import('./mcp/mcp-manager.js').McpManager
+  _toolCallbacks?: Parameters<typeof buildTools>[1]
   private title = ''
   private lastActiveAt: number
   private clientApiKey?: string // client-provided, never persisted
@@ -149,6 +152,7 @@ export class Session {
   private projectType?: string
   private workspacePath?: string
   private conversationContext?: string
+  private agentInstructions?: string
   private firstMessage?: string
   public contextInfo?: ContextInfo
 
@@ -179,6 +183,7 @@ export class Session {
     projectId?: string // scoped to a project
     projectContext?: string // injected into system prompt
     projectType?: string // project type for prompt module loading
+    agentInstructions?: string // standing instructions for scheduled agents (injected into system prompt)
     lastTasks?: PersistedTaskItem[] // restored task state from persistence
     // Safety limits
     maxTokenBudget?: number // max total tokens before aborting (0 = unlimited)
@@ -197,6 +202,7 @@ export class Session {
     this.projectId = opts.projectId
     this.projectContext = opts.projectContext
     this.projectType = opts.projectType
+    this.agentInstructions = opts.agentInstructions
     this._lastTasks = opts.lastTasks || []
     // If resuming with incomplete tasks, flag for context injection on next message
     this._needsTaskResumeHint = this._lastTasks.some((t) => t.status !== 'completed')
@@ -693,7 +699,17 @@ export class Session {
     const newModel = (getModel as (p: string, m: string) => Model<Api>)(provider, model)
     this.piAgent.setModel(newModel)
     this.resolvedModel = newModel
+    this.provider = provider
+    this.model = model
     this.persist()
+  }
+
+  /** Re-build the tools list and push it to the running agent — call after adding/removing a connector. */
+  refreshConnectorTools(): void {
+    if (!this._toolCallbacks) return
+    const newTools = buildTools(this.config, this._toolCallbacks, this._mcpManager, this._connectorManager)
+    this.piAgent.setTools(newTools)
+    console.log(`[session ${this.id}] refreshed tools (${newTools.length} total)`)
   }
 
   /**
@@ -715,8 +731,11 @@ export class Session {
     this.persist()
   }
 
-  /** Get chat history in a client-friendly format. */
-  getHistory(): Array<{
+  /** Get chat history in a client-friendly format.
+   *  Supports pagination: pass `opts.before` to get entries with seq < before,
+   *  and `opts.limit` to cap the number of entries returned (from the end).
+   */
+  getHistory(opts?: { before?: number; limit?: number }): Array<{
     seq: number
     role: 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'system'
     content: string
@@ -887,7 +906,130 @@ export class Session {
       }
     }
 
+    // Apply pagination if requested
+    if (opts) {
+      let filtered = entries
+      if (opts.before !== undefined) {
+        filtered = filtered.filter((e) => e.seq < opts.before!)
+      }
+      if (opts.limit !== undefined && filtered.length > opts.limit) {
+        filtered = filtered.slice(-opts.limit)
+      }
+      return filtered
+    }
+
     return entries
+  }
+
+  /** Extract artifacts from full history (tool_call/tool_result pairs).
+   *  Used for paginated sync — client gets all artifacts without needing all messages.
+   */
+  getArtifacts(): Array<{
+    id: string
+    type: 'file' | 'output' | 'artifact'
+    renderType: string
+    title?: string
+    filename?: string
+    filepath?: string
+    language: string
+    content: string
+    toolCallId: string
+  }> {
+    const entries = this.getHistory()
+    const artifacts: Array<{
+      id: string
+      type: 'file' | 'output' | 'artifact'
+      renderType: string
+      title?: string
+      filename?: string
+      filepath?: string
+      language: string
+      content: string
+      toolCallId: string
+    }> = []
+
+    // Build tool_call map
+    const toolCalls = new Map<string, (typeof entries)[0]>()
+    for (const e of entries) {
+      if (e.role === 'tool_call' && e.toolId) {
+        toolCalls.set(e.toolId, e)
+      }
+    }
+
+    // Match tool_results to their calls and extract artifacts
+    for (const e of entries) {
+      if (e.role !== 'tool_result' || !e.toolId || e.isError) continue
+      const call = toolCalls.get(e.toolId)
+      if (!call || !call.toolName) continue
+
+      const toolInput = call.toolInput || {}
+
+      // Explicit artifact tool
+      if (call.toolName === 'artifact') {
+        const artifactType = (toolInput.type as string) || 'code'
+        artifacts.push({
+          id: `artifact_tc_${call.toolId}`,
+          type: 'artifact',
+          renderType: artifactType,
+          title: toolInput.title as string,
+          filename: toolInput.filename as string | undefined,
+          filepath: toolInput.filename as string | undefined,
+          language: artifactType === 'code' ? (toolInput.language as string) || 'text' : artifactType,
+          content: (toolInput.content as string) || '',
+          toolCallId: `tc_${call.toolId}`,
+        })
+      }
+
+      // File writes
+      if (call.toolName === 'filesystem' && toolInput.operation === 'write' && toolInput.content) {
+        const filepath = toolInput.path as string
+        const filename = filepath?.split('/').pop() || 'untitled'
+        const ext = filename.split('.').pop()?.toLowerCase() || ''
+        const langMap: Record<string, string> = {
+          html: 'html', css: 'css', js: 'javascript', ts: 'typescript',
+          tsx: 'typescript', jsx: 'javascript', py: 'python', md: 'markdown',
+          json: 'json', svg: 'svg', sh: 'bash', yml: 'yaml', yaml: 'yaml',
+        }
+        const renderMap: Record<string, string> = {
+          html: 'html', svg: 'svg', md: 'markdown', markdown: 'markdown',
+        }
+        const language = langMap[ext] || ext || 'text'
+        artifacts.push({
+          id: `artifact_tc_${call.toolId}`,
+          type: 'file',
+          renderType: renderMap[language] || 'code',
+          filename,
+          filepath,
+          language,
+          content: toolInput.content as string,
+          toolCallId: `tc_${call.toolId}`,
+        })
+      }
+
+      // Large shell outputs
+      if (call.toolName === 'shell' && e.content && e.content.length > 500) {
+        const cmd = (toolInput.command as string) || 'output'
+        const shortCmd = cmd.length > 40 ? `${cmd.slice(0, 37)}...` : cmd
+        artifacts.push({
+          id: `artifact_tc_${call.toolId}`,
+          type: 'output',
+          renderType: 'code',
+          filename: shortCmd,
+          language: 'text',
+          content: e.content,
+          toolCallId: `tc_${call.toolId}`,
+        })
+      }
+    }
+
+    // Deduplicate by filepath (keep latest)
+    const seen = new Map<string, number>()
+    for (let i = 0; i < artifacts.length; i++) {
+      if (artifacts[i].filepath) {
+        seen.set(artifacts[i].filepath!, i)
+      }
+    }
+    return artifacts.filter((a, i) => !a.filepath || seen.get(a.filepath) === i)
   }
 
   /** Get session info for listing. */
@@ -1256,6 +1398,17 @@ export class Session {
       prompt += this.projectContext
     }
 
+    // Agent standing instructions (scheduled agents — always present in system prompt)
+    if (this.agentInstructions) {
+      prompt += `\n\n<agent_instructions>
+You are a scheduled agent. The following are your standing instructions — execute them on every run.
+Do NOT re-create scripts or tooling that you have already built in previous runs. Re-use existing work.
+If something is broken, fix it. If everything works, just run it.
+
+${this.agentInstructions}
+</agent_instructions>`
+    }
+
     // Project-type prompt module (code.md, document.md, etc.)
     if (this.projectType) {
       const typePrompt = loadProjectTypePrompt(this.projectType as ProjectType)
@@ -1322,11 +1475,14 @@ export function createSession(
     projectWorkspacePath?: string
     projectType?: string
     mcpManager?: import('./mcp/mcp-manager.js').McpManager
+    connectorManager?: { getAllTools(): import('@mariozechner/pi-agent-core').AgentTool[] }
     onJobAction?: import('./tools/job.js').JobActionHandler
     onDeliverResult?: import('./tools/deliver-result.js').DeliverResultHandler
     maxDurationMs?: number
     /** Domain for the agent (e.g. "slug.antoncomputer.in"). Passed to publish tool. */
     domain?: string
+    /** Standing instructions for scheduled agents (injected into system prompt) */
+    agentInstructions?: string
   },
 ): Session {
   const provider = opts?.provider || config.defaults.provider
@@ -1364,15 +1520,19 @@ export function createSession(
     provider,
     model,
     config,
-    tools: buildTools(config, toolCallbacks, opts?.mcpManager),
+    tools: buildTools(config, toolCallbacks, opts?.mcpManager, opts?.connectorManager),
     apiKey: opts?.apiKey,
     ephemeral: opts?.ephemeral,
     projectId: opts?.projectId,
     projectContext: opts?.projectContext,
     projectType: opts?.projectType,
+    agentInstructions: opts?.agentInstructions,
     maxDurationMs: opts?.maxDurationMs,
   })
   sessionRef.session = session
+  session._connectorManager = opts?.connectorManager
+  session._mcpManager = opts?.mcpManager
+  session._toolCallbacks = toolCallbacks
   // Wire: when setAskUserHandler is called on session, update the holder
   const origSet = session.setAskUserHandler.bind(session)
   session.setAskUserHandler = (handler: AskUserHandler) => {
@@ -1402,9 +1562,11 @@ export function resumeSession(
     projectWorkspacePath?: string
     projectType?: string
     mcpManager?: import('./mcp/mcp-manager.js').McpManager
+    connectorManager?: { getAllTools(): import('@mariozechner/pi-agent-core').AgentTool[] }
     onJobAction?: import('./tools/job.js').JobActionHandler
     onDeliverResult?: import('./tools/deliver-result.js').DeliverResultHandler
     maxDurationMs?: number
+    agentInstructions?: string
   },
 ): Session | null {
   const basePath = opts?.projectId ? getProjectSessionsDir(opts.projectId) : undefined
@@ -1440,7 +1602,7 @@ export function resumeSession(
     provider: persisted.provider,
     model: persisted.model,
     config,
-    tools: buildTools(config, toolCallbacks, opts?.mcpManager),
+    tools: buildTools(config, toolCallbacks, opts?.mcpManager, opts?.connectorManager),
     existingMessages: persisted.messages,
     title: persisted.title,
     createdAt: persisted.createdAt,
@@ -1448,10 +1610,14 @@ export function resumeSession(
     projectId: opts?.projectId,
     projectContext: opts?.projectContext,
     projectType: opts?.projectType,
+    agentInstructions: opts?.agentInstructions,
     lastTasks: persisted.lastTasks,
     maxDurationMs: opts?.maxDurationMs,
   })
   sessionRef.session = session
+  session._connectorManager = opts?.connectorManager
+  session._mcpManager = opts?.mcpManager
+  session._toolCallbacks = toolCallbacks
 
   // Load conversation context on resume
   session.loadConversationContext()

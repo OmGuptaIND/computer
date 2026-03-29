@@ -19,6 +19,7 @@ export interface Conversation {
   createdAt: number
   updatedAt: number
   projectId?: string // set if this conversation belongs to a project
+  agentSessionId?: string // if spawned from an agent, the agent's session ID
   provider?: string // model provider for this conversation
   model?: string // model name for this conversation
   contextInfo?: ConversationContextInfo // loaded context/memory info from server
@@ -52,6 +53,7 @@ export function createConversation(
   projectId?: string,
   provider?: string,
   model?: string,
+  agentSessionId?: string,
 ): Conversation {
   const id = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
   return {
@@ -62,6 +64,7 @@ export function createConversation(
     createdAt: Date.now(),
     updatedAt: Date.now(),
     projectId,
+    agentSessionId,
     provider,
     model,
   }

@@ -1,9 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Check,
   ChevronDown,
   ChevronRight,
-  Loader2,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useStore } from '../../lib/store.js'
@@ -14,11 +12,11 @@ import type { ToolAction } from './groupMessages.js'
 interface Props {
   title: string
   actions: ToolAction[]
-  done: boolean
+  done?: boolean
   defaultExpanded?: boolean
 }
 
-export function TaskSection({ title, actions, done, defaultExpanded = false }: Props) {
+export function TaskSection({ title, actions, defaultExpanded = false }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const artifacts = useStore((s) => s.artifacts)
 
@@ -46,13 +44,6 @@ export function TaskSection({ title, actions, done, defaultExpanded = false }: P
         ) : (
           <ChevronRight size={14} strokeWidth={1.5} className="tool-tree__chevron" />
         )}
-        <span className="tool-tree__status-icon">
-          {done ? (
-            <Check size={14} strokeWidth={1.5} className="tool-tree__status--done" />
-          ) : (
-            <Loader2 size={14} strokeWidth={1.5} className="tool-tree__spinner" />
-          )}
-        </span>
         <span className="tool-tree__header-text">{title}</span>
       </button>
 

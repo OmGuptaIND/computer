@@ -24,6 +24,10 @@ anthropic_api_key: ""
 # Braintrust observability (optional)
 braintrust_api_key: ""
 
+# OAuth proxy for one-click connectors (optional)
+oauth_proxy_url: ""
+oauth_callback_base_url: ""
+
 # Whether to start the agent immediately after deploy
 anton_start_on_deploy: true
 

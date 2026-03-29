@@ -291,17 +291,6 @@ This is deliberately rough — the goal is to trigger compaction early enough, n
 6. Final persist after turn completes (captures title, compaction state changes)
 ```
 
-### Resume
-
-```
-1. Client sends: { type: "session_resume", id: "sess_..." }
-2. Server checks in-memory sessions map
-3. If not in memory: load from disk (meta.json + messages from PersistedSession)
-4. Reconstruct pi SDK Agent with existing messages
-5. Wire confirmation handler
-6. Respond: { type: "session_resumed", id, provider, model, messageCount, title }
-```
-
 ### Fetch History
 
 ```
@@ -361,13 +350,16 @@ Active turns are **not** continued in the background. When the client disconnect
 ```
 1. Client auto-reconnects (3-second retry)
 2. Auth handshake completes
-3. Client fetches sessions_list → syncs with local conversation cache
-4. Client resumes active conversation's session
-5. Client fetches session_history → receives all messages including partial turn work
-6. UI renders the full conversation history up to the disconnect point
+3. Client clears stale transient state (_activeStreamingSessions, _syncingSessionIds)
+4. Client fetches sessions_list → syncs with local conversation cache
+5. Client marks active session as syncing → shows loading skeleton
+6. Client fetches session_history → server responds with full history + lastSeq
+7. Client replaces local messages with server state (server is always authoritative)
+8. Client replays any streaming messages that arrived during sync
+9. UI renders the full conversation history, then continues with live updates
 ```
 
-The client preserves conversations and UI state across disconnects. Only transient state (streaming indicators, agent steps, pending confirmations) is cleared.
+The client preserves conversations and UI state across disconnects. All transient state (streaming indicators, agent steps, pending confirmations, sync flags) is cleared on disconnect to prevent stale flags from blocking sync on reconnect.
 
 ## Client Architecture
 
@@ -378,8 +370,7 @@ Sessions are the source of truth on the agent VM. Clients behave as follows:
 **On connect:**
 1. Fetch `sessions_list` → populate sidebar with session titles/metadata
 2. Fetch `providers_list` → populate model selector
-3. Auto-resume the most recent session
-4. Fetch `session_history` for the resumed session → render past messages
+3. Fetch `session_history` for the active conversation → render past messages
 
 **On new conversation:**
 1. Generate session ID client-side: `sess_<Date.now().toString(36)>`
@@ -388,14 +379,29 @@ Sessions are the source of truth on the agent VM. Clients behave as follows:
 4. Start chatting
 
 **On switch conversation:**
-1. Send `session_resume` to server
-2. Send `session_history` to server
-3. Replace displayed messages with history response
+1. Mark session as syncing (show spinner if no local messages)
+2. Send `session_history` to server (loads last 200 messages + all artifacts)
+3. Queue any streaming messages that arrive during sync
+4. On response: replace local messages with server state, load artifacts into sidebar
+5. Replay queued streaming messages, clear syncing flag
+6. If user scrolls to top and `hasMore=true`: send paginated request with `before` param
+7. Prepend older messages, maintain scroll position
+
+**On open agent:**
+1. Create a new `proj_{projectId}_sess_{timestamp}` session
+2. Tag local conversation with `agentSessionId` pointing to the agent's metadata session
+3. Show `AgentEmptyState` with agent info, stats, and controls
+4. On first message: inject agent context (name, description, instructions) into the outbound message
+5. Conversation appears in sidebar with Bot icon, auto-titled from user's first message
 
 **Local state (thin cache):**
 - Conversations are cached in localStorage with a `sessionId` field linking to the server session
+- `agentSessionId` (optional) links a conversation to the agent it was spawned from
 - Messages are fetched from the server — local copies are for display only
-- If local and server diverge, server wins
+- Server always wins — no merge logic, no "local wins if it has more messages"
+- `_activeStreamingSessions` is cleared on disconnect to prevent stale flags from blocking sync
+- `_sessionHasMore` tracks whether a session has older messages to load
+- First page always includes all artifacts (sidebar populated immediately)
 
 ### Desktop App (Tauri)
 
@@ -403,20 +409,29 @@ The desktop app uses Zustand for state management:
 
 ```
 AppState:
-  connectionStatus    ← from connection.onStatusChange()
-  agentStatus         ← from events channel (agent_status)
-  currentSessionId    ← set on session_created/session_resumed
-  currentProvider     ← set on session_created/providers_list_response
-  currentModel        ← set on session_created/providers_list_response
-  sessions[]          ← from sessions_list_response
-  providers[]         ← from providers_list_response
-  conversations[]     ← local cache linked to server sessions via sessionId
-  pendingConfirm      ← from confirm messages
+  connectionStatus            ← from connection.onStatusChange()
+  agentStatus                 ← from events channel (agent_status)
+  currentSessionId            ← set on session_created
+  currentProvider             ← set on session_created/providers_list_response
+  currentModel                ← set on session_created/providers_list_response
+  sessions[]                  ← from sessions_list_response
+  providers[]                 ← from providers_list_response
+  conversations[]             ← local cache linked to server sessions via sessionId
+  projectAgents[]             ← from agents_list_response (AgentSession objects)
+  pendingConfirm              ← from confirm messages
+  _syncingSessionIds          ← sessions currently loading history (show spinner)
+  _pendingSyncMessages        ← streaming messages queued during sync
+  _activeStreamingSessions    ← cleared on disconnect to prevent stale sync blocks
+  _sessionHasMore             ← Map<sessionId, boolean> for scroll-up pagination
+  _loadingOlderSessions       ← sessions currently fetching older messages
 ```
+
+Derived selectors:
+- `getActiveAgentSession()` — if active conversation has `agentSessionId`, returns matching `AgentSession` from `projectAgents[]`
 
 ### CLI (Ink TUI)
 
-The CLI follows the same protocol flow but stores state in-memory only (no localStorage). It auto-resumes the most recent session on connect and displays session list via `Ctrl+S`.
+The CLI follows the same protocol flow but stores state in-memory only (no localStorage). It displays session list via `Ctrl+S`.
 
 ## Session Branching (future)
 

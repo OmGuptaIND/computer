@@ -3,10 +3,9 @@ import type { Project } from '@anton/protocol'
 import { motion } from 'framer-motion'
 import {
   Bot,
-  Circle,
   Clock,
-  History,
   ListChecks,
+  MoreHorizontal,
   Play,
   Plus,
   Send,
@@ -14,6 +13,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { cronToHuman, formatRelativeTime } from '../../lib/agent-utils.js'
 import { connection } from '../../lib/connection.js'
 import type { SessionMeta } from '../../lib/store.js'
 import { useStore } from '../../lib/store.js'
@@ -29,120 +29,104 @@ interface Props {
   sessionsLoading: boolean
   onNewSession: (message?: string) => void
   onOpenSession: (sessionId: string) => void
+  onOpenAgent: (agentSessionId: string) => void
   onDeleteSession: (sessionId: string) => void
   onBack: () => void
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function formatRelativeTime(ts: number): string {
-  const diff = Date.now() - ts
-  if (diff < 60_000) return 'Just now'
-  if (diff < 3600_000) return `${Math.floor(diff / 60_000)}m ago`
-  if (diff < 86400_000) return `${Math.floor(diff / 3600_000)}h ago`
-  return new Date(ts).toLocaleDateString()
-}
-
-function cronToHuman(cron: string): string {
-  const parts = cron.trim().split(/\s+/)
-  if (parts.length !== 5) return cron
-  const [min, hour, , , dow] = parts
-  if (min.startsWith('*/')) return `Every ${min.slice(2)}m`
-  if (hour === '*') return `Hourly at :${min.padStart(2, '0')}`
-  if (dow === '1-5') return `Weekdays ${hour}:${min.padStart(2, '0')}`
-  return `Daily ${hour}:${min.padStart(2, '0')}`
-}
-
 // ── Agent Card (clickable — opens conversation) ─────────────────────
 
 function AgentCard({
   agent,
   projectId,
-  onOpenSession,
+  onOpenAgent,
 }: {
   agent: AgentSession
   projectId: string
-  onOpenSession: (sessionId: string) => void
+  onOpenAgent: (agentSessionId: string) => void
 }) {
+  const [showMenu, setShowMenu] = useState(false)
   const isRunning = agent.agent.status === 'running'
+  const isError = agent.agent.status === 'error'
+
+  const metaParts: string[] = []
+  if (agent.agent.schedule?.cron) metaParts.push(cronToHuman(agent.agent.schedule.cron))
+  if (agent.agent.lastRunAt) metaParts.push(formatRelativeTime(agent.agent.lastRunAt))
 
   return (
-    <div
-      className={`agent-session-card${isRunning ? ' agent-session-card--running' : ''}`}
-      onClick={() => onOpenSession(agent.sessionId)}
-      onKeyDown={(e) => { if (e.key === 'Enter') onOpenSession(agent.sessionId) }}
-      role="button"
-      tabIndex={0}
-      style={{ cursor: 'pointer' }}
+    <button
+      type="button"
+      className="agent-row"
+      onClick={() => onOpenAgent(agent.sessionId)}
     >
-      <div className="agent-session-card__header">
-        <Circle
-          size={8}
-          fill={
-            isRunning
-              ? 'var(--accent)'
-              : agent.agent.status === 'error'
-                ? 'var(--red)'
-                : 'var(--text-tertiary)'
-          }
-          stroke="none"
-          className={isRunning ? 'pulse-dot' : ''}
-        />
-        <Bot size={14} strokeWidth={1.5} className="agent-session-card__icon" />
-        <span className="agent-session-card__name">{agent.agent.name}</span>
+      <div className="agent-row__content">
+        <span className="agent-row__name">{agent.agent.name}</span>
+        <div className="agent-row__meta">
+          {(isRunning || isError) && (
+            <span
+              className={`agent-row__dot${isRunning ? ' agent-row__dot--running' : ' agent-row__dot--error'}`}
+            />
+          )}
+          <span className="agent-row__meta-text">{metaParts.join('  ·  ')}</span>
+        </div>
       </div>
 
-      {agent.agent.description && (
-        <p className="agent-session-card__desc">{agent.agent.description}</p>
-      )}
-
-      <div className="agent-session-card__meta">
-        {agent.agent.schedule?.cron && (
-          <span className="agent-session-card__pill" title={`Schedule: ${agent.agent.schedule.cron}`}>
-            <Clock size={10} strokeWidth={1.5} />
-            {cronToHuman(agent.agent.schedule.cron)}
-          </span>
-        )}
-        {agent.agent.lastRunAt && (
-          <span className="agent-session-card__pill" title="Last run">
-            ✓ {formatRelativeTime(agent.agent.lastRunAt)}
-          </span>
-        )}
-        {agent.agent.runCount > 0 && (
-          <span className="agent-session-card__pill" title="Total runs">
-            <History size={10} strokeWidth={1.5} />
-            {agent.agent.runCount}
-          </span>
-        )}
-      </div>
-
-      <div className="agent-session-card__actions">
-        {isRunning ? (
-          <button
-            type="button"
-            className="agent-session-card__btn"
-            onClick={(e) => { e.stopPropagation(); connection.sendAgentAction(projectId, agent.sessionId, 'stop') }}
-          >
-            <Square size={11} strokeWidth={1.5} /> Stop
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="agent-session-card__btn agent-session-card__btn--primary"
-            onClick={(e) => { e.stopPropagation(); connection.sendAgentAction(projectId, agent.sessionId, 'start') }}
-          >
-            <Play size={11} strokeWidth={1.5} /> Run
-          </button>
-        )}
+      <div className="agent-row__actions">
         <button
           type="button"
-          className="agent-session-card__btn agent-session-card__btn--danger"
-          onClick={(e) => { e.stopPropagation(); connection.sendAgentAction(projectId, agent.sessionId, 'delete') }}
+          className="agent-row__icon-btn"
+          onClick={(e) => {
+            e.stopPropagation()
+            if (isRunning) {
+              connection.sendAgentAction(projectId, agent.sessionId, 'stop')
+            } else {
+              connection.sendAgentAction(projectId, agent.sessionId, 'start')
+            }
+          }}
+          aria-label={isRunning ? 'Stop agent' : 'Run agent'}
         >
-          <Trash2 size={11} strokeWidth={1.5} /> Delete
+          {isRunning ? <Square size={14} strokeWidth={1.5} /> : <Play size={14} strokeWidth={1.5} />}
         </button>
+
+        <button
+          type="button"
+          className="agent-row__icon-btn"
+          onClick={(e) => {
+            e.stopPropagation()
+            setShowMenu(!showMenu)
+          }}
+          aria-label="Agent options"
+        >
+          <MoreHorizontal size={14} strokeWidth={1.5} />
+        </button>
+
+        {showMenu && (
+          <>
+            <div
+              className="agent-row__menu-backdrop"
+              onClick={(e) => { e.stopPropagation(); setShowMenu(false) }}
+              onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') setShowMenu(false) }}
+            />
+            <div className="agent-row__menu">
+              <button
+                type="button"
+                className="agent-row__menu-item agent-row__menu-item--danger"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  connection.sendAgentAction(projectId, agent.sessionId, 'delete')
+                  setShowMenu(false)
+                }}
+              >
+                <Trash2 size={14} strokeWidth={1.5} />
+                <span>Delete</span>
+              </button>
+            </div>
+          </>
+        )}
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -153,12 +137,14 @@ function SessionsAndAgents({
   sessionsLoading,
   projectId,
   onOpenSession,
+  onOpenAgent,
   onDeleteSession,
 }: {
   sessions: SessionMeta[]
   sessionsLoading: boolean
   projectId: string
   onOpenSession: (id: string) => void
+  onOpenAgent: (agentSessionId: string) => void
   onDeleteSession: (id: string) => void
 }) {
   const agents = useStore((s) => s.projectAgents)
@@ -219,12 +205,11 @@ function SessionsAndAgents({
       {agents.length > 0 ? (
         <div className="project-landing__section">
           <div className="project-landing__section-header">
-            <Bot size={13} strokeWidth={1.5} className="project-landing__section-icon" />
             <span className="project-landing__section-label">Agents</span>
             <span
               className={`project-landing__section-count${runningCount > 0 ? ' project-landing__section-count--active' : ''}`}
             >
-              {runningCount > 0 ? `${runningCount} running` : agents.length}
+              {agents.length}
             </span>
           </div>
           <div className="project-landing__agents-list">
@@ -233,7 +218,7 @@ function SessionsAndAgents({
                 key={agent.sessionId}
                 agent={agent}
                 projectId={projectId}
-                onOpenSession={onOpenSession}
+                onOpenAgent={onOpenAgent}
               />
             ))}
           </div>
@@ -263,6 +248,7 @@ export function ProjectLanding({
   sessionsLoading,
   onNewSession,
   onOpenSession,
+  onOpenAgent,
   onDeleteSession,
   onBack,
 }: Props) {
@@ -369,6 +355,7 @@ export function ProjectLanding({
             sessionsLoading={sessionsLoading}
             projectId={project.id}
             onOpenSession={onOpenSession}
+            onOpenAgent={onOpenAgent}
             onDeleteSession={onDeleteSession}
           />
         </motion.div>

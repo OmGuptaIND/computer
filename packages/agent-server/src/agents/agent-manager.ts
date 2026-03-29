@@ -17,7 +17,7 @@ import {
   saveAgentMetadata,
   deleteAgentSession,
 } from '@anton/agent-config'
-import type { AgentMetadata, AgentSession } from '@anton/protocol'
+import type { AgentMetadata, AgentRunRecord, AgentSession } from '@anton/protocol'
 import { getNextCronTime, isValidCron } from './cron.js'
 
 function generateSessionId(projectId: string): string {
@@ -161,7 +161,7 @@ export class AgentManager {
 
   // ── Lifecycle ────────────────────────────────────────────────────
 
-  async runAgent(sessionId: string): Promise<AgentSession | undefined> {
+  async runAgent(sessionId: string, trigger: 'cron' | 'manual' = 'manual'): Promise<AgentSession | undefined> {
     const entry = this.agents.get(sessionId)
     if (!entry) return undefined
     if (entry.agent.status === 'running') return entry // already running
@@ -171,23 +171,53 @@ export class AgentManager {
       return undefined
     }
 
+    // Start a run record
+    const runRecord: AgentRunRecord = {
+      startedAt: Date.now(),
+      completedAt: null,
+      status: 'success',
+      trigger,
+    }
+
     // Update status
     entry.agent.status = 'running'
     saveAgentMetadata(entry.projectId, sessionId, entry.agent)
     this.emitUpdate(entry)
 
     try {
-      // Send the instructions as a message to the conversation
-      await this.sendMessage(sessionId, entry.agent.instructions)
+      // Instructions are in the system prompt. Send a short trigger message.
+      // First run: kickoff message. Subsequent runs: re-run trigger.
+      const isFirstRun = entry.agent.runCount === 0
+      const now = new Date()
+      const timestamp = now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
+      const message = isFirstRun
+        ? `[Run #1 — ${timestamp}] This is your first run. Execute your instructions (they are in your system prompt). Build any scripts or tooling you need, then deliver results.`
+        : `[Run #${entry.agent.runCount + 1} — ${timestamp}] Scheduled run. Re-use the scripts and tooling you built in previous runs. If something is broken, fix it. Execute your task and deliver results.`
+
+      await this.sendMessage(sessionId, message)
 
       // Run completed
       entry.agent.status = entry.agent.schedule ? 'idle' : 'idle'
       entry.agent.lastRunAt = Date.now()
       entry.agent.runCount++
+      runRecord.status = 'success'
     } catch (err) {
       console.error(`Agent "${entry.agent.name}" error:`, err)
       entry.agent.status = 'error'
       entry.agent.lastRunAt = Date.now()
+      runRecord.status = 'error'
+      runRecord.error = err instanceof Error ? err.message : String(err)
+    }
+
+    // Finalize run record
+    runRecord.completedAt = Date.now()
+    runRecord.durationMs = runRecord.completedAt - runRecord.startedAt
+
+    // Append to run history (cap at 20)
+    if (!entry.agent.runHistory) entry.agent.runHistory = []
+    entry.agent.runHistory.push(runRecord)
+    if (entry.agent.runHistory.length > 20) {
+      entry.agent.runHistory = entry.agent.runHistory.slice(-20)
     }
 
     // Recompute next run
@@ -262,7 +292,7 @@ export class AgentManager {
       if (entry.agent.status === 'running') continue // don't double-start
 
       console.log(`[AgentManager] Cron trigger: ${entry.agent.name}`)
-      this.runAgent(entry.sessionId)
+      this.runAgent(entry.sessionId, 'cron')
 
       // Compute next run
       const next = getNextCronTime(entry.agent.schedule.cron, new Date())

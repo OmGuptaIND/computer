@@ -121,12 +121,11 @@ export function App() {
           }
         }
 
-        // Resume the active conversation's session (only if it's not a project session
-        // while we're in chat mode — project sessions are handled by ProjectView)
+        // Fetch history for the active conversation (if it's not a project session —
+        // project sessions are handled by ProjectView)
         const activeConv = useStore.getState().getActiveConversation()
         if (activeConv?.sessionId && !activeConv.projectId) {
-          connection.sendSessionResume(activeConv.sessionId)
-          connection.sendSessionHistory(activeConv.sessionId)
+          useStore.getState().requestSessionHistory(activeConv.sessionId)
         }
       }
     })
