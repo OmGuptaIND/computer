@@ -1,0 +1,172 @@
+packages/agent-core/src/agent.ts
+  e7212a6970f10c96 943
+packages/protocol/src/messages.ts
+  09f9a312690cba11 755-780,1079-1080
+packages/connectors/src/github/api.ts
+  eaa0021f0d6f7ed3 42-44,63-74
+  14d045d0bea4daf2 253-345
+packages/desktop/src/components/chat/MarkdownRenderer.tsx
+  5348cd8ac6ba569a 9-26,120,123,126
+packages/desktop/src/components/projects/ProjectView.tsx
+  09f9a312690cba11 116-117,120,122-132,135-137
+packages/desktop/src/lib/store.ts
+  09f9a312690cba11 343-344,562-563,594-595,1418-1419,1427-1429,1879-1880,1885,2276-2279
+packages/desktop/src/App.tsx
+  49b9fb66511e8b1a 235
+packages/desktop/src/components/chat/AgentEmptyState.tsx
+  09f9a312690cba11 1,3,7,13-47,50,57-64,78-79,92-94,99-104,247-248,276-283
+specs/agents.md
+  09f9a312690cba11 58,60,62-66,69-76,78,80,82,84-87,89,91,93,95,116,120-123,163,165,169-170,173-182
+packages/connectors/src/exa/api.ts
+  eaa0021f0d6f7ed3 1-96
+packages/connectors/src/exa/tools.ts
+  eaa0021f0d6f7ed3 1-87
+packages/desktop/src/lib/connection.ts
+  09f9a312690cba11 293-296
+packages/agent-config/src/config.ts
+  eaa0021f0d6f7ed3 1213,1217,1221-1222
+packages/agent-server/src/server.ts
+  09f9a312690cba11 122-127,129,131,137-175,775-777,1501-1507,1509,1511-1551,1909,1936-1938,1943-1950,1960,1968,1996,2158
+  e7212a6970f10c96 2005,2022-2032
+  7a08d4fad2b06ecc 128,130,132-136,936,941,1191,1233,1236,1240,1508,1510,1564-1621,1916,1918,1925,1927,1929,1933,1939
+packages/desktop/src/components/projects/ProjectLanding.tsx
+  09f9a312690cba11 53,55-64,67-69,74,78-82,84,88-93,95-105,107-112,172,175,177-180
+packages/connectors/src/github/tools.ts
+  14d045d0bea4daf2 267-438
+packages/connectors/src/index.ts
+  eaa0021f0d6f7ed3 9,17,26
+packages/agent-core/src/session.ts
+  e7212a6970f10c96 1404-1412
+  09f9a312690cba11 156,188,208,1424-1432,1507-1508,1553,1594,1639
+packages/agent-config/src/projects.ts
+  09f9a312690cba11 487-500
+  47a5895578419063 361-363,366-369
+packages/desktop/src/index.css
+  5348cd8ac6ba569a 6730,6742-6826,6830-6831,6836,6839,6844,6854-6855,6860,6872-6873,6881,6884,6891,6895,6900,6904,6906,6910
+  09f9a312690cba11 7814,7821-7824,7832,7835,7838,7855,8223-8372
+packages/desktop/src/components/chat/ConnectorToolbar.tsx
+  49b9fb66511e8b1a 68,74-76,102-103
+packages/protocol/src/projects.ts
+  09f9a312690cba11 55-56
+specs/PROJECT_CONTEXT_SYSTEM.md
+  e7212a6970f10c96 1,3,5,7,9,11-23,25,27-28,30-32,35,37,39,42-45,47-48,50-51,53-56,59,61,63,65-67,69,71-100,102
+packages/agent-server/src/agents/agent-manager.ts
+  09f9a312690cba11 19-20,33-34,36-41,195-198,203-204,206-208,210-229,231-232,312,316-317,322-324,326-328,330
+packages/connectors/src/exa/index.ts
+  eaa0021f0d6f7ed3 1-30
+infra-providers/huddle/cloud-init.sh
+  eaa0021f0d6f7ed3 123
+packages/desktop/src/components/PlanPanel.tsx
+  5348cd8ac6ba569a 1-2,7-30,37-70,98-105,111,114-134,136-138,146,160,167-172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.22",
+  "base_commit_sha": "eddca982567ff58d64d875a7d4c2d48d585845fe",
+  "prompts": {
+    "09f9a312690cba11": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "53b6ff37-ae04-4cf0-8aa1-dbbbf77470c0",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 743,
+      "total_deletions": 244,
+      "accepted_lines": 606,
+      "overriden_lines": 0
+    },
+    "14d045d0bea4daf2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "230e8d2b-b4a6-4e61-bedf-0873bdd0a375",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 265,
+      "total_deletions": 0,
+      "accepted_lines": 265,
+      "overriden_lines": 0
+    },
+    "47a5895578419063": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "826987b0-9963-4676-803c-72a800bcdf88",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 0,
+      "accepted_lines": 8,
+      "overriden_lines": 0
+    },
+    "49b9fb66511e8b1a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4e170f1b-6979-4a7e-a00b-017ca0345801",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 9,
+      "total_deletions": 8,
+      "accepted_lines": 8,
+      "overriden_lines": 0
+    },
+    "5348cd8ac6ba569a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ebfaa38a-a5c4-4d0e-a50b-5083e1fda3f9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 231,
+      "total_deletions": 30,
+      "accepted_lines": 230,
+      "overriden_lines": 0
+    },
+    "7a08d4fad2b06ecc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "910192f0-63eb-4aa6-b60b-07a3327a0bde",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 80,
+      "total_deletions": 161,
+      "accepted_lines": 80,
+      "overriden_lines": 0
+    },
+    "e7212a6970f10c96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b51f104-d616-43be-8b2e-54adb07c52ee",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 129,
+      "total_deletions": 121,
+      "accepted_lines": 102,
+      "overriden_lines": 0
+    },
+    "eaa0021f0d6f7ed3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2c670e7c-c090-4ae9-9a7b-3f6f14b02add",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 282,
+      "total_deletions": 53,
+      "accepted_lines": 238,
+      "overriden_lines": 0
+    }
+  }
+}
