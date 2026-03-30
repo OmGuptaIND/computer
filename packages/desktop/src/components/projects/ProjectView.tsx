@@ -252,14 +252,14 @@ export function ProjectView() {
               {project.stats.activeAgents}
             </span>
           )}
-          <button type="button" className="project-chat-view__btn" title="Settings">
+          <button type="button" className="project-chat-view__btn" data-tooltip="Settings">
             <Settings size={14} strokeWidth={1.5} />
           </button>
           <button
             type="button"
             className="project-chat-view__btn project-chat-view__btn--danger"
             onClick={() => setShowDeleteConfirm(true)}
-            title="Delete project"
+            data-tooltip="Delete project"
           >
             <Trash2 size={14} strokeWidth={1.5} />
           </button>

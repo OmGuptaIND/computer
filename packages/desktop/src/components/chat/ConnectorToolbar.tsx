@@ -119,7 +119,22 @@ export function ConnectorPill() {
 
       {/* Unconnected from registry */}
       {unconnectedRegistry.map((r) => (
-        <div key={r.id} className="connector-dropdown__item connector-dropdown__item--unconnected">
+        <div
+          key={r.id}
+          className="connector-dropdown__item connector-dropdown__item--unconnected"
+          onClick={() => {
+            setOpen(false)
+            window.dispatchEvent(new CustomEvent('open-settings', { detail: { tab: 'connectors', connectorId: r.id } }))
+          }}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              setOpen(false)
+              window.dispatchEvent(new CustomEvent('open-settings', { detail: { tab: 'connectors', connectorId: r.id } }))
+            }
+          }}
+        >
           <div className="connector-dropdown__item-left">
             <ConnectorIcon id={r.id} size={20} />
             <span className="connector-dropdown__item-name">{r.name}</span>
@@ -173,7 +188,7 @@ export function ConnectorPill() {
         type="button"
         className="composer__btn"
         aria-label="Connect apps"
-        title="Connect apps"
+        data-tooltip="Connect apps"
         onClick={handleTriggerClick}
       >
         <Unplug size={18} strokeWidth={1.5} />

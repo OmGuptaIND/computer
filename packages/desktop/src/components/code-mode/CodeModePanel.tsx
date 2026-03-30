@@ -336,7 +336,7 @@ export function CodeModePanel({ onClose }: { onClose: () => void }) {
             type="button"
             className="code-mode__tab-action"
             onClick={handleRefresh}
-            title="Refresh file tree"
+            data-tooltip="Refresh"
           >
             <RefreshCw size={13} strokeWidth={1.5} className={isLoading ? 'spin' : ''} />
           </button>
@@ -345,7 +345,7 @@ export function CodeModePanel({ onClose }: { onClose: () => void }) {
           type="button"
           className="code-mode__tab-action"
           onClick={onClose}
-          title="Close panel"
+          data-tooltip="Close"
         >
           <X size={13} strokeWidth={1.5} />
         </button>

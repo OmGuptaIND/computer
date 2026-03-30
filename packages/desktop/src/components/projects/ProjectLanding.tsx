@@ -344,6 +344,7 @@ export function ProjectLanding({
                   type="button"
                   className="project-landing__toolbar-btn"
                   aria-label="Add attachment"
+                  data-tooltip="Attach images"
                 >
                   <Plus size={18} strokeWidth={1.5} />
                 </button>
@@ -353,7 +354,7 @@ export function ProjectLanding({
                   className={`project-landing__toolbar-btn${planFirst ? ' project-landing__toolbar-btn--active' : ''}`}
                   onClick={() => setPlanFirst(!planFirst)}
                   aria-label="Plan first"
-                  title={planFirst ? 'Plan mode on' : 'Plan first'}
+                  data-tooltip={planFirst ? 'Plan mode on' : 'Plan first'}
                 >
                   <ListChecks size={18} strokeWidth={1.5} />
                 </button>
@@ -365,6 +366,7 @@ export function ProjectLanding({
                   className="project-landing__send-btn"
                   onClick={handleSubmit}
                   aria-label="Start session"
+                  data-tooltip="Start session"
                 >
                   <Send size={18} strokeWidth={1.5} />
                 </button>

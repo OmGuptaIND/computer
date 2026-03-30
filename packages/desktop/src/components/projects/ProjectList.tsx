@@ -108,7 +108,7 @@ export function ProjectList() {
                 <button
                   type="button"
                   className="project-card__delete"
-                  title="Delete project"
+                  data-tooltip="Delete project"
                   onClick={(e) => {
                     e.stopPropagation()
                     setDeleteTarget(project.id)

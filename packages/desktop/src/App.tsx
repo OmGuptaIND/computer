@@ -21,6 +21,7 @@ export function App() {
   const [showMachineInfo, setShowMachineInfo] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [settingsPage, setSettingsPage] = useState<'general' | 'models' | 'connectors' | 'usage'>('general')
+  const [settingsConnectorId, setSettingsConnectorId] = useState<string | undefined>()
   const status = useConnectionStatus()
   const activeView = useStore((s) => s.activeView)
   const setActiveView = useStore((s) => s.setActiveView)
@@ -35,6 +36,25 @@ export function App() {
   const machineName = connection.currentConfig?.host?.replace('.antoncomputer.in', '') ?? ''
   const activeProjectId = useStore((s) => s.activeProjectId)
   const projects = useStore((s) => s.projects)
+  const theme = useStore((s) => s.theme)
+
+  // Apply theme on mount + listen for system preference changes
+  useEffect(() => {
+    const resolved = theme === 'system'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : theme
+    document.documentElement.setAttribute('data-theme', resolved)
+
+    if (theme === 'system') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)')
+      const handler = (e: MediaQueryListEvent) => {
+        document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light')
+        useStore.setState({ resolvedTheme: e.matches ? 'dark' : 'light' })
+      }
+      mq.addEventListener('change', handler)
+      return () => mq.removeEventListener('change', handler)
+    }
+  }, [theme])
 
   // If the active conversation belongs to a project, find the project
   const activeConvProjectId = activeConv?.projectId
@@ -137,6 +157,7 @@ export function App() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail
       setSettingsPage(detail?.tab ?? 'general')
+      setSettingsConnectorId(detail?.connectorId)
       setShowSettings(true)
     }
     window.addEventListener('open-settings', handler)
@@ -269,7 +290,7 @@ export function App() {
       </div>
 
       {showMachineInfo && <MachineInfoPanel onClose={() => setShowMachineInfo(false)} />}
-      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} initialPage={settingsPage} />
+      <SettingsModal open={showSettings} onClose={() => { setShowSettings(false); setSettingsConnectorId(undefined) }} initialPage={settingsPage} initialConnectorId={settingsConnectorId} />
       <DebugOverlay />
     </div>
   )

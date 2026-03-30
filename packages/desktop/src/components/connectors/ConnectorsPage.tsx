@@ -31,7 +31,7 @@ const CATEGORY_ORDER: { key: string; label: string }[] = [
 
 type Tab = 'apps' | 'custom-api' | 'custom-mcp'
 
-export function ConnectorsPage() {
+export function ConnectorsPage({ initialConnectorId }: { initialConnectorId?: string } = {}) {
   const [tab, setTab] = useState<Tab>('apps')
   const [search, setSearch] = useState('')
   const connectors = useStore((s) => s.connectors)
@@ -82,6 +82,7 @@ export function ConnectorsPage() {
             registry={registry}
             connectors={connectors}
             search={search}
+            initialConnectorId={initialConnectorId}
           />
         )}
         {tab === 'custom-api' && (
@@ -101,12 +102,14 @@ function AppsTab({
   registry,
   connectors,
   search,
+  initialConnectorId,
 }: {
   registry: ConnectorRegistryInfo[]
   connectors: ConnectorStatusInfo[]
   search: string
+  initialConnectorId?: string
 }) {
-  const [setupId, setSetupId] = useState<string | null>(null)
+  const [setupId, setSetupId] = useState<string | null>(initialConnectorId ?? null)
 
   const filtered = registry.filter(
     (r) =>

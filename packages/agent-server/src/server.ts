@@ -2585,7 +2585,9 @@ export class AgentServer {
   // ── OAuth connector handlers ──────────────────────────────────────
 
   private handleConnectorOAuthStart(msg: { provider: string }): void {
-    const url = this.oauthFlow.startFlow(msg.provider)
+    const entry = CONNECTOR_REGISTRY.find((e) => e.id === msg.provider)
+    const scopes = entry?.oauthScopes
+    const url = this.oauthFlow.startFlow(msg.provider, scopes)
     if (!url) {
       this.sendToClient(Channel.AI, {
         type: 'connector_oauth_complete',

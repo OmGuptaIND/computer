@@ -72,7 +72,8 @@ export function SidePanel() {
   const views: ViewTab[] = [
     { id: 'browser', label: 'Browser', icon: Globe, available: browserState !== null },
     { id: 'artifacts', label: 'Artifacts', icon: Layers, available: artifacts.length > 0 },
-    { id: 'plan', label: 'Plan', icon: ListChecks, available: pendingPlan !== null },
+    // Plan now shows as inline overlay above chat input, not in side panel
+    { id: 'plan', label: 'Plan', icon: ListChecks, available: false },
     { id: 'context', label: 'Context', icon: Brain, available: sidePanelView === 'context' },
   ]
 

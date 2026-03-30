@@ -28,6 +28,7 @@ interface Props {
   open: boolean
   onClose: () => void
   initialPage?: SettingsPage
+  initialConnectorId?: string
 }
 
 const NAV_ITEMS: { key: SettingsPage; label: string; icon: React.ReactNode }[] = [
@@ -42,7 +43,8 @@ type AppearanceMode = 'light' | 'dark' | 'system'
 // ── General Settings Page ──
 
 function GeneralPage() {
-  const [appearance, setAppearance] = useState<AppearanceMode>('dark')
+  const theme = useStore((s) => s.theme)
+  const setTheme = useStore((s) => s.setTheme)
 
   const appearanceOptions: { key: AppearanceMode; label: string; icon: React.ReactNode }[] = [
     { key: 'light', label: 'Light', icon: <Sun size={16} strokeWidth={1.5} /> },
@@ -73,8 +75,8 @@ function GeneralPage() {
             <button
               key={opt.key}
               type="button"
-              className={`settings-appearance-card${appearance === opt.key ? ' settings-appearance-card--active' : ''}`}
-              onClick={() => setAppearance(opt.key)}
+              className={`settings-appearance-card${theme === opt.key ? ' settings-appearance-card--active' : ''}`}
+              onClick={() => setTheme(opt.key)}
             >
               <div className="settings-appearance-card__preview">
                 <div className={`settings-appearance-card__mock settings-appearance-card__mock--${opt.key}`}>
@@ -585,7 +587,7 @@ function UsagePage() {
 
 // ── Main Settings Modal ──
 
-export function SettingsModal({ open, onClose, initialPage = 'general' }: Props) {
+export function SettingsModal({ open, onClose, initialPage = 'general', initialConnectorId }: Props) {
   const [activePage, setActivePage] = useState<SettingsPage>(initialPage)
 
   // Reset to initial page when modal opens
@@ -647,7 +649,7 @@ export function SettingsModal({ open, onClose, initialPage = 'general' }: Props)
               <div className="settings-modal__content-body">
                 {activePage === 'general' && <GeneralPage />}
                 {activePage === 'models' && <ModelsPage onClose={onClose} />}
-                {activePage === 'connectors' && <ConnectorsPage />}
+                {activePage === 'connectors' && <ConnectorsPage initialConnectorId={initialConnectorId} />}
                 {activePage === 'usage' && <UsagePage />}
               </div>
             </div>

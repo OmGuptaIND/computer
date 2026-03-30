@@ -11,6 +11,7 @@ import { ConfirmDialog } from './chat/ConfirmDialog.js'
 import { ContextIndicator } from './chat/ContextIndicator.js'
 import { EmptyState } from './chat/EmptyState.js'
 import { MessageList } from './chat/MessageList.js'
+import { PlanReviewOverlay } from './chat/PlanReviewOverlay.js'
 import { SkillDialog } from './skills/SkillDialog.js'
 
 export function AgentChat() {
@@ -259,6 +260,8 @@ export function AgentChat() {
           />
         </div>
       )}
+
+      <PlanReviewOverlay />
 
       {(messages.length > 0 || agentSession) && (
         <ChatInput

@@ -357,6 +357,11 @@ interface AppState {
   connectors: ConnectorStatusInfo[]
   connectorRegistry: ConnectorRegistryInfo[]
 
+  // Theme
+  theme: 'light' | 'dark' | 'system'
+  resolvedTheme: 'light' | 'dark'
+  setTheme: (theme: 'light' | 'dark' | 'system') => void
+
   // Sidebar
   sidebarCollapsed: boolean
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -570,6 +575,23 @@ export const useStore = create<AppState>((set, get) => {
     // Connectors
     connectors: [],
     connectorRegistry: [],
+
+    theme: (localStorage.getItem('anton-theme') as 'light' | 'dark' | 'system') || 'dark',
+    resolvedTheme: (() => {
+      const saved = localStorage.getItem('anton-theme') || 'dark'
+      if (saved === 'system') {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      }
+      return saved as 'light' | 'dark'
+    })(),
+    setTheme: (theme) => {
+      localStorage.setItem('anton-theme', theme)
+      const resolved = theme === 'system'
+        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        : theme
+      document.documentElement.setAttribute('data-theme', resolved)
+      set({ theme, resolvedTheme: resolved })
+    },
 
     sidebarCollapsed: false,
     setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
@@ -1697,8 +1719,6 @@ function handleWsMessage(channel: number, msg: any) {
         content: msg.content,
         sessionId: msgSessionId,
       })
-      store.setSidePanelView('plan')
-      store.setArtifactPanelOpen(true)
       break
 
     case 'ask_user':

@@ -31,7 +31,7 @@ export class OAuthFlow {
    * Start an OAuth flow. Returns the URL to open in the browser.
    * Returns null if the proxy URL is not configured.
    */
-  startFlow(provider: string): string | null {
+  startFlow(provider: string, scopes?: string[]): string | null {
     const proxyUrl = this.getProxyUrl()
     if (!proxyUrl) return null
 
@@ -49,6 +49,11 @@ export class OAuthFlow {
       callback_url: callbackUrl,
       nonce,
     })
+
+    // Pass connector-specific scopes so the proxy doesn't use its own defaults
+    if (scopes && scopes.length > 0) {
+      params.set('scope', scopes.join(' '))
+    }
 
     return `${proxyUrl}/oauth/${provider}/authorize?${params.toString()}`
   }

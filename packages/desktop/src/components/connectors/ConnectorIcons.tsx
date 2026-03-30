@@ -34,11 +34,19 @@ function TelegramIcon({ size = 24 }: { size?: number }) {
 function GmailIcon({ size = 24 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <path d="M2 6a2 2 0 012-2h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" fill="#fff" />
-      <path d="M2 6l10 7 10-7v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" fill="#F6F6F6" />
-      <path d="M2 6l10 7 10-7" stroke="#EA4335" strokeWidth="1.5" fill="none" />
-      <path d="M22 6v12a2 2 0 01-2 2h-1V8.3L12 13 4 7.7V20H4a2 2 0 01-2-2V6a2 2 0 012-2h.5L12 10l7.5-6H20a2 2 0 012 2z" fill="#EA4335" opacity="0.15" />
-      <rect x="2" y="4" width="20" height="16" rx="2" stroke="#EA4335" strokeWidth="1.2" fill="none" />
+      <rect x="2" y="4" width="20" height="16" rx="2" fill="white" />
+      {/* Left red flap */}
+      <path d="M2 6.5V18a2 2 0 002 2h1.5V9.5L2 6.5z" fill="#EA4335" />
+      {/* Right red flap */}
+      <path d="M22 6.5V18a2 2 0 01-2 2h-1.5V9.5L22 6.5z" fill="#EA4335" />
+      {/* Blue top-left diagonal */}
+      <path d="M2 6a2 2 0 012-2h.5L12 11 19.5 4H20a2 2 0 012 2l-9.5 7L2 6z" fill="#4285F4" />
+      {/* Green bottom fold */}
+      <path d="M5.5 9.5V20h13V9.5L12 15.5 5.5 9.5z" fill="#34A853" opacity="0.15"/>
+      {/* The M center white cover */}
+      <path d="M5.5 9.5L12 15.5l6.5-6V20H5.5V9.5z" fill="white" />
+      {/* Yellow bottom-left triangle */}
+      <path d="M2 6.5l3.5 3V20H4a2 2 0 01-2-2V6.5z" fill="#FBBC04" />
     </svg>
   )
 }
@@ -58,11 +66,25 @@ function GoogleCalendarIcon({ size = 24 }: { size?: number }) {
 function NotionIcon({ size = 24 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="2" width="18" height="20" rx="3" fill="white" stroke="currentColor" strokeWidth="1.2" opacity="0.8" />
+      <rect x="2" y="2" width="20" height="20" rx="4" fill="white" />
+      {/* Notion's iconic skewed N */}
       <path
-        d="M7.5 6.5h5.2c1.2 0 2.1.3 2.7.8.6.5.9 1.2.9 2.1v5.7c0 .5-.2.9-.5 1.2-.3.3-.7.5-1.2.5H8.5c-.7 0-1.2-.2-1.6-.6-.4-.4-.6-1-.6-1.7V7.8c0-.4.1-.7.4-1 .2-.2.5-.3.8-.3zm1.2 1.5v6.5h4.7c.3 0 .5-.1.7-.2.2-.2.2-.4.2-.7V10c0-.4-.1-.7-.4-1-.3-.2-.7-.3-1.2-.3H8.7z"
-        fill="currentColor"
-        opacity="0.85"
+        d="M7 5.5c0-.6.5-.9 1-.7l9.5 1.8c.4.1.5.4.5.8V18c0 .6-.4.9-.9.8L7.5 17c-.3-.1-.5-.4-.5-.7V5.5z"
+        fill="white"
+        stroke="#37352F"
+        strokeWidth="1.2"
+      />
+      <path
+        d="M8.5 7.2l1.2.2v8.2l-1.2-.2V7.2z"
+        fill="#37352F"
+      />
+      <path
+        d="M9.7 7.4l5.6 7.2V8.4l-5.6-1V7.4z"
+        fill="#37352F"
+      />
+      <path
+        d="M15.3 14.6l1.2.2V8.6l-1.2-.2v6z"
+        fill="#37352F"
       />
     </svg>
   )
@@ -114,6 +136,54 @@ function GoogleDriveIcon({ size = 24 }: { size?: number }) {
   )
 }
 
+function GranolaIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="2" y="2" width="20" height="20" rx="6" fill="#FF5C35" />
+      <rect x="6" y="11" width="2" height="6" rx="1" fill="white" />
+      <rect x="10" y="7" width="2" height="10" rx="1" fill="white" />
+      <rect x="14" y="9" width="2" height="8" rx="1" fill="white" />
+      <rect x="18" y="12" width="2" height="5" rx="1" fill="white" />
+    </svg>
+  )
+}
+
+function GoogleDocsIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      {/* Page background */}
+      <rect x="4" y="2" width="16" height="20" rx="1.5" fill="#4285F4" />
+      {/* Folded corner */}
+      <path d="M14 2l6 6h-6V2z" fill="#A8C7FA" />
+      {/* Text lines */}
+      <rect x="7" y="10" width="10" height="1.5" rx="0.75" fill="white" opacity="0.9" />
+      <rect x="7" y="13" width="10" height="1.5" rx="0.75" fill="white" opacity="0.9" />
+      <rect x="7" y="16" width="7" height="1.5" rx="0.75" fill="white" opacity="0.9" />
+    </svg>
+  )
+}
+
+function GoogleSheetsIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      {/* Page background */}
+      <rect x="4" y="2" width="16" height="20" rx="1.5" fill="#0F9D58" />
+      {/* Folded corner */}
+      <path d="M14 2l6 6h-6V2z" fill="#81C995" />
+      {/* Grid lines horizontal */}
+      <rect x="6" y="9" width="12" height="0.75" rx="0.375" fill="white" opacity="0.5" />
+      <rect x="6" y="12" width="12" height="0.75" rx="0.375" fill="white" opacity="0.5" />
+      <rect x="6" y="15" width="12" height="0.75" rx="0.375" fill="white" opacity="0.5" />
+      {/* Grid line vertical */}
+      <rect x="11" y="9" width="0.75" height="9" rx="0.375" fill="white" opacity="0.5" />
+      {/* Cells */}
+      <rect x="6.5" y="9.75" width="4" height="2" rx="0.25" fill="white" opacity="0.2" />
+      <rect x="11.75" y="9.75" width="5.75" height="2" rx="0.25" fill="white" opacity="0.2" />
+      <rect x="6.5" y="12.75" width="4" height="2" rx="0.25" fill="white" opacity="0.2" />
+    </svg>
+  )
+}
+
 function ExaSearchIcon({ size = 24 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -135,6 +205,9 @@ const ICON_MAP: Record<string, (props: { size?: number }) => JSX.Element> = {
   slack: SlackIcon,
   linear: LinearIcon,
   'google-drive': GoogleDriveIcon,
+  granola: GranolaIcon,
+  'google-docs': GoogleDocsIcon,
+  'google-sheets': GoogleSheetsIcon,
 }
 
 /**

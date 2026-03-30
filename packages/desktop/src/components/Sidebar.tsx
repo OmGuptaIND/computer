@@ -276,10 +276,6 @@ export function Sidebar({ onViewChange, onOpenSettings, onOpenMachineInfo }: Pro
               <Monitor size={18} strokeWidth={1.5} />
             </button>
           </div>
-          <div className="sidebar-bottombar__brand">
-            <span className="sidebar-bottombar__from">from</span>
-            <AntonLogo size={16} />
-          </div>
         </div>
       </div>
     </motion.aside>
@@ -432,7 +428,7 @@ function ProjectFolder({ projectId, name, isActive, sessions, onClick }: Project
               setActiveProjectSession(sessionId)
             }}
             aria-label="New session"
-            title="New session"
+            data-tooltip="New session"
           >
             <Plus size={14} strokeWidth={1.5} />
           </button>

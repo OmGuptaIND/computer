@@ -18,6 +18,8 @@
 #   CALLBACK_URL     — URL to POST status when init completes
 #   USERNAME         — SSH login username to create
 #   PASSWORD         — SSH login password for the user
+#   EXA_PROXY_TOKEN  — Exa search API proxy token
+#   BRAINTRUST_API_KEY — Braintrust observability key
 # ─────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -120,7 +122,9 @@ ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 ANTON_DIR=${ANTON_DIR}
 DOMAIN=${DOMAIN}
 OAUTH_PROXY_URL=https://oauth.antoncomputer.in
-EXA_PROXY_TOKEN=${EXA_PROXY_TOKEN:-}
+OAUTH_CALLBACK_BASE_URL=https://${DOMAIN}
+${EXA_PROXY_TOKEN:+EXA_PROXY_TOKEN=${EXA_PROXY_TOKEN}}
+${BRAINTRUST_API_KEY:+BRAINTRUST_API_KEY=${BRAINTRUST_API_KEY}}
 ${ANTON_TOKEN:+ANTON_TOKEN=${ANTON_TOKEN}}
 ENV
 chmod 600 ${ANTON_DIR}/agent.env

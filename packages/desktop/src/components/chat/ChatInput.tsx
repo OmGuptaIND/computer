@@ -273,6 +273,7 @@ export function ChatInput({
                 type="button"
                 className="composer__btn"
                 aria-label="Attach images"
+                data-tooltip="Attach images"
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Plus size={18} strokeWidth={1.5} />
@@ -283,7 +284,7 @@ export function ChatInput({
                 className={`composer__btn composer__btn--plan${planFirst ? ' composer__btn--plan-active' : ''}`}
                 onClick={() => setPlanFirst(!planFirst)}
                 aria-label="Plan first"
-                title="Plan before executing"
+                data-tooltip={planFirst ? 'Plan mode on' : 'Plan first'}
               >
                 <ListChecks size={18} strokeWidth={1.5} />
               </button>
@@ -298,7 +299,7 @@ export function ChatInput({
                       onClick={handleSend}
                       className="composer__btn composer__btn--steer"
                       aria-label="Send while working"
-                      title="Send while working"
+                      data-tooltip="Steer"
                     >
                       <Send size={16} strokeWidth={1.5} />
                     </button>
@@ -307,6 +308,7 @@ export function ChatInput({
                     type="button"
                     className="composer__btn composer__btn--stop"
                     aria-label="Stop"
+                    data-tooltip="Stop"
                     onClick={onCancelTurn}
                   >
                     <Square size={18} strokeWidth={1.5} />
@@ -319,6 +321,7 @@ export function ChatInput({
                   disabled={!input.trim() && attachments.length === 0}
                   className="composer__btn composer__btn--send"
                   aria-label="Send"
+                  data-tooltip="Send"
                 >
                   <Send size={18} strokeWidth={1.5} />
                 </button>

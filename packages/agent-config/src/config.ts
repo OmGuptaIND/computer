@@ -317,6 +317,14 @@ export function loadConfig(): AgentConfig {
     }
   }
 
+  // Braintrust env var override
+  if (process.env.BRAINTRUST_API_KEY) {
+    config.braintrust = {
+      ...config.braintrust,
+      apiKey: process.env.BRAINTRUST_API_KEY,
+    }
+  }
+
   return config
 }
 
@@ -1327,19 +1335,15 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     description: 'Manage issues, projects, and workflows',
     icon: '📋',
     category: 'development',
-    type: 'mcp',
-    command: 'npx',
-    args: ['-y', 'mcp-server-linear'],
-    requiredEnv: ['LINEAR_API_KEY'],
+    type: 'oauth',
+    oauthProvider: 'linear',
+    oauthScopes: ['read', 'write', 'issues:create'],
+    requiredEnv: [],
+    featured: true,
     setupGuide: {
-      steps: [
-        'Go to Linear Settings > API',
-        'Click "Create key" under Personal API keys',
-        'Give the key a label and create it',
-        'Copy the key and paste it below',
-      ],
-      url: 'https://linear.app/settings/api',
-      urlLabel: 'Linear API Settings',
+      steps: ['Click Connect to authorize with your Linear account'],
+      url: 'https://linear.app',
+      urlLabel: 'Linear',
     },
   },
   {
@@ -1348,20 +1352,105 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     description: 'Access and manage files in Google Drive',
     icon: '📁',
     category: 'productivity',
-    type: 'mcp',
-    command: 'npx',
-    args: ['-y', '@anthropic/mcp-server-google-drive'],
-    requiredEnv: ['GOOGLE_DRIVE_CREDENTIALS_PATH'],
+    type: 'oauth',
+    oauthProvider: 'google',
+    oauthScopes: [
+      'https://www.googleapis.com/auth/drive.readonly',
+      'https://www.googleapis.com/auth/drive.file',
+    ],
+    requiredEnv: [],
+    featured: true,
     setupGuide: {
-      steps: [
-        'Go to Google Cloud Console and create a project',
-        'Enable the Google Drive API',
-        'Create OAuth 2.0 credentials (Desktop app type)',
-        'Download the credentials JSON file',
-        'Paste the file path below',
-      ],
+      steps: ['Click Connect to authorize with your Google account'],
       url: 'https://console.cloud.google.com/apis/credentials',
       urlLabel: 'Google Cloud Console',
+    },
+  },
+  {
+    id: 'google-calendar',
+    name: 'Google Calendar',
+    description: 'View and manage events in Google Calendar',
+    icon: '📅',
+    category: 'productivity',
+    type: 'oauth',
+    oauthProvider: 'google',
+    oauthScopes: [
+      'https://www.googleapis.com/auth/calendar',
+      'https://www.googleapis.com/auth/calendar.events',
+    ],
+    requiredEnv: [],
+    featured: true,
+    setupGuide: {
+      steps: ['Click Connect to authorize with your Google account'],
+      url: 'https://console.cloud.google.com/apis/credentials',
+      urlLabel: 'Google Cloud Console',
+    },
+  },
+  {
+    id: 'granola',
+    name: 'Granola',
+    description: 'Access your AI meeting notes and transcripts',
+    icon: '🎙️',
+    category: 'productivity',
+    type: 'api',
+    requiredEnv: ['GRANOLA_API_KEY'],
+    featured: true,
+    setupGuide: {
+      steps: [
+        'Open the Granola desktop app',
+        'Go to Settings → API',
+        'Click "Create new key"',
+        'Copy the key (starts with grn_) and paste it below',
+        'Note: requires a Business or Enterprise plan',
+      ],
+      url: 'https://granola.so',
+      urlLabel: 'Granola',
+    },
+  },
+  {
+    id: 'google-docs',
+    name: 'Google Docs',
+    description: 'Read, create, and edit Google Docs documents',
+    icon: '📄',
+    category: 'productivity',
+    type: 'oauth',
+    oauthProvider: 'google',
+    oauthScopes: [
+      'https://www.googleapis.com/auth/documents',
+      'https://www.googleapis.com/auth/drive.readonly',
+    ],
+    requiredEnv: [],
+    featured: true,
+    setupGuide: {
+      steps: [
+        'Click "Connect Google Docs" to authorize with your Google account',
+        'Anton will request access to your Google Docs documents',
+      ],
+      url: 'https://docs.google.com',
+      urlLabel: 'Google Docs',
+    },
+  },
+  {
+    id: 'google-sheets',
+    name: 'Google Sheets',
+    description: 'Read, create, and edit Google Sheets spreadsheets',
+    icon: '📊',
+    category: 'productivity',
+    type: 'oauth',
+    oauthProvider: 'google',
+    oauthScopes: [
+      'https://www.googleapis.com/auth/spreadsheets',
+      'https://www.googleapis.com/auth/drive.readonly',
+    ],
+    requiredEnv: [],
+    featured: true,
+    setupGuide: {
+      steps: [
+        'Click "Connect Google Sheets" to authorize with your Google account',
+        'Anton will request access to your Google Sheets spreadsheets',
+      ],
+      url: 'https://sheets.google.com',
+      urlLabel: 'Google Sheets',
     },
   },
 ]

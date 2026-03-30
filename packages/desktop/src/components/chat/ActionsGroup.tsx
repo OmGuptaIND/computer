@@ -13,6 +13,14 @@ import type { ToolAction } from './groupMessages.js'
 
 /** Get a favicon URL for tools that interact with external URLs (free, no API key) */
 function getToolFavicon(toolName: string, toolInput?: Record<string, unknown>): string | null {
+  // Exa search tools get exa.ai favicon
+  if (toolName === 'exa_search' || toolName === 'exa_find_similar') {
+    return 'https://www.google.com/s2/favicons?domain=exa.ai&sz=16'
+  }
+  // Web search gets a generic search icon via Google favicon
+  if (toolName === 'web_search') {
+    return 'https://www.google.com/s2/favicons?domain=google.com&sz=16'
+  }
   if (!toolInput) return null
   let url: string | null = null
   if (toolName === 'browser') url = toolInput.url as string
@@ -70,6 +78,12 @@ function getToolTypeLabel(toolName: string, toolInput?: Record<string, unknown>)
       return 'Agent'
     case 'sub_agent':
       return 'Agent'
+    case 'web_search':
+      return 'Search'
+    case 'exa_search':
+      return 'Search'
+    case 'exa_find_similar':
+      return 'Similar'
     default:
       // For MCP or unknown tools, capitalize first letter
       return toolName.charAt(0).toUpperCase() + toolName.slice(1)
@@ -146,6 +160,22 @@ function getToolTarget(toolName: string, toolInput?: Record<string, unknown>): s
     }
     case 'sub_agent':
       return (toolInput.task as string) || null
+    case 'web_search':
+    case 'exa_search': {
+      const query = (toolInput.query as string) || ''
+      if (!query) return null
+      const trimmed = query.length > 60 ? `${query.slice(0, 57)}...` : query
+      return `"${trimmed}"`
+    }
+    case 'exa_find_similar': {
+      const url = (toolInput.url as string) || ''
+      if (!url) return null
+      try {
+        return new URL(url.startsWith('http') ? url : `https://${url}`).hostname
+      } catch {
+        return url.length > 60 ? `${url.slice(0, 57)}...` : url
+      }
+    }
     default:
       return null
   }
@@ -186,6 +216,19 @@ function getToolMeta(toolName: string, toolInput?: Record<string, unknown>, resu
       const len = resultContent.length
       if (len >= 1024) return `${(len / 1024).toFixed(1)}kb response`
       return `${len} bytes`
+    }
+    case 'web_search':
+    case 'exa_search':
+    case 'exa_find_similar': {
+      // Try to count results from the output
+      const resultMatches = resultContent.match(/\burl\b/gi)
+      if (resultMatches && resultMatches.length > 0) {
+        const count = resultMatches.length
+        return `${count} result${count !== 1 ? 's' : ''}`
+      }
+      const category = toolInput?.category as string
+      if (category) return category
+      return null
     }
     default:
       return null

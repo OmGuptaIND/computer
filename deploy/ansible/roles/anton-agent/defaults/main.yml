@@ -24,6 +24,9 @@ anthropic_api_key: ""
 # Braintrust observability (optional)
 braintrust_api_key: ""
 
+# Exa search proxy token (optional)
+exa_proxy_token: ""
+
 # OAuth proxy for one-click connectors (optional)
 oauth_proxy_url: ""
 oauth_callback_base_url: ""

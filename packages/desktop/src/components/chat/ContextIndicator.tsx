@@ -24,7 +24,7 @@ export function ContextIndicator({ contextInfo, sessionId }: ContextIndicatorPro
         type="button"
         className="context-indicator__badge"
         onClick={openContextPanel}
-        title={totalMemories > 0 ? `${totalMemories} memories loaded` : 'Conversation info'}
+        data-tooltip={totalMemories > 0 ? `${totalMemories} memories loaded` : 'Conversation info'}
       >
         {totalMemories > 0 ? (
           <>
