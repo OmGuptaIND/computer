@@ -1,16 +1,16 @@
 {
-  "version": "1.0.27",
+  "version": "1.0.28",
   "gitHash": "",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
-  "changelog": "Features:\n- add Google Search Console connector, implement WebSocket message handling, and refactor desktop UI components\n\nOther:\n- refactor: unify connector management logic, deduplicate tools, and improve GitHub API authentication fallback",
-  "publishedAt": "2026-03-30T17:08:12.061Z",
+  "changelog": "Fixes:\n- tool calling issues",
+  "publishedAt": "2026-03-30T18:42:06.334Z",
   "binaries": {
-    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.27/anton-agent-linux-x64",
-    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.27/anton-agent-linux-arm64"
+    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.28/anton-agent-linux-x64",
+    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.28/anton-agent-linux-arm64"
   },
   "sidecar_binaries": {
-    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.27/anton-sidecar-linux-amd64",
-    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.27/anton-sidecar-linux-arm64"
+    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.28/anton-sidecar-linux-amd64",
+    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.28/anton-sidecar-linux-arm64"
   },
-  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.27/anton-cli.mjs"
+  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.28/anton-cli.mjs"
 }
