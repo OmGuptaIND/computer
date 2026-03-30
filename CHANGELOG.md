@@ -13,6 +13,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ## [1.0.27] - 2026-03-30
 
 ### Features
+- add Google Search Console connector, implement WebSocket message handling, and refactor desktop UI components
+
+### Other
+- refactor: unify connector management logic, deduplicate tools, and improve GitHub API authentication fallback
+---
+
+## [1.0.27] - 2026-03-30
+
+### Features
 - implement agent memory persistence and refactor cron execution to use ephemeral sessions per run
 - implement OAuth connector framework with provider support and session history pagination
 
@@ -192,6 +201,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ---
 
 [Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.27...HEAD
+[1.0.27]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.27
 [1.0.27]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.27
 [1.0.26]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.26
 [1.0.26]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.26
