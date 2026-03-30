@@ -113,41 +113,29 @@ export function ProjectView() {
   }
 
   const handleOpenAgent = (agentSessionId: string) => {
-    // Always create a new conversation when clicking an agent.
-    // Each click = fresh conversation with the agent's context.
-    const sessionId = `proj_${project.id}_sess_${Date.now().toString(36)}`
+    // Show the agent info panel (AgentEmptyState) with stats, scheduler debug, run history.
+    // Run logs are accessed via the modal when clicking a run entry.
     const store = useStore.getState()
     const agent = store.projectAgents.find((a) => a.sessionId === agentSessionId)
-    const title = agent ? agent.agent.name : 'Agent conversation'
+    const title = agent ? agent.agent.name : 'Agent'
 
-    store.newConversation(title, sessionId, project.id, agentSessionId)
-
-    connection.sendSessionCreate(sessionId, {
-      provider: store.currentProvider,
-      model: store.currentModel,
-      projectId: project.id,
-    })
-
-    // Optimistically add to projectSessions so sidebar updates immediately
-    store.setProjectSessions([
-      {
-        id: sessionId,
-        title,
+    // Check if an agent info conversation already exists — don't create duplicates
+    const existing = store.conversations.find(
+      (c) => c.agentSessionId === agentSessionId && c.projectId === project.id,
+    )
+    if (existing) {
+      store.switchConversation(existing.id)
+      setActiveSessionId(existing.sessionId)
+    } else {
+      const sessionId = `proj_${project.id}_sess_${Date.now().toString(36)}`
+      store.newConversation(title, sessionId, project.id, agentSessionId)
+      connection.sendSessionCreate(sessionId, {
         provider: store.currentProvider,
         model: store.currentModel,
-        messageCount: 0,
-        createdAt: Date.now(),
-        lastActiveAt: Date.now(),
-      },
-      ...store.projectSessions,
-    ])
-
-    const conv = store.findConversationBySession(sessionId)
-    if (conv) {
-      store.switchConversation(conv.id)
+        projectId: project.id,
+      })
+      setActiveSessionId(sessionId)
     }
-
-    setActiveSessionId(sessionId)
   }
 
   const handleDeleteSession = (sessionId: string) => {

@@ -6,6 +6,24 @@ import remarkGfm from 'remark-gfm'
 import { highlightCode } from '../../lib/shiki.js'
 import type { CitationSource } from '../../lib/store.js'
 
+function slugify(children: React.ReactNode): string {
+  const text = extractText(children)
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
+function extractText(node: React.ReactNode): string {
+  if (typeof node === 'string') return node
+  if (typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(extractText).join('')
+  if (node && typeof node === 'object' && 'props' in node) {
+    return extractText((node as React.ReactElement<{ children?: React.ReactNode }>).props.children)
+  }
+  return ''
+}
+
 interface Props {
   content: string
   citations?: CitationSource[]
@@ -99,13 +117,13 @@ export function MarkdownRenderer({ content, citations }: Props) {
           th: ({ children }) => <th className="markdown-body__th">{children}</th>,
           td: ({ children }) => <td className="markdown-body__td">{children}</td>,
           h1: ({ children }) => (
-            <h1 className="markdown-body__heading markdown-body__heading--h1">{children}</h1>
+            <h1 id={slugify(children)} className="markdown-body__heading markdown-body__heading--h1">{children}</h1>
           ),
           h2: ({ children }) => (
-            <h2 className="markdown-body__heading markdown-body__heading--h2">{children}</h2>
+            <h2 id={slugify(children)} className="markdown-body__heading markdown-body__heading--h2">{children}</h2>
           ),
           h3: ({ children }) => (
-            <h3 className="markdown-body__heading markdown-body__heading--h3">{children}</h3>
+            <h3 id={slugify(children)} className="markdown-body__heading markdown-body__heading--h3">{children}</h3>
           ),
           p: ({ children }) => <p className="markdown-body__paragraph">{children}</p>,
           hr: () => <hr className="markdown-body__rule" />,

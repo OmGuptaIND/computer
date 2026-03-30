@@ -39,7 +39,9 @@ export class GitHubAPI {
   // ── User ──
 
   async getAuthenticatedUser(): Promise<{ login: string; name: string; email: string }> {
-    return this.request('GET', '/user')
+    // GitHub App installation tokens — identity is the app itself
+    const app = await this.request<{ slug: string; name: string }>('GET', '/app')
+    return { login: app.slug ?? app.name, name: app.name, email: '' }
   }
 
   // ── Repos ──
@@ -55,11 +57,21 @@ export class GitHubAPI {
     }>
   > {
     const params = new URLSearchParams({
-      sort: opts.sort || 'updated',
       per_page: String(opts.per_page || 30),
       page: String(opts.page || 1),
     })
-    return this.request('GET', `/user/repos?${params}`)
+    // GitHub App installation tokens — only repos granted during install
+    const data = await this.request<{
+      repositories: Array<{
+        full_name: string
+        description: string | null
+        private: boolean
+        language: string | null
+        stargazers_count: number
+        updated_at: string
+      }>
+    }>('GET', `/installation/repositories?${params}`)
+    return data.repositories ?? []
   }
 
   async getRepo(owner: string, repo: string): Promise<{
@@ -237,5 +249,98 @@ export class GitHubAPI {
   ): Promise<{ content: string; encoding: string; sha: string }> {
     const params = ref ? `?ref=${ref}` : ''
     return this.request('GET', `/repos/${owner}/${repo}/contents/${path}${params}`)
+  }
+
+  // ── Branches ──
+
+  async getBranch(
+    owner: string,
+    repo: string,
+    branch: string,
+  ): Promise<{
+    name: string
+    commit: { sha: string; url: string }
+    protected: boolean
+  }> {
+    return this.request('GET', `/repos/${owner}/${repo}/branches/${branch}`)
+  }
+
+  async createBranch(
+    owner: string,
+    repo: string,
+    branch: string,
+    fromSha: string,
+  ): Promise<{ ref: string; object: { sha: string } }> {
+    return this.request('POST', `/repos/${owner}/${repo}/git/refs`, {
+      ref: `refs/heads/${branch}`,
+      sha: fromSha,
+    })
+  }
+
+  // ── File mutations ──
+
+  async createOrUpdateFile(
+    owner: string,
+    repo: string,
+    path: string,
+    message: string,
+    content: string,
+    opts: { branch?: string; sha?: string } = {},
+  ): Promise<{
+    content: { path: string; sha: string; html_url: string }
+    commit: { sha: string; html_url: string }
+  }> {
+    return this.request('PUT', `/repos/${owner}/${repo}/contents/${path}`, {
+      message,
+      content, // must be base64 encoded
+      ...(opts.branch ? { branch: opts.branch } : {}),
+      ...(opts.sha ? { sha: opts.sha } : {}),
+    })
+  }
+
+  async deleteFile(
+    owner: string,
+    repo: string,
+    path: string,
+    message: string,
+    sha: string,
+    opts: { branch?: string } = {},
+  ): Promise<{ commit: { sha: string; html_url: string } }> {
+    return this.request('DELETE', `/repos/${owner}/${repo}/contents/${path}`, {
+      message,
+      sha,
+      ...(opts.branch ? { branch: opts.branch } : {}),
+    })
+  }
+
+  // ── Pull Requests (write) ──
+
+  async createPullRequest(
+    owner: string,
+    repo: string,
+    title: string,
+    head: string,
+    base: string,
+    opts: { body?: string; draft?: boolean } = {},
+  ): Promise<{ number: number; html_url: string; state: string }> {
+    return this.request('POST', `/repos/${owner}/${repo}/pulls`, {
+      title,
+      head,
+      base,
+      ...(opts.body ? { body: opts.body } : {}),
+      ...(opts.draft !== undefined ? { draft: opts.draft } : {}),
+    })
+  }
+
+  async mergePullRequest(
+    owner: string,
+    repo: string,
+    prNumber: number,
+    opts: { merge_method?: 'merge' | 'squash' | 'rebase'; commit_title?: string } = {},
+  ): Promise<{ sha: string; merged: boolean; message: string }> {
+    return this.request('PUT', `/repos/${owner}/${repo}/pulls/${prNumber}/merge`, {
+      ...(opts.merge_method ? { merge_method: opts.merge_method } : {}),
+      ...(opts.commit_title ? { commit_title: opts.commit_title } : {}),
+    })
   }
 }

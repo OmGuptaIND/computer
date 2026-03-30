@@ -1210,16 +1210,16 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     id: 'exa-search',
     name: 'Web Search (Exa)',
     description:
-      'Semantic web search powered by Exa. Returns full page content as markdown with highlights and summaries.',
+      'Semantic web search powered by Exa. Returns full page content, summaries, and highlights.',
     icon: '🔍',
     category: 'productivity',
     type: 'api',
-    requiredEnv: ['EXA_SEARCH_URL', 'EXA_SEARCH_TOKEN'],
+    requiredEnv: ['EXA_PROXY_TOKEN'],
     featured: true,
     setupGuide: {
       steps: [
-        'Enter your search proxy URL (e.g. https://anton-search-proxy.your-worker.workers.dev)',
-        'Enter the proxy bearer token for authentication',
+        'Anton provides a shared search proxy — no personal API key needed.',
+        'Paste the proxy token provided by your Anton administrator.',
       ],
       url: 'https://exa.ai',
       urlLabel: 'Exa Docs',

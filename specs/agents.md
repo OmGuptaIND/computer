@@ -55,27 +55,44 @@ interface AgentMetadata {
 4. `originConversationId` set to A (the human's conversation)
 5. UI shows new agent card in the Agents tab
 
-### Execution — System Prompt + Short Trigger
+### Execution — Fresh Session Per Run + Persistent Memory
 
-Agent instructions live in the **system prompt**, not in user messages. This prevents the agent from re-creating scripts on every run.
+Each run creates a **fresh conversation** with agent instructions + memory in the system prompt. No accumulated context bloat.
+
+```
+~/.anton/projects/{projectId}/conversations/{agentSessionId}/
+├── agent.json     ← metadata, schedule, runHistory
+├── memory.md      ← persistent memory across runs (<2000 chars)
+```
 
 1. `AgentManager.tick()` runs every 30s, checks cron schedules
-2. When it's time: `runAgent(sessionId, 'cron')` sends a **short trigger message** (not the full instructions)
-3. The session is resumed with `agentInstructions` injected into the system prompt via `<agent_instructions>` block
-4. The conversation runs, uses tools, writes scripts, produces output
-5. On completion: status updated, run record appended to `runHistory`, `agent.json` persisted
+2. Collects all due agents, then runs them **sequentially with await**
+3. `runAgent()` loads `memory.md` from disk
+4. Server creates a fresh ephemeral session (`agent-run--{agentId}--{timestamp}`)
+5. System prompt includes `<agent_instructions>` + `<agent_memory>` blocks
+6. Short trigger message sent (not the full instructions)
+7. Agent runs autonomously (auto-approve confirms, skip ask_user)
+8. On completion: extracts last assistant text as summary, saves to `memory.md`
+9. Run record saved with `runSessionId` for log viewing
 
-Each run is recorded as an `AgentRunRecord` with start/end timestamps, duration, success/error status, error message (if failed), and trigger type (cron vs manual). The history is capped at 20 entries.
+Each run is recorded as an `AgentRunRecord` with start/end timestamps, duration, status, trigger type, and `runSessionId`. History capped at 20 entries.
 
-**Why system prompt, not user message:** Sending the full instructions as a user message every run makes the LLM think it's a fresh task — it re-writes scripts, re-computes everything, burns tokens, and eventually hits context limits. With instructions in the system prompt, the LLM always knows its mission and can re-use what it built.
+**Run logs:** Each run's logs can be fetched via `agent_run_logs` protocol message using the `runSessionId`. Returns the full conversation from that specific run session.
+
+### Agent Memory
+
+Agents have a `memory.md` file that persists across runs. After each successful run, the assistant's last response is saved as memory (capped at 2000 chars). This tells the next run:
+- What scripts/tooling were built and where they live
+- What happened in the last run (success/failure, key metrics)
+- What to re-use vs what to rebuild
+
+The memory is injected into the system prompt via `<agent_memory>` block. The agent sees its instructions + memory + a short trigger — enough context to execute without rebuilding.
 
 ### First Run vs Subsequent Runs
 
-**First run:** Trigger message says "This is your first run. Build any scripts or tooling you need." The agent reads its instructions from the system prompt, builds everything, and returns first results.
+**First run:** No memory exists. Trigger says "Build any scripts or tooling you need." Agent reads instructions from system prompt, builds everything, returns results. Summary saved to `memory.md`.
 
-**Subsequent runs:** Trigger message says "Re-use the scripts and tooling you built in previous runs." The LLM sees its conversation history (what it built), the system prompt (what to do), and a short "go" signal. It re-executes existing scripts instead of rebuilding.
-
-The agent's conversation history persists across runs. It remembers what it built, what the user told it, and what worked.
+**Subsequent runs:** Memory loaded from `memory.md`. Trigger says "Re-use existing scripts." Agent reads memory ("I built generate_dashboard.py at /home/anton/..."), re-runs it. Fresh context window — no bloat from 100 previous runs.
 
 ### Result Delivery
 
@@ -96,16 +113,14 @@ User's conversation
 
 ### User Interaction — Conversation-First Model
 
-Clicking an agent in the UI creates a **new project conversation** tagged with that agent's context. The agent is not a single session that gets reopened — each interaction spawns a fresh conversation.
+Clicking an agent opens **the agent's own conversation** (its `agent--` session). This shows the actual messages from cron/manual runs — tool calls, outputs, errors.
 
 **Flow:**
 1. User clicks agent card in ProjectLanding
-2. Client creates a new `proj_{projectId}_sess_{timestamp}` session with `agentSessionId` set to the agent's metadata session ID
-3. `AgentEmptyState` renders: agent name, description, stats (last run, next run, run count, tokens), expandable instructions, scheduler debug panel (cron expression, status, exact next/last run timestamps), collapsible run history (last 20 runs with status, duration, trigger type, expandable errors), Run/Stop button, and a chat input
-4. User types a question → agent context (name, description, instructions) is injected into the first message as `<agent_context>` XML
-5. The conversation becomes a normal project conversation with auto-generated title
-6. It appears in the sidebar thread list with a Bot icon badge
-7. Going back to the project landing and clicking the agent again creates another new conversation
+2. Client opens the agent's own `agent--{projectId}--{suffix}` session and requests its history
+3. `AgentEmptyState` renders: agent name, description, stats (last run, next run, run count, tokens), expandable instructions, scheduler debug panel (cron expression, status, exact next/last run timestamps), collapsible run history (last 20 runs with status, duration, trigger type, clickable to view run logs in a modal), Run/Stop button, and a chat input
+4. Run history entries with >100ms duration show a terminal icon — clicking opens a modal with the full conversation trace for that run
+5. User can also type messages to interact with the agent directly
 
 **Why this model:**
 - Each conversation with an agent is a distinct interaction the user can reference later
@@ -145,15 +160,26 @@ Clicking an agent in the UI creates a **new project conversation** tagged with t
 
 **Client → Server:**
 - `agent_create` — create a new agent
-- `agents_list` — list agents in a project
+- `agents_list` — list agents in a project (returns current status from server memory)
 - `agent_action` — start / stop / delete / pause / resume
+- `agent_run_logs` — fetch logs for a specific run (by time window)
 
 **Server → Client:**
 - `agent_created` — agent was created
-- `agents_list_response` — list of agents
-- `agent_updated` — agent status changed
+- `agents_list_response` — list of agents with live status (idle/running/error/paused)
+- `agent_updated` — agent status changed (real-time push during runs)
 - `agent_deleted` — agent was removed
 - `agent_result_delivered` — agent sent results to origin conversation
+- `agent_run_logs_response` — logs for a specific run
+
+### Status as Source of Truth
+
+Agent status is persisted in `agent.json` and kept in memory by `AgentManager`. The `agents_list_response` always returns the live status. The client re-fetches `agents_list` on:
+- Project landing mount
+- WebSocket reconnect
+- `agent_updated` events update the in-memory list in real-time
+
+Agent status values: `idle` (waiting), `running` (currently executing), `error` (last run failed), `paused` (user disabled). The UI maps these to display labels: Scheduled (idle + has cron), Running, Error, Paused, Idle (no cron).
 
 ## Session ID Format
 

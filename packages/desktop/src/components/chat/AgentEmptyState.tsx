@@ -1,25 +1,67 @@
-import type { AgentRunRecord, AgentSession } from '@anton/protocol'
+import type { AgentRunLogEntry, AgentRunRecord, AgentSession } from '@anton/protocol'
 import { motion } from 'framer-motion'
-import { AlertCircle, Calendar, CheckCircle2, ChevronDown, ChevronUp, Clock, Hash, Play, Square, Timer, Zap } from 'lucide-react'
+import { AlertCircle, Calendar, CheckCircle2, ChevronDown, ChevronUp, Clock, Hash, Loader2, Play, Square, Terminal, Timer, X, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { cronToHuman, formatAbsoluteTime, formatDuration, formatRelativeTime } from '../../lib/agent-utils.js'
 import { connection } from '../../lib/connection.js'
+import { useStore } from '../../lib/store.js'
 
 interface Props {
   agent: AgentSession
 }
 
-function RunEntry({ run }: { run: AgentRunRecord }) {
+function RunLogsModal({ logs, loading, onClose }: { logs: AgentRunLogEntry[] | null; loading: boolean; onClose: () => void }) {
+  return (
+    <div className="run-logs-modal__backdrop" onClick={onClose} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <div className="run-logs-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="run-logs-modal__header">
+          <Terminal size={14} strokeWidth={1.5} />
+          <span>Run Logs</span>
+          <button type="button" className="run-logs-modal__close" onClick={onClose}>
+            <X size={14} strokeWidth={1.5} />
+          </button>
+        </div>
+        <div className="run-logs-modal__body">
+          {loading ? (
+            <div className="run-logs-modal__loading">
+              <Loader2 size={16} strokeWidth={1.5} className="run-logs-modal__spinner" />
+              <span>Loading logs...</span>
+            </div>
+          ) : !logs?.length ? (
+            <div className="run-logs-modal__empty">No logs found for this run</div>
+          ) : (
+            logs.map((log, i) => (
+              <div key={`${log.ts}-${i}`} className={`run-logs-modal__entry run-logs-modal__entry--${log.role}`}>
+                <span className="run-logs-modal__role">{log.role === 'tool_call' ? 'tool' : log.role === 'tool_result' ? 'result' : log.role}</span>
+                {log.toolName && <span className="run-logs-modal__tool-name">{log.toolName}</span>}
+                <pre className="run-logs-modal__content">{log.isError ? `ERROR: ${log.content}` : log.content}</pre>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RunEntry({ run, onViewLogs }: { run: AgentRunRecord; onViewLogs: () => void }) {
   const [expanded, setExpanded] = useState(false)
   const isErr = run.status === 'error'
+  const hasLogs = run.completedAt != null && run.durationMs != null && run.durationMs > 100
 
   return (
     <div className={`agent-run-entry${isErr ? ' agent-run-entry--error' : ''}`}>
       <button
         type="button"
         className="agent-run-entry__row"
-        onClick={() => isErr && run.error && setExpanded(!expanded)}
-        disabled={!isErr || !run.error}
+        onClick={() => {
+          if (hasLogs) {
+            onViewLogs()
+          } else if (isErr && run.error) {
+            setExpanded(!expanded)
+          }
+        }}
+        disabled={!hasLogs && (!isErr || !run.error)}
       >
         {isErr ? (
           <AlertCircle size={12} strokeWidth={1.5} className="agent-run-entry__icon agent-run-entry__icon--error" />
@@ -33,8 +75,8 @@ function RunEntry({ run }: { run: AgentRunRecord }) {
         {run.durationMs != null && (
           <span className="agent-run-entry__duration">{formatDuration(run.durationMs)}</span>
         )}
-        {isErr && run.error && (
-          <ChevronDown size={10} strokeWidth={1.5} className={`agent-run-entry__expand${expanded ? ' agent-run-entry__expand--open' : ''}`} />
+        {hasLogs && (
+          <Terminal size={10} strokeWidth={1.5} className="agent-run-entry__logs-icon" />
         )}
       </button>
       {expanded && run.error && (
@@ -47,9 +89,19 @@ function RunEntry({ run }: { run: AgentRunRecord }) {
 export function AgentEmptyState({ agent }: Props) {
   const [showInstructions, setShowInstructions] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [showLogsModal, setShowLogsModal] = useState(false)
+  const agentRunLogs = useStore((s) => s.agentRunLogs)
+  const agentRunLogsLoading = useStore((s) => s.agentRunLogsLoading)
   const meta = agent.agent
   const isRunning = meta.status === 'running'
   const isError = meta.status === 'error'
+
+  const handleViewRunLogs = (run: AgentRunRecord) => {
+    if (!run.completedAt) return
+    useStore.setState({ agentRunLogs: null, agentRunLogsLoading: true })
+    setShowLogsModal(true)
+    connection.sendAgentRunLogs(agent.projectId, agent.sessionId, run.startedAt, run.completedAt, run.runSessionId)
+  }
 
   const handleRunStop = () => {
     if (isRunning) {
@@ -192,8 +244,8 @@ export function AgentEmptyState({ agent }: Props) {
               {!meta.runHistory?.length ? (
                 <div className="agent-empty-state__run-empty">No runs yet</div>
               ) : (
-                [...meta.runHistory].reverse().map((run, i) => (
-                  <RunEntry key={run.startedAt} run={run} />
+                [...meta.runHistory].reverse().map((run) => (
+                  <RunEntry key={run.startedAt} run={run} onViewLogs={() => handleViewRunLogs(run)} />
                 ))
               )}
             </div>
@@ -221,6 +273,14 @@ export function AgentEmptyState({ agent }: Props) {
           </button>
         </div>
       </motion.div>
+
+      {showLogsModal && (
+        <RunLogsModal
+          logs={agentRunLogs}
+          loading={agentRunLogsLoading}
+          onClose={() => setShowLogsModal(false)}
+        />
+      )}
     </div>
   )
 }

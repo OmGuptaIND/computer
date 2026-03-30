@@ -1,114 +1,102 @@
-# Project Context System — Phase 2 Spec
+# Project Context System
 
-## What We Learned from Research
+## Overview
 
-### Claude Code
-- **CLAUDE.md** files: project-level instructions loaded into system prompt
-- **Auto-memory**: categorized (user, feedback, project, reference) with frontmatter
-- **MEMORY.md** index: lightweight pointer file, actual content in separate files
-- **Compaction**: summarizes old messages when context window fills up
-- Hierarchy: global → project → conversation
+Project memory gives each project persistent context that carries across sessions. When a user opens a new conversation within a project, the LLM receives the project summary, notes, and recent session history — so it doesn't start from zero.
 
-### OpenAI Codex
-- **AGENTS.md** files: directory-scoped, hierarchical (root-to-leaf injection)
-- Override system: AGENTS.override.md takes precedence
-- 32KB default limit for combined instruction size
-- Simple markdown format, no special syntax
+## Architecture
 
-### Windsurf
-- **Rules** (manual) + **Memories** (auto-generated) — two distinct systems
-- Assembly pipeline: Rules → Memories → Open files → Codebase retrieval → Recent actions
-- Memories auto-generated when AI identifies useful context to persist
-
-### CrewAI
-- 4 memory types: Short-term (session), Long-term (cross-session), Entity (people/places), External
-- Short-term uses RAG/ChromaDB, Long-term uses SQLite
-- Unified Memory API that routes to the right type
-
-## Our Design
-
-### Context Layers (injected into every project session)
-
-```
-System prompt assembly for a project session:
-
-1. Base system prompt (unchanged)
-2. Project context (from project.json → context.summary)
-3. Project notes (from context/notes.md — user-editable)
-4. Active jobs summary (what's running, last results)
-5. Recent session summaries (last 3-5 sessions, one-liner each)
-```
-
-### Auto-Context Update (after each session)
-
-When a project session ends (`done` message received), the agent:
-1. Summarizes what was discussed/accomplished in this session (1-2 sentences)
-2. Extracts any new facts about the project (new services, credentials, config changes)
-3. Appends the session summary to the project's session history
-4. Updates `context.summary` if significant new information was learned
-
-This is NOT a separate LLM call — it's a final instruction in the session's system prompt:
-"When the conversation ends, output a [PROJECT_CONTEXT_UPDATE] block with..."
-
-### What Gets Stored
+### Storage Layout
 
 ```
 ~/.anton/projects/{projectId}/
-├── project.json              # Metadata + context.summary (agent-updated)
-├── context/
-│   ├── notes.md              # User-editable project notes
-│   └── session-history.jsonl # One-line summaries of past sessions
-├── sessions/
+├── project.json              # Metadata + context.summary (auto-updated by LLM)
+├── conversations/            # Project-scoped sessions
 │   └── {sessionId}/
 │       ├── meta.json
 │       └── messages.jsonl
+├── context/
+│   ├── notes.md              # User-editable project notes (injected into prompt)
+│   └── session-history.jsonl # One-line summaries of past sessions
+├── jobs/                     # Agent/job definitions
+└── files/                    # Project files on server
 ```
 
-**session-history.jsonl** (one entry per completed session):
+### Key Data
+
+**context.summary** (in project.json) — Auto-maintained by the LLM via the `update_project_context` tool. Example:
+> "Scrapes VP-level SaaS leads from LinkedIn. Uses Playwright with BrightData proxies. Output goes to Airtable 'Lead Pipeline'. Two daily runs (8am, 2pm)."
+
+**session-history.jsonl** — One entry per completed session turn:
 ```json
-{"sessionId": "...", "title": "Set up initial scraper", "summary": "Wrote Python script to scrape LinkedIn profiles using browser automation. Added proxy rotation.", "ts": 1711234567}
+{"sessionId": "...", "title": "Set up initial scraper", "summary": "Wrote Python script...", "ts": 1711234567}
 ```
 
-**context.summary** (in project.json):
-Auto-maintained field. Example:
-"Scrapes VP-level SaaS leads from LinkedIn. Uses Playwright for browser automation with BrightData proxies (10 residential IPs). Output goes to Airtable base 'Lead Pipeline', table 'Raw Leads'. Two daily runs (8am, 2pm). Known issue: CAPTCHA triggers after ~50 requests, mitigated by splitting runs."
+**context/notes.md** — User-editable notes surfaced in the UI and injected into the system prompt.
 
-### How Context Gets Into Sessions
+## How Context Gets Into Sessions
 
-On `session_create` with a `projectId`:
-1. Server loads the project
-2. Builds a context block from project.json + notes.md + session-history
-3. Prepends to the session's system prompt as a `[PROJECT CONTEXT]` section
-4. Creates the session under `projects/{projectId}/sessions/`
+On `session_create` with a `projectId`, the server calls `buildProjectContext()` which assembles:
 
-### Session Scoping on the Server
+```
+[PROJECT CONTEXT: {name}]
+Description: ...
+Type: ...
+Workspace: ...
 
-The `session_create` message gains an optional `projectId` field:
-```typescript
-{ type: 'session_create', id: string, projectId?: string, provider?, model? }
+Project Summary:
+{context.summary}
+
+Project Notes:
+{context/notes.md}
+
+Recent Sessions:
+- {title}: {summary}
+- {title}: {summary}
+... (last 5)
 ```
 
-If `projectId` is present:
-- Session persisted under `projects/{projectId}/sessions/{id}/`
-- Context injected from project
-- Session tagged with `projectId` in meta.json
+This block is appended to the system prompt for every message in the session (`session.ts → getSystemPrompt()`).
 
-### Desktop Flow
+## How Memory Gets Built
 
-When user opens a project session:
-1. Click project → ProjectView opens
-2. Click "New Session" or existing session in Sessions tab
-3. **View switches to Chat mode** with the session active
-4. Sidebar shows project sessions (not general conversations)
-5. A small badge/indicator shows which project this session belongs to
-6. When done, user can navigate back to project view
+### The `update_project_context` Tool
 
-## Implementation Order
+Defined in `agent.ts`, only registered when `projectId` is set. The LLM calls it with:
+- `session_summary` (required): 1-2 sentence summary of what was accomplished
+- `project_summary` (optional): Updated overall project summary, only if something significant changed
 
-1. Add `projectId` to `SessionCreateMessage` and server session handling
-2. Build context assembly on server (load project context → inject into prompt)
-3. Project session creation from desktop (opens chat with project context)
-4. Session-to-project linking (sidebar shows project sessions when in project)
-5. Context update extraction (parse [PROJECT_CONTEXT_UPDATE] from session output)
-6. Session history tracking (append summaries to session-history.jsonl)
-7. User-editable project notes (context/notes.md via the UI)
+The tool is a passthrough — it returns the input as JSON. The **server** captures the tool result from the event stream by tracking tool call IDs.
+
+### System Prompt Instruction
+
+When `projectId` is set, `session.ts` appends a `[PROJECT MEMORY]` instruction telling the LLM to call the tool once per session when meaningful work has been done. This is the critical piece — without it, the LLM never calls the tool on its own.
+
+### Server-Side Capture (server.ts)
+
+During message processing, the server:
+1. Tracks pending tool call names via a `Map<id, name>`
+2. When a `tool_result` event arrives for `update_project_context`, parses the JSON
+3. **Validates shape**: `sessionSummary` must be a string, `projectSummary` must be a string or undefined
+4. **Merges on repeat calls**: latest `sessionSummary` wins, but `projectSummary` is preserved from earlier calls if a later call omits it
+
+After the turn completes:
+1. If `projectSummary` was provided → calls `updateProjectContext(projectId, 'summary', ...)` which writes to `project.json` and updates the index
+2. Appends to `session-history.jsonl` using `sessionSummary` (falls back to session title if tool was never called)
+3. Sends `project_updated` event to the desktop client so the UI refreshes
+
+### What the Desktop Shows
+
+`ProjectConfigPanel.tsx` displays:
+- **Memory section**: Shows `project.context.summary`. If empty, shows "Project memory will build up after a few sessions."
+- **Edit modal**: Users can manually edit the summary. Saves via `sendProjectContextUpdate()`.
+
+## Design Decisions
+
+1. **No separate LLM call** — Memory is built within the session itself via a tool call, not a post-session summarization step. This avoids extra API costs and latency.
+
+2. **Tool-based, not output parsing** — Earlier designs used `[PROJECT_CONTEXT_UPDATE]` text blocks parsed from output. The tool approach is more reliable — structured parameters, typed validation, explicit invocation.
+
+3. **Session history as fallback context** — Even if the LLM never calls the tool, session titles still get appended to `session-history.jsonl` and injected into future sessions. The memory field stays empty but sessions still have some continuity.
+
+4. **Single system prompt instruction** — The `[PROJECT MEMORY]` block in the system prompt is what makes the LLM actually call the tool. The tool description alone was not sufficient — LLMs need explicit behavioral instructions, not just tool availability.

@@ -50,45 +50,66 @@ function AgentCard({
   const [showMenu, setShowMenu] = useState(false)
   const isRunning = agent.agent.status === 'running'
   const isError = agent.agent.status === 'error'
+  const isPaused = agent.agent.status === 'paused'
+
+  const hasSchedule = !!agent.agent.schedule?.cron
+  const statusLabel = isRunning
+    ? 'Running'
+    : isError
+      ? 'Error'
+      : isPaused
+        ? 'Paused'
+        : hasSchedule
+          ? 'Scheduled'
+          : 'Idle'
 
   const metaParts: string[] = []
-  if (agent.agent.schedule?.cron) metaParts.push(cronToHuman(agent.agent.schedule.cron))
-  if (agent.agent.lastRunAt) metaParts.push(formatRelativeTime(agent.agent.lastRunAt))
+  if (hasSchedule) metaParts.push(cronToHuman(agent.agent.schedule!.cron))
+  metaParts.push(statusLabel)
+  if (!isRunning && agent.agent.lastRunAt) metaParts.push(formatRelativeTime(agent.agent.lastRunAt))
 
   return (
     <button
       type="button"
-      className="agent-row"
+      className={`agent-row${isRunning ? ' agent-row--running' : ''}`}
       onClick={() => onOpenAgent(agent.sessionId)}
     >
       <div className="agent-row__content">
-        <span className="agent-row__name">{agent.agent.name}</span>
-        <div className="agent-row__meta">
-          {(isRunning || isError) && (
-            <span
-              className={`agent-row__dot${isRunning ? ' agent-row__dot--running' : ' agent-row__dot--error'}`}
-            />
-          )}
-          <span className="agent-row__meta-text">{metaParts.join('  ·  ')}</span>
+        <div className="agent-row__name-row">
+          <span
+            className={`agent-row__dot${isRunning ? ' agent-row__dot--running' : isError ? ' agent-row__dot--error' : ''}`}
+          />
+          <span className="agent-row__name">{agent.agent.name}</span>
         </div>
+        <span className="agent-row__meta-text">{metaParts.join('  ·  ')}</span>
       </div>
 
       <div className="agent-row__actions">
-        <button
-          type="button"
-          className="agent-row__icon-btn"
-          onClick={(e) => {
-            e.stopPropagation()
-            if (isRunning) {
+        {isRunning ? (
+          <button
+            type="button"
+            className="agent-row__icon-btn agent-row__icon-btn--visible"
+            onClick={(e) => {
+              e.stopPropagation()
               connection.sendAgentAction(projectId, agent.sessionId, 'stop')
-            } else {
+            }}
+            aria-label="Stop agent"
+          >
+            <Square size={14} strokeWidth={1.5} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="agent-row__icon-btn"
+            onClick={(e) => {
+              e.stopPropagation()
               connection.sendAgentAction(projectId, agent.sessionId, 'start')
-            }
-          }}
-          aria-label={isRunning ? 'Stop agent' : 'Run agent'}
-        >
-          {isRunning ? <Square size={14} strokeWidth={1.5} /> : <Play size={14} strokeWidth={1.5} />}
-        </button>
+            }}
+            aria-label="Run agent"
+          >
+            <Play size={14} strokeWidth={1.5} />
+          </button>
+        )}
 
         <button
           type="button"
@@ -148,12 +169,15 @@ function SessionsAndAgents({
   onDeleteSession: (id: string) => void
 }) {
   const agents = useStore((s) => s.projectAgents)
+  const connectionStatus = useStore((s) => s.connectionStatus)
   const runningCount = agents.filter((a) => a.agent.status === 'running').length
 
-  // Fetch agents on mount and when projectId changes
+  // Fetch agents on mount, when projectId changes, and on reconnect
   useEffect(() => {
-    connection.sendAgentsList(projectId)
-  }, [projectId])
+    if (connectionStatus === 'connected') {
+      connection.sendAgentsList(projectId)
+    }
+  }, [projectId, connectionStatus])
 
   return (
     <div className="project-landing__sections">

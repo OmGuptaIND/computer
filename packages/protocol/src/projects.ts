@@ -52,6 +52,8 @@ export interface AgentRunRecord {
   error?: string
   durationMs?: number
   trigger: 'cron' | 'manual'
+  /** Session ID of the ephemeral run conversation (for viewing run logs) */
+  runSessionId?: string
 }
 
 /** Agent metadata — stored as agent.json in the conversation directory */

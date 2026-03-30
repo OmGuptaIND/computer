@@ -752,6 +752,32 @@ export interface AgentResultDeliveredMessage {
   summary: string
 }
 
+// Client → Server: request logs for a specific agent run
+export interface AgentRunLogsMessage {
+  type: 'agent_run_logs'
+  projectId: string
+  sessionId: string
+  runSessionId?: string  // specific run session (new arch: each run = fresh session)
+  startedAt: number
+  completedAt: number
+}
+
+// Server → Client: logs for a specific agent run
+export interface AgentRunLogsResponse {
+  type: 'agent_run_logs_response'
+  sessionId: string
+  logs: AgentRunLogEntry[]
+}
+
+export interface AgentRunLogEntry {
+  ts: number
+  role: 'user' | 'assistant' | 'tool_call' | 'tool_result'
+  content: string
+  toolName?: string
+  toolInput?: string
+  isError?: boolean
+}
+
 // ── Connector management ─────────────────────────────────────────────
 
 export interface ConnectorConfigPayload {
@@ -1050,6 +1076,8 @@ export type AiMessage =
   | AgentUpdatedMessage
   | AgentDeletedMessage
   | AgentResultDeliveredMessage
+  | AgentRunLogsMessage
+  | AgentRunLogsResponse
   // Connectors
   | ConnectorsListMessage
   | ConnectorsListResponse

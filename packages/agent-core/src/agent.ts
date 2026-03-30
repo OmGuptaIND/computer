@@ -940,7 +940,7 @@ export function buildTools(
         label: 'Project Context',
         description:
           'Update the project context with a summary of what was accomplished in this session. ' +
-          'Call this when a conversation is wrapping up or when significant progress has been made on the project. ' +
+          'Call this once per session when meaningful work has been done (feature implemented, bug fixed, significant decision made). ' +
           'This persists the summary so future sessions have context about past work.',
         parameters: Type.Object({
           session_summary: Type.String({

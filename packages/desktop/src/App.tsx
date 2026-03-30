@@ -232,7 +232,7 @@ export function App() {
             >
               <span className="workspace-topbar__connectionDot" />
               <span className="workspace-topbar__connectionLabel">
-                {machineName || 'Connected'}
+                {status === 'connected' ? 'Connected' : status === 'connecting' ? 'Connecting...' : status === 'authenticating' ? 'Verifying...' : status === 'error' ? 'Error' : 'Disconnected'}
               </span>
             </button>
             {sessionUsage && activeView === 'chat' && (

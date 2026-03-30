@@ -119,9 +119,60 @@ export class AgentServer {
   setAgentManager(agentManager: import('./agents/agent-manager.js').AgentManager) {
     this.agentManager = agentManager
 
-    // Wire sendMessage — an agent run = send a message to the conversation
-    agentManager.setSendMessageHandler(async (sessionId, content) => {
-      await this.handleChatMessage({ content, sessionId })
+    // Wire sendMessage — each agent run creates a fresh ephemeral session
+    agentManager.setSendMessageHandler(async (agentSessionId, content, agentInstructions, agentMemory) => {
+      // Generate a unique session ID for this run
+      const runSessionId = `agent-run--${agentSessionId}--${Date.now().toString(36)}`
+
+      // Extract projectId from agent session ID
+      const projectId = this.extractProjectId(agentSessionId)
+
+      // Create a fresh session — agent runs are autonomous, no onJobAction needed
+      const session = createSession(runSessionId, this.config, {
+        ...this.buildSessionOptions(runSessionId, projectId, {
+          agentInstructions,
+          agentMemory: agentMemory ?? undefined,
+        }),
+        onJobAction: undefined, // agent runs don't manage other agents
+      })
+
+      // Agent sessions are autonomous — auto-approve everything
+      this.wireAgentAutoHandlers(session)
+      this.sessions.set(runSessionId, session)
+
+      console.log(`[AgentRun] Created fresh session ${runSessionId} for agent ${agentSessionId}`)
+
+      let eventCount = 0
+      let summary = ''
+
+      try {
+        // Run the conversation
+        eventCount = await this.handleChatMessage({ content, sessionId: runSessionId })
+
+        console.log(`[AgentRun] ${runSessionId}: ${eventCount} events produced`)
+
+        // Extract summary from the last assistant text
+        try {
+          const history = session.getHistory()
+          console.log(`[AgentRun] ${runSessionId}: ${history.length} history entries, roles: ${history.map(h => h.role).join(',')}`)
+          for (let i = history.length - 1; i >= 0; i--) {
+            if (history[i].role === 'assistant' && history[i].content) {
+              summary = String(history[i].content).slice(0, 2000)
+              break
+            }
+          }
+        } catch (extractErr) {
+          console.warn(`[AgentRun] Summary extraction failed:`, extractErr)
+        }
+      } catch (err) {
+        console.error(`[AgentRun] Failed for ${agentSessionId}:`, err)
+        throw err
+      } finally {
+        // Always clean up cached session (persisted to disk by the session itself)
+        this.sessions.delete(runSessionId)
+      }
+
+      return { eventCount, summary, runSessionId }
     })
   }
 
@@ -721,6 +772,9 @@ export class AgentServer {
       case 'agent_action':
         this.handleAgentAction(msg)
         break
+      case 'agent_run_logs':
+        this.handleAgentRunLogs(msg)
+        break
 
       // ── Connectors ──
       case 'connectors_list':
@@ -879,44 +933,12 @@ export class AgentServer {
     projectId?: string
   }) {
     try {
-      // Build project context if this is a project-scoped session
-      let projectContext: string | undefined
-      let projectWorkspacePath: string | undefined
-      let projectType: string | undefined
-      if (msg.projectId) {
-        const project = loadProject(msg.projectId)
-        if (project) {
-          projectContext = buildProjectContext(project, msg.projectId)
-          projectWorkspacePath = project.workspacePath
-          projectType = project.type
-        }
-      }
-
-      // Load agent instructions for scheduled agent sessions
-      let agentInstructionsForSession: string | undefined
-      if (msg.id.startsWith('agent--') && msg.projectId) {
-        const agentMeta = loadAgentMetadata(msg.projectId, msg.id)
-        if (agentMeta) agentInstructionsForSession = agentMeta.instructions
-      }
-
-      const session = createSession(msg.id, this.config, {
+      const session = createSession(msg.id, this.config, this.buildSessionOptions(msg.id, msg.projectId, {
         provider: msg.provider,
         model: msg.model,
         apiKey: msg.apiKey,
-        onSubAgentEvent: this.makeSubAgentEventHandler(msg.id),
-        projectId: msg.projectId,
-        projectContext,
-        projectWorkspacePath,
-        projectType,
-        mcpManager: this.mcpManager,
-        connectorManager: this.connectorManager,
-        onJobAction: msg.projectId ? (this.buildAgentActionHandler(msg.id)) : undefined,
-        onDeliverResult: (msg.projectId && msg.id.startsWith('agent--'))
-          ? this.buildDeliverResultHandler(msg.id, msg.projectId)
-          : undefined,
         domain: process.env.DOMAIN,
-        agentInstructions: agentInstructionsForSession,
-      })
+      }))
 
       this.wireSessionConfirmHandler(session)
       this.wirePlanConfirmHandler(session)
@@ -1165,19 +1187,8 @@ export class AgentServer {
 
   private handleSessionDestroy(msg: { id: string }) {
     // Extract projectId before deleting so we can update stats
-    let projectId: string | undefined
     const session = this.sessions.get(msg.id)
-    if (session?.contextInfo?.projectId) {
-      projectId = session.contextInfo.projectId
-    } else {
-      const projMatch = msg.id.match(/^proj_(.+?)_sess_/)
-      if (projMatch) projectId = projMatch[1]
-      // Also handle agent-job sessions: agent-job-{projectId}-{jobId}
-      if (!projectId) {
-        const agentJobMatch = msg.id.match(/^agent-job-(.+?)-job_/)
-        if (agentJobMatch) projectId = agentJobMatch[1]
-      }
-    }
+    const projectId = session?.contextInfo?.projectId ?? this.extractProjectId(msg.id)
 
     try {
       this.sessions.delete(msg.id)
@@ -1219,31 +1230,14 @@ export class AgentServer {
       let session = this.sessions.get(msg.id)
 
       if (!session) {
-        // Resolve projectId from session ID formats so we look in the right directory
-        let projectId: string | undefined
-        const projMatch = msg.id.match(/^proj_(.+?)_sess_/)
-        if (projMatch) projectId = projMatch[1]
-        if (!projectId) {
-          const agentMatch = msg.id.match(/^agent--(.+?)--/)
-          if (agentMatch) projectId = agentMatch[1]
-        }
+        const projectId = this.extractProjectId(msg.id)
 
         // Try loading from disk (project dir first, then global fallback)
-        const resumeOpts = {
-          onSubAgentEvent: this.makeSubAgentEventHandler(msg.id),
-          mcpManager: this.mcpManager,
-        connectorManager: this.connectorManager,
-          projectId,
-        }
-        session = resumeSession(msg.id, this.config, resumeOpts) ?? undefined
+        session = resumeSession(msg.id, this.config, this.buildSessionOptions(msg.id, projectId)) ?? undefined
 
         // Fallback to global sessions dir if project-scoped lookup failed
         if (!session && projectId) {
-          session = resumeSession(msg.id, this.config, {
-            onSubAgentEvent: this.makeSubAgentEventHandler(msg.id),
-            mcpManager: this.mcpManager,
-        connectorManager: this.connectorManager,
-          }) ?? undefined
+          session = resumeSession(msg.id, this.config, this.buildSessionOptions(msg.id)) ?? undefined
         }
 
         if (!session) {
@@ -1504,6 +1498,57 @@ export class AgentServer {
     }
   }
 
+  private handleAgentRunLogs(msg: { projectId: string; sessionId: string; runSessionId?: string; startedAt: number; completedAt: number }) {
+    try {
+      // Use the run's own session ID if available (new architecture: each run = fresh session)
+      const targetSessionId = msg.runSessionId || msg.sessionId
+      let session = this.sessions.get(targetSessionId)
+
+      if (!session) {
+        const projectId = this.extractProjectId(targetSessionId) || msg.projectId
+
+        session = resumeSession(targetSessionId, this.config, this.buildSessionOptions(targetSessionId, projectId)) ?? undefined
+
+        if (!session) {
+          this.sendToClient(Channel.AI, { type: 'agent_run_logs_response', sessionId: msg.sessionId, logs: [] })
+          return
+        }
+      }
+
+      // Get full history — for run-specific sessions, return everything (no time filtering needed)
+      const fullHistory = session.getHistory()
+      const logs = fullHistory
+        .map((entry) => ({
+          ts: entry.ts,
+          role: entry.role as 'user' | 'assistant' | 'tool_call' | 'tool_result',
+          content: typeof entry.content === 'string' ? entry.content.slice(0, 2000) : '',
+          toolName: entry.toolName,
+          toolInput: entry.toolInput ? JSON.stringify(entry.toolInput).slice(0, 500) : undefined,
+          isError: entry.isError,
+        }))
+
+      this.sendToClient(Channel.AI, { type: 'agent_run_logs_response', sessionId: msg.sessionId, logs })
+    } catch (err) {
+      console.error(`Failed to get agent run logs:`, err)
+      this.sendToClient(Channel.AI, { type: 'agent_run_logs_response', sessionId: msg.sessionId, logs: [] })
+    }
+  }
+
+  /** Wire autonomous handlers for agent sessions — auto-approve everything, no user interaction needed */
+  private wireAgentAutoHandlers(session: Session) {
+    session.setConfirmHandler(async (_command, _reason) => {
+      console.log(`[${session.id}] Agent auto-approved confirm: ${_command}`)
+      return true
+    })
+    session.setPlanConfirmHandler(async (_title, _content) => {
+      return { approved: true, feedback: '' }
+    })
+    session.setAskUserHandler(async (_questions) => {
+      console.log(`[${session.id}] Agent auto-skipped ask_user (autonomous mode)`)
+      return {}
+    })
+  }
+
   /** Resolve the root human conversation ID — walk up the agent chain to find the original user conversation */
   private resolveRootConversation(sessionId?: string): string | undefined {
     if (!sessionId || !this.agentManager) return sessionId
@@ -1514,6 +1559,64 @@ export class AgentServer {
     }
     // Not an agent — this is the root human conversation
     return sessionId
+  }
+
+  // ── Session options helpers ─────────────────────────────────────
+
+  /** Extract projectId from any session ID format */
+  private extractProjectId(sessionId: string): string | undefined {
+    const projMatch = sessionId.match(/^proj_(.+?)_sess_/)
+    if (projMatch) return projMatch[1]
+    const agentJobMatch = sessionId.match(/^agent-job-(.+?)-job_/)
+    if (agentJobMatch) return agentJobMatch[1]
+    const agentMatch = sessionId.match(/^(?:agent-run--)?agent--(.+?)--/)
+    if (agentMatch) return agentMatch[1]
+    return undefined
+  }
+
+  /** Build the full options object for createSession / resumeSession.
+   *  Centralises callback wiring so new options only need to be added here. */
+  private buildSessionOptions(
+    sessionId: string,
+    projectId?: string,
+    extra?: {
+      provider?: string
+      model?: string
+      apiKey?: string
+      domain?: string
+      agentInstructions?: string
+      agentMemory?: string
+    },
+  ) {
+    const project = projectId ? loadProject(projectId) : undefined
+    const isAgent = sessionId.startsWith('agent--')
+
+    // Load agent instructions from metadata unless explicitly provided
+    let agentInstructions = extra?.agentInstructions
+    if (!agentInstructions && isAgent && projectId) {
+      const meta = loadAgentMetadata(projectId, sessionId)
+      if (meta) agentInstructions = meta.instructions
+    }
+
+    return {
+      provider: extra?.provider,
+      model: extra?.model,
+      apiKey: extra?.apiKey,
+      domain: extra?.domain,
+      onSubAgentEvent: this.makeSubAgentEventHandler(sessionId),
+      mcpManager: this.mcpManager,
+      connectorManager: this.connectorManager,
+      projectId,
+      projectContext: project ? buildProjectContext(project, projectId!) : undefined,
+      projectWorkspacePath: project?.workspacePath,
+      projectType: project?.type,
+      onJobAction: projectId ? this.buildAgentActionHandler(sessionId) : undefined,
+      onDeliverResult: (isAgent && projectId)
+        ? this.buildDeliverResultHandler(sessionId, projectId)
+        : undefined,
+      agentInstructions,
+      agentMemory: extra?.agentMemory,
+    }
   }
 
   /** Build the agent action callback for the agent tool (used by the LLM) */
@@ -1803,87 +1906,48 @@ export class AgentServer {
     content: string
     sessionId?: string
     attachments?: { id: string; name: string; mimeType: string; data: string; sizeBytes: number }[]
-  }) {
+  }): Promise<number> {
     const sessionId = msg.sessionId || DEFAULT_SESSION_ID
 
     // Auto-create default session if it doesn't exist
     let session = this.sessions.get(sessionId)
     if (!session) {
       if (sessionId === DEFAULT_SESSION_ID) {
-        session = createSession(DEFAULT_SESSION_ID, this.config, {
-          onSubAgentEvent: this.makeSubAgentEventHandler(DEFAULT_SESSION_ID),
-          mcpManager: this.mcpManager,
-        connectorManager: this.connectorManager,
+        session = createSession(DEFAULT_SESSION_ID, this.config, this.buildSessionOptions(DEFAULT_SESSION_ID, undefined, {
           domain: process.env.DOMAIN,
-        })
+        }))
         this.wireSessionConfirmHandler(session)
         this.wirePlanConfirmHandler(session)
         this.wireAskUserHandler(session)
         this.sessions.set(DEFAULT_SESSION_ID, session)
       } else {
         // Try to resume from disk automatically
-        let projectId: string | undefined
-        const projMatch = sessionId.match(/^proj_(.+?)_sess_/)
-        if (projMatch) {
-          projectId = projMatch[1]
-        }
-
-        // Also handle agent-job-{projectId}-{jobId} format
-        const agentMatch = sessionId.match(/^agent-job-(.+?)-(job_.+)$/)
-        if (agentMatch) {
-          projectId = agentMatch[1]
-        }
-
-        // Handle agent--{projectId}--{suffix} format
-        if (!projectId) {
-          const newAgentMatch = sessionId.match(/^agent--(.+?)--/)
-          if (newAgentMatch) {
-            projectId = newAgentMatch[1]
-          }
-        }
-
-        const chatResumeProject = projectId ? loadProject(projectId) : undefined
-
-        // Load agent instructions for scheduled agent sessions
+        const projectId = this.extractProjectId(sessionId)
         const isAgentSession = sessionId.startsWith('agent--')
-        let agentInstructions: string | undefined
-        if (isAgentSession && projectId) {
-          const agentMeta = loadAgentMetadata(projectId, sessionId)
-          if (agentMeta) agentInstructions = agentMeta.instructions
-        }
+        const opts = this.buildSessionOptions(sessionId, projectId)
 
-        session =
-          resumeSession(sessionId, this.config, {
-            onSubAgentEvent: this.makeSubAgentEventHandler(sessionId),
-            mcpManager: this.mcpManager,
-        connectorManager: this.connectorManager,
-            projectId,
-            projectContext: chatResumeProject
-              ? buildProjectContext(chatResumeProject, projectId!)
-              : undefined,
-            projectWorkspacePath: chatResumeProject?.workspacePath,
-            projectType: chatResumeProject?.type,
-            onJobAction: projectId ? (this.buildAgentActionHandler(sessionId)) : undefined,
-            onDeliverResult: (isAgentSession && projectId)
-              ? this.buildDeliverResultHandler(sessionId, projectId)
-              : undefined,
-            agentInstructions,
-          }) ?? undefined
+        session = resumeSession(sessionId, this.config, opts) ?? undefined
 
         // Also try global sessions as fallback
         if (!session && projectId) {
-          session =
-            resumeSession(sessionId, this.config, {
-              onSubAgentEvent: this.makeSubAgentEventHandler(sessionId),
-              mcpManager: this.mcpManager,
-        connectorManager: this.connectorManager,
-            }) ?? undefined
+          session = resumeSession(sessionId, this.config, this.buildSessionOptions(sessionId)) ?? undefined
+        }
+
+        // For agent sessions that have never run: create a fresh session
+        if (!session && isAgentSession && projectId) {
+          console.log(`Creating new session for agent: ${sessionId}`)
+          session = createSession(sessionId, this.config, opts)
         }
 
         if (session) {
-          this.wireSessionConfirmHandler(session)
-          this.wirePlanConfirmHandler(session)
-          this.wireAskUserHandler(session)
+          if (isAgentSession) {
+            // Agent sessions are autonomous — auto-approve confirms, skip ask_user
+            this.wireAgentAutoHandlers(session)
+          } else {
+            this.wireSessionConfirmHandler(session)
+            this.wirePlanConfirmHandler(session)
+            this.wireAskUserHandler(session)
+          }
           this.sessions.set(sessionId, session)
           console.log(`Auto-resumed session from disk: ${sessionId}`)
         } else {
@@ -1893,7 +1957,7 @@ export class AgentServer {
             message: `Session not found: ${sessionId}. Create it first with session_create.`,
             sessionId,
           })
-          return
+          return 0
         }
       }
     }
@@ -1901,7 +1965,7 @@ export class AgentServer {
     // Handle /compact command
     if (msg.content.startsWith('/compact')) {
       await this.handleCompactCommand(session, sessionId, msg.content)
-      return
+      return 0
     }
 
     this.sendToClient(Channel.EVENTS, {
@@ -1929,15 +1993,16 @@ export class AgentServer {
     }
 
     this.activeTurns.add(sessionId)
+    let eventCount = 0
 
     try {
       const turnStartMs = Date.now()
-      let eventCount = 0
       let accumulatedText = ''
       let toolCallCount = 0
       // Track update_project_context tool call data
       const pendingToolNames = new Map<string, string>()
       let projectContextUpdate: { sessionSummary?: string; projectSummary?: string } | null = null
+      let lastProjectSummary: string | undefined
 
       for await (const event of session.processMessage(msg.content, msg.attachments || [])) {
         if (event.type === 'text') accumulatedText += event.content
@@ -1954,7 +2019,17 @@ export class AgentServer {
           const tr = event as { id: string; output: string }
           if (pendingToolNames.get(tr.id) === 'update_project_context') {
             try {
-              projectContextUpdate = JSON.parse(tr.output)
+              const parsed = JSON.parse(tr.output)
+              // Validate shape — sessionSummary must be a string, projectSummary optional string
+              if (parsed && typeof parsed.sessionSummary === 'string') {
+                const newProjectSummary = typeof parsed.projectSummary === 'string' ? parsed.projectSummary : undefined
+                // Keep previous projectSummary if new call omits it
+                projectContextUpdate = {
+                  sessionSummary: parsed.sessionSummary,
+                  projectSummary: newProjectSummary || lastProjectSummary,
+                }
+                lastProjectSummary = projectContextUpdate.projectSummary
+              }
             } catch {
               /* ignore malformed output */
             }
@@ -2080,6 +2155,7 @@ export class AgentServer {
         sessionId,
       })
     }
+    return eventCount
   }
 
   private async handleCompactCommand(session: Session, sessionId: string, content: string) {

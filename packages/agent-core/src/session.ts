@@ -153,6 +153,7 @@ export class Session {
   private workspacePath?: string
   private conversationContext?: string
   private agentInstructions?: string
+  private agentMemory?: string
   private firstMessage?: string
   public contextInfo?: ContextInfo
 
@@ -184,6 +185,7 @@ export class Session {
     projectContext?: string // injected into system prompt
     projectType?: string // project type for prompt module loading
     agentInstructions?: string // standing instructions for scheduled agents (injected into system prompt)
+    agentMemory?: string // persistent memory from previous runs (injected into system prompt)
     lastTasks?: PersistedTaskItem[] // restored task state from persistence
     // Safety limits
     maxTokenBudget?: number // max total tokens before aborting (0 = unlimited)
@@ -203,6 +205,7 @@ export class Session {
     this.projectContext = opts.projectContext
     this.projectType = opts.projectType
     this.agentInstructions = opts.agentInstructions
+    this.agentMemory = opts.agentMemory
     this._lastTasks = opts.lastTasks || []
     // If resuming with incomplete tasks, flag for context injection on next message
     this._needsTaskResumeHint = this._lastTasks.some((t) => t.status !== 'completed')
@@ -1398,6 +1401,15 @@ export class Session {
       prompt += this.projectContext
     }
 
+    // Instruct LLM to update project memory when in a project session
+    if (this.projectId) {
+      prompt += `\n\n[PROJECT MEMORY]
+When you have completed meaningful work in this session (e.g. implemented a feature, fixed a bug, made a significant decision), call the update_project_context tool once near the end of the conversation with:
+- session_summary: A 1-2 sentence summary of what was accomplished
+- project_summary: An updated overall project summary (only if something significant changed about the project's state, goals, or architecture)
+Do not call this on every turn — only once per session when there is something worth remembering.`
+    }
+
     // Agent standing instructions (scheduled agents — always present in system prompt)
     if (this.agentInstructions) {
       prompt += `\n\n<agent_instructions>
@@ -1407,6 +1419,15 @@ If something is broken, fix it. If everything works, just run it.
 
 ${this.agentInstructions}
 </agent_instructions>`
+    }
+
+    // Agent memory from previous runs
+    if (this.agentMemory) {
+      prompt += `\n\n<agent_memory>
+This is your memory from previous runs. Use it to know what you've already built, where scripts are, and what happened last time. Do NOT rebuild things that already exist.
+
+${this.agentMemory}
+</agent_memory>`
     }
 
     // Project-type prompt module (code.md, document.md, etc.)
@@ -1483,6 +1504,8 @@ export function createSession(
     domain?: string
     /** Standing instructions for scheduled agents (injected into system prompt) */
     agentInstructions?: string
+    /** Persistent memory from previous agent runs */
+    agentMemory?: string
   },
 ): Session {
   const provider = opts?.provider || config.defaults.provider
@@ -1527,6 +1550,7 @@ export function createSession(
     projectContext: opts?.projectContext,
     projectType: opts?.projectType,
     agentInstructions: opts?.agentInstructions,
+    agentMemory: opts?.agentMemory,
     maxDurationMs: opts?.maxDurationMs,
   })
   sessionRef.session = session
@@ -1567,6 +1591,7 @@ export function resumeSession(
     onDeliverResult?: import('./tools/deliver-result.js').DeliverResultHandler
     maxDurationMs?: number
     agentInstructions?: string
+    agentMemory?: string
   },
 ): Session | null {
   const basePath = opts?.projectId ? getProjectSessionsDir(opts.projectId) : undefined
@@ -1611,6 +1636,7 @@ export function resumeSession(
     projectContext: opts?.projectContext,
     projectType: opts?.projectType,
     agentInstructions: opts?.agentInstructions,
+    agentMemory: opts?.agentMemory,
     lastTasks: persisted.lastTasks,
     maxDurationMs: opts?.maxDurationMs,
   })

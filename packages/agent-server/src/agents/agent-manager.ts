@@ -16,6 +16,8 @@ import {
   listProjectAgents,
   saveAgentMetadata,
   deleteAgentSession,
+  loadAgentMemory,
+  saveAgentMemory,
 } from '@anton/agent-config'
 import type { AgentMetadata, AgentRunRecord, AgentSession } from '@anton/protocol'
 import { getNextCronTime, isValidCron } from './cron.js'
@@ -28,10 +30,15 @@ function generateSessionId(projectId: string): string {
 }
 
 /**
- * Callback to send a message through the server's normal chat path.
- * An agent run = "send the instructions as a message to the conversation."
+ * Callback to run an agent. Creates a fresh ephemeral session per run.
+ * Returns event count, assistant summary, and the run's session ID.
  */
-export type SendMessageHandler = (sessionId: string, content: string) => Promise<void>
+export type SendMessageHandler = (
+  agentSessionId: string,
+  content: string,
+  agentInstructions: string,
+  agentMemory: string | null,
+) => Promise<{ eventCount: number; summary: string; runSessionId: string }>
 
 export type AgentEventCallback = (event: AgentEvent) => void
 
@@ -185,23 +192,44 @@ export class AgentManager {
     this.emitUpdate(entry)
 
     try {
-      // Instructions are in the system prompt. Send a short trigger message.
-      // First run: kickoff message. Subsequent runs: re-run trigger.
+      // Load agent memory from previous runs
+      const agentMemory = loadAgentMemory(entry.projectId, sessionId)
+
+      // Build trigger message
       const isFirstRun = entry.agent.runCount === 0
       const now = new Date()
       const timestamp = now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
       const message = isFirstRun
-        ? `[Run #1 — ${timestamp}] This is your first run. Execute your instructions (they are in your system prompt). Build any scripts or tooling you need, then deliver results.`
-        : `[Run #${entry.agent.runCount + 1} — ${timestamp}] Scheduled run. Re-use the scripts and tooling you built in previous runs. If something is broken, fix it. Execute your task and deliver results.`
+        ? `[Run #1 — ${timestamp}] This is your first run. Execute your instructions. Build any scripts or tooling you need, then deliver results.\n\nIMPORTANT: At the end of your run, write a concise summary of what you did and what you built (file paths, script names, key outcomes). This will be saved as your memory for future runs.`
+        : `[Run #${entry.agent.runCount + 1} — ${timestamp}] Scheduled run. Your instructions and memory from previous runs are in your system prompt. Re-use existing scripts and tooling. Execute your task and deliver results.\n\nIMPORTANT: At the end of your run, write a concise summary of what you did. This will be saved as your memory for future runs.`
 
-      await this.sendMessage(sessionId, message)
+      // Each run creates a fresh session — no accumulated context bloat
+      const result = await this.sendMessage(sessionId, message, entry.agent.instructions, agentMemory)
+      runRecord.runSessionId = result.runSessionId
 
-      // Run completed
-      entry.agent.status = entry.agent.schedule ? 'idle' : 'idle'
-      entry.agent.lastRunAt = Date.now()
-      entry.agent.runCount++
-      runRecord.status = 'success'
+      // Check if the LLM actually ran
+      if (result.eventCount === 0) {
+        console.warn(`Agent "${entry.agent.name}": 0 events produced — run failed silently`)
+        entry.agent.status = 'error'
+        entry.agent.lastRunAt = Date.now()
+        runRecord.status = 'error'
+        runRecord.error = 'No events produced — LLM may not have been called. Check API key or session state.'
+      } else {
+        // Run completed successfully
+        entry.agent.status = 'idle'
+        entry.agent.lastRunAt = Date.now()
+        entry.agent.runCount++
+        runRecord.status = 'success'
+
+        // Save the assistant's summary as agent memory for next run
+        if (result.summary) {
+          const memory = result.summary.slice(0, 2000)
+          saveAgentMemory(entry.projectId, sessionId, memory)
+        }
+      }
     } catch (err) {
+      // Note: runRecord.runSessionId may be undefined here if sendMessage threw.
+      // This is acceptable — failed runs with no session have no logs to view.
       console.error(`Agent "${entry.agent.name}" error:`, err)
       entry.agent.status = 'error'
       entry.agent.lastRunAt = Date.now()
@@ -281,23 +309,25 @@ export class AgentManager {
     }
   }
 
-  private tick(): void {
+  private async tick(): Promise<void> {
     if (!this.running) return
     const now = Date.now()
 
+    // Collect due agents first, then run sequentially (avoids concurrent metadata writes)
+    const due: string[] = []
     for (const entry of this.agents.values()) {
       if (entry.agent.status === 'paused') continue
       if (!entry.agent.schedule?.cron) continue
       if (!entry.agent.nextRunAt || now < entry.agent.nextRunAt) continue
-      if (entry.agent.status === 'running') continue // don't double-start
+      if (entry.agent.status === 'running') continue
+      due.push(entry.sessionId)
+    }
 
+    for (const sessionId of due) {
+      const entry = this.agents.get(sessionId)
+      if (!entry || entry.agent.status === 'running') continue // double-check before running
       console.log(`[AgentManager] Cron trigger: ${entry.agent.name}`)
-      this.runAgent(entry.sessionId, 'cron')
-
-      // Compute next run
-      const next = getNextCronTime(entry.agent.schedule.cron, new Date())
-      entry.agent.nextRunAt = next ? next.getTime() : null
-      saveAgentMetadata(entry.projectId, entry.sessionId, entry.agent)
+      await this.runAgent(sessionId, 'cron')
     }
 
     this.timer = setTimeout(() => this.tick(), 30_000)

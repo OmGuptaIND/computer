@@ -358,7 +358,15 @@ export function deleteProject(id: string): boolean {
   const dir = getProjectDir(id)
   if (!existsSync(dir)) return false
 
+  // Load project to get workspace path before deleting
+  const project = loadProject(id)
+
   rmSync(dir, { recursive: true, force: true })
+
+  // Remove user-visible workspace directory (~/Anton/{name}/)
+  if (project?.workspacePath && existsSync(project.workspacePath)) {
+    rmSync(project.workspacePath, { recursive: true, force: true })
+  }
 
   // Update index
   const index = loadIndex()
@@ -474,6 +482,20 @@ export function saveAgentMetadata(projectId: string, sessionId: string, agent: A
   const dir = join(getProjectSessionsDir(projectId), sessionId)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'agent.json'), JSON.stringify(agent, null, 2), 'utf-8')
+}
+
+/** Load agent memory from memory.md in the agent's directory */
+export function loadAgentMemory(projectId: string, sessionId: string): string | null {
+  const memoryPath = join(getProjectSessionsDir(projectId), sessionId, 'memory.md')
+  if (!existsSync(memoryPath)) return null
+  return readFileSync(memoryPath, 'utf-8')
+}
+
+/** Save agent memory to memory.md in the agent's directory */
+export function saveAgentMemory(projectId: string, sessionId: string, memory: string): void {
+  const dir = join(getProjectSessionsDir(projectId), sessionId)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'memory.md'), memory, 'utf-8')
 }
 
 /** Delete agent metadata (and optionally the whole conversation directory) */

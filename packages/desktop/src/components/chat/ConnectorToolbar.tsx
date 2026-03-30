@@ -65,14 +65,15 @@ export function ConnectorPill() {
     return () => document.removeEventListener('keydown', handler)
   }, [open])
 
-  const _connectedOnes = connectors.filter((c) => c.connected)
-  const enabledOnes = connectors.filter((c) => c.connected && c.enabled)
+  const enabledOnes = connectors.filter((c) => c.enabled)
   const connectedIds = new Set(connectors.map((c) => c.id))
   const unconnectedRegistry = registry.filter((r) => !connectedIds.has(r.id)).slice(0, 8)
   const totalAvailable = registry.filter((r) => !connectedIds.has(r.id)).length
 
   const handleToggle = (connector: ConnectorStatusInfo) => {
-    connection.sendConnectorToggle(connector.id, !connector.enabled)
+    const newEnabled = !connector.enabled
+    useStore.getState().updateConnectorStatus(connector.id, { enabled: newEnabled })
+    connection.sendConnectorToggle(connector.id, newEnabled)
   }
 
   const openSettings = () => {
@@ -98,8 +99,8 @@ export function ConnectorPill() {
         zIndex: 9999,
       }}
     >
-      {/* Connected connectors with toggles */}
-      {connectors.filter((c) => c.connected).map((c) => (
+      {/* Configured connectors with toggles (show all, not just connected) */}
+      {connectors.map((c) => (
         <div key={c.id} className="connector-dropdown__item">
           <div className="connector-dropdown__item-left">
             <ConnectorIcon id={c.id} size={20} />

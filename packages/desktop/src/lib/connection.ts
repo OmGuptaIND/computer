@@ -290,6 +290,10 @@ export class Connection {
     this.send(Channel.AI, { type: 'agent_action', projectId, sessionId, action })
   }
 
+  sendAgentRunLogs(projectId: string, sessionId: string, startedAt: number, completedAt: number, runSessionId?: string) {
+    this.send(Channel.AI, { type: 'agent_run_logs', projectId, sessionId, startedAt, completedAt, runSessionId })
+  }
+
   // ── Connectors ─────────────────────────────────────────────────
 
   sendConnectorsList() {

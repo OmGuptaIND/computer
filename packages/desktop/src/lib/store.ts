@@ -340,6 +340,8 @@ interface AppState {
   projectAgents: import('@anton/protocol').AgentSession[]
   projectAgentsLoading: boolean
   selectedAgentId: string | null
+  agentRunLogs: import('@anton/protocol').AgentRunLogEntry[] | null
+  agentRunLogsLoading: boolean
   activeView: 'chat' | 'projects' | 'terminal'
 
   // Usage stats (server-computed)
@@ -557,6 +559,8 @@ export const useStore = create<AppState>((set, get) => {
     projectAgents: [],
     projectAgentsLoading: false,
     selectedAgentId: null,
+    agentRunLogs: null,
+    agentRunLogsLoading: false,
     activeView: 'chat',
 
     // Usage stats
@@ -587,6 +591,8 @@ export const useStore = create<AppState>((set, get) => {
         projectAgents: [],
         projectAgentsLoading: !!id,
         selectedAgentId: null,
+        agentRunLogs: null,
+        agentRunLogsLoading: false,
       })
     },
     addProject: (project) => {
@@ -1409,10 +1415,18 @@ function handleWsMessage(channel: number, msg: any) {
       useStore.setState({ sessionStatuses: statuses })
     }
 
-    // Update global status only for the active session (or if no sessionId)
+    // Update global status ONLY for the active session — never let background agent runs
+    // affect the UI of unrelated conversations
     const activeConv = store.getActiveConversation()
-    if (!sid || sid === activeConv?.sessionId) {
+    if (sid === activeConv?.sessionId) {
       store.setAgentStatus(msg.status, sid)
+      store.setAgentStatusDetail(msg.detail || null)
+      if (msg.status === 'idle') {
+        store.clearAgentSteps()
+      }
+    } else if (!sid) {
+      // Legacy path: no sessionId means it's for the active session
+      store.setAgentStatus(msg.status)
       store.setAgentStatusDetail(msg.detail || null)
       if (msg.status === 'idle') {
         store.clearAgentSteps()
@@ -1862,24 +1876,13 @@ function handleWsMessage(channel: number, msg: any) {
         useStore.setState({ sessionStatuses: statuses })
       }
 
-      // Only update global status if this is the active session or no other session is working
-      if (isForActiveSession) {
-        store.setAgentStatus('idle')
-        store.clearAgentSteps()
-        store.setAgentStatusDetail(null)
-      } else if (msgSessionId) {
-        // Check if any session is still working
-        const anyWorking = Array.from(store.sessionStatuses.values()).some(
-          (s) => s.status === 'working',
-        )
-        if (!anyWorking) {
-          store.setAgentStatus('idle')
-        }
-      } else {
+      // Only update global status if this is the active session
+      if (isForActiveSession || !msgSessionId) {
         store.setAgentStatus('idle')
         store.clearAgentSteps()
         store.setAgentStatusDetail(null)
       }
+      // Background sessions finishing should NOT affect the active session's UI
 
       // Close out any pending tool calls that never got a result.
       // This prevents spinner icons from staying stuck forever.
@@ -2269,6 +2272,10 @@ function handleWsMessage(channel: number, msg: any) {
       store.setProjectAgents(agents)
       break
     }
+
+    case 'agent_run_logs_response':
+      useStore.setState({ agentRunLogs: msg.logs, agentRunLogsLoading: false })
+      break
 
     // ── Connector responses ──────────────────────────────────────
     case 'connectors_list_response':
