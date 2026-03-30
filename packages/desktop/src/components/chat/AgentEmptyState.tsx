@@ -1,8 +1,28 @@
 import type { AgentRunLogEntry, AgentRunRecord, AgentSession } from '@anton/protocol'
 import { motion } from 'framer-motion'
-import { AlertCircle, Calendar, CheckCircle2, ChevronDown, ChevronUp, Clock, Hash, Loader2, Play, Square, Terminal, Timer, X, Zap } from 'lucide-react'
+import {
+  AlertCircle,
+  Calendar,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Hash,
+  Loader2,
+  Play,
+  Square,
+  Terminal,
+  Timer,
+  X,
+  Zap,
+} from 'lucide-react'
 import { useState } from 'react'
-import { cronToHuman, formatAbsoluteTime, formatDuration, formatRelativeTime } from '../../lib/agent-utils.js'
+import {
+  cronToHuman,
+  formatAbsoluteTime,
+  formatDuration,
+  formatRelativeTime,
+} from '../../lib/agent-utils.js'
 import { connection } from '../../lib/connection.js'
 import { useStore } from '../../lib/store.js'
 
@@ -10,10 +30,22 @@ interface Props {
   agent: AgentSession
 }
 
-function RunLogsModal({ logs, loading, onClose }: { logs: AgentRunLogEntry[] | null; loading: boolean; onClose: () => void }) {
+function RunLogsModal({
+  logs,
+  loading,
+  onClose,
+}: { logs: AgentRunLogEntry[] | null; loading: boolean; onClose: () => void }) {
   return (
-    <div className="run-logs-modal__backdrop" onClick={onClose} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
-      <div className="run-logs-modal" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="run-logs-modal__backdrop"
+      onClick={onClose}
+      onKeyDown={(e) => e.key === 'Escape' && onClose()}
+    >
+      <div
+        className="run-logs-modal"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
         <div className="run-logs-modal__header">
           <Terminal size={14} strokeWidth={1.5} />
           <span>Run Logs</span>
@@ -31,10 +63,21 @@ function RunLogsModal({ logs, loading, onClose }: { logs: AgentRunLogEntry[] | n
             <div className="run-logs-modal__empty">No logs found for this run</div>
           ) : (
             logs.map((log, i) => (
-              <div key={`${log.ts}-${i}`} className={`run-logs-modal__entry run-logs-modal__entry--${log.role}`}>
-                <span className="run-logs-modal__role">{log.role === 'tool_call' ? 'tool' : log.role === 'tool_result' ? 'result' : log.role}</span>
+              <div
+                key={`${log.ts}-${i}`}
+                className={`run-logs-modal__entry run-logs-modal__entry--${log.role}`}
+              >
+                <span className="run-logs-modal__role">
+                  {log.role === 'tool_call'
+                    ? 'tool'
+                    : log.role === 'tool_result'
+                      ? 'result'
+                      : log.role}
+                </span>
                 {log.toolName && <span className="run-logs-modal__tool-name">{log.toolName}</span>}
-                <pre className="run-logs-modal__content">{log.isError ? `ERROR: ${log.content}` : log.content}</pre>
+                <pre className="run-logs-modal__content">
+                  {log.isError ? `ERROR: ${log.content}` : log.content}
+                </pre>
               </div>
             ))
           )}
@@ -64,9 +107,17 @@ function RunEntry({ run, onViewLogs }: { run: AgentRunRecord; onViewLogs: () => 
         disabled={!hasLogs && (!isErr || !run.error)}
       >
         {isErr ? (
-          <AlertCircle size={12} strokeWidth={1.5} className="agent-run-entry__icon agent-run-entry__icon--error" />
+          <AlertCircle
+            size={12}
+            strokeWidth={1.5}
+            className="agent-run-entry__icon agent-run-entry__icon--error"
+          />
         ) : (
-          <CheckCircle2 size={12} strokeWidth={1.5} className="agent-run-entry__icon agent-run-entry__icon--success" />
+          <CheckCircle2
+            size={12}
+            strokeWidth={1.5}
+            className="agent-run-entry__icon agent-run-entry__icon--success"
+          />
         )}
         <span className="agent-run-entry__time">{formatAbsoluteTime(run.startedAt)}</span>
         <span className={`agent-run-entry__trigger agent-run-entry__trigger--${run.trigger}`}>
@@ -75,13 +126,9 @@ function RunEntry({ run, onViewLogs }: { run: AgentRunRecord; onViewLogs: () => 
         {run.durationMs != null && (
           <span className="agent-run-entry__duration">{formatDuration(run.durationMs)}</span>
         )}
-        {hasLogs && (
-          <Terminal size={10} strokeWidth={1.5} className="agent-run-entry__logs-icon" />
-        )}
+        {hasLogs && <Terminal size={10} strokeWidth={1.5} className="agent-run-entry__logs-icon" />}
       </button>
-      {expanded && run.error && (
-        <div className="agent-run-entry__error">{run.error}</div>
-      )}
+      {expanded && run.error && <div className="agent-run-entry__error">{run.error}</div>}
     </div>
   )
 }
@@ -100,7 +147,13 @@ export function AgentEmptyState({ agent }: Props) {
     if (!run.completedAt) return
     useStore.setState({ agentRunLogs: null, agentRunLogsLoading: true })
     setShowLogsModal(true)
-    connection.sendAgentRunLogs(agent.projectId, agent.sessionId, run.startedAt, run.completedAt, run.runSessionId)
+    connection.sendAgentRunLogs(
+      agent.projectId,
+      agent.sessionId,
+      run.startedAt,
+      run.completedAt,
+      run.runSessionId,
+    )
   }
 
   const handleRunStop = () => {
@@ -127,9 +180,7 @@ export function AgentEmptyState({ agent }: Props) {
             />
             <h2 className="agent-empty-state__name">{meta.name}</h2>
           </div>
-          {meta.description && (
-            <p className="agent-empty-state__description">{meta.description}</p>
-          )}
+          {meta.description && <p className="agent-empty-state__description">{meta.description}</p>}
           {meta.schedule?.cron && (
             <span className="agent-empty-state__schedule">
               <Calendar size={12} strokeWidth={1.5} />
@@ -210,7 +261,9 @@ export function AgentEmptyState({ agent }: Props) {
               <span className="agent-empty-state__debug-label">Cron</span>
               <code className="agent-empty-state__debug-value">{meta.schedule.cron}</code>
               <span className="agent-empty-state__debug-label">Status</span>
-              <span className={`agent-empty-state__debug-value agent-empty-state__debug-status--${meta.status}`}>
+              <span
+                className={`agent-empty-state__debug-value agent-empty-state__debug-status--${meta.status}`}
+              >
                 {meta.status}
               </span>
               <span className="agent-empty-state__debug-label">Next run</span>
@@ -244,9 +297,15 @@ export function AgentEmptyState({ agent }: Props) {
               {!meta.runHistory?.length ? (
                 <div className="agent-empty-state__run-empty">No runs yet</div>
               ) : (
-                [...meta.runHistory].reverse().map((run) => (
-                  <RunEntry key={run.startedAt} run={run} onViewLogs={() => handleViewRunLogs(run)} />
-                ))
+                [...meta.runHistory]
+                  .reverse()
+                  .map((run) => (
+                    <RunEntry
+                      key={run.startedAt}
+                      run={run}
+                      onViewLogs={() => handleViewRunLogs(run)}
+                    />
+                  ))
               )}
             </div>
           )}

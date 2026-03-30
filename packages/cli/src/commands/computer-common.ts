@@ -3,8 +3,8 @@
  */
 
 import { execSync } from 'node:child_process'
-import { createInterface } from 'node:readline'
 import { existsSync, readFileSync } from 'node:fs'
+import { createInterface } from 'node:readline'
 import { ICONS, theme } from '../lib/theme.js'
 
 // ── Constants ───────────────────────────────────────────────────

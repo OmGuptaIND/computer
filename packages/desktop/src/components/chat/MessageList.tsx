@@ -62,8 +62,12 @@ export function MessageList({ messages }: Props) {
 
   // Pagination: load older messages on scroll-to-top
   const activeSessionId = useStore((s) => s.getActiveConversation()?.sessionId)
-  const hasMore = useStore((s) => activeSessionId ? (s._sessionHasMore.get(activeSessionId) ?? false) : false)
-  const isLoadingOlder = useStore((s) => activeSessionId ? s._loadingOlderSessions.has(activeSessionId) : false)
+  const hasMore = useStore((s) =>
+    activeSessionId ? (s._sessionHasMore.get(activeSessionId) ?? false) : false,
+  )
+  const isLoadingOlder = useStore((s) =>
+    activeSessionId ? s._loadingOlderSessions.has(activeSessionId) : false,
+  )
   const prevScrollHeightRef = useRef(0)
 
   const prevMsgCountRef = useRef(0)
@@ -73,7 +77,6 @@ export function MessageList({ messages }: Props) {
   }, [])
 
   // Auto-scroll on new messages
-  // biome-ignore lint/correctness/useExhaustiveDependencies: messages triggers scroll check
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
@@ -125,6 +128,7 @@ export function MessageList({ messages }: Props) {
   }, [hasMore, isLoadingOlder, activeSessionId])
 
   // Maintain scroll position when older messages are prepended
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messages.length triggers scroll position restore
   useEffect(() => {
     const container = containerRef.current
     if (!container || prevScrollHeightRef.current === 0) return
@@ -191,7 +195,11 @@ export function MessageList({ messages }: Props) {
 
       {/* Scroll to bottom button */}
       {showScrollBtn && (
-        <button type="button" onClick={() => scrollToBottom()} className="message-list__scrollButton">
+        <button
+          type="button"
+          onClick={() => scrollToBottom()}
+          className="message-list__scrollButton"
+        >
           <ArrowDown size={18} strokeWidth={1.5} className="message-list__scrollIcon" />
         </button>
       )}

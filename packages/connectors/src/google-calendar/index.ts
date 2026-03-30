@@ -23,7 +23,10 @@ export class GoogleCalendarConnector implements DirectConnector {
     try {
       const result = await this.api.listCalendars()
       const primary = result.items.find((c) => c.primary)
-      return { success: true, info: `Connected — ${result.items.length} calendar(s), primary: ${primary?.summary ?? 'unknown'}` }
+      return {
+        success: true,
+        info: `Connected — ${result.items.length} calendar(s), primary: ${primary?.summary ?? 'unknown'}`,
+      }
     } catch (err) {
       return { success: false, error: (err as Error).message }
     }

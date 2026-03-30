@@ -4,21 +4,17 @@ import {
   ExternalLink,
   Loader2,
   Play,
+  Plug,
   Plus,
   Power,
   PowerOff,
   Search,
   Trash2,
   X,
-  Plug,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { connection } from '../../lib/connection.js'
-import {
-  type ConnectorRegistryInfo,
-  type ConnectorStatusInfo,
-  useStore,
-} from '../../lib/store.js'
+import { type ConnectorRegistryInfo, type ConnectorStatusInfo, useStore } from '../../lib/store.js'
 import { ConnectorIcon } from './ConnectorIcons.js'
 
 const CATEGORY_ORDER: { key: string; label: string }[] = [
@@ -85,12 +81,8 @@ export function ConnectorsPage({ initialConnectorId }: { initialConnectorId?: st
             initialConnectorId={initialConnectorId}
           />
         )}
-        {tab === 'custom-api' && (
-          <CustomApiTab connectors={connectors} search={search} />
-        )}
-        {tab === 'custom-mcp' && (
-          <CustomMcpTab connectors={connectors} search={search} />
-        )}
+        {tab === 'custom-api' && <CustomApiTab connectors={connectors} search={search} />}
+        {tab === 'custom-mcp' && <CustomMcpTab connectors={connectors} search={search} />}
       </div>
     </div>
   )
@@ -154,9 +146,7 @@ function AppsTab({
         <div className="connector-card__info">
           <div className="connector-card__name">
             {entry.name}
-            {existing?.connected && (
-              <span className="connector-card__dot" title="Connected" />
-            )}
+            {existing?.connected && <span className="connector-card__dot" title="Connected" />}
           </div>
           <div className="connector-card__desc">{entry.description}</div>
         </div>
@@ -170,19 +160,17 @@ function AppsTab({
       {featured.length > 0 && !search && (
         <div className="connectors-category">
           <h3 className="connectors-category__label">Recommended</h3>
-          <div className="connectors-grid">
-            {featured.map(renderCard)}
-          </div>
+          <div className="connectors-grid">{featured.map(renderCard)}</div>
         </div>
       )}
 
       {/* Category sections */}
       {grouped.map((group) => (
         <div key={group.key} className="connectors-category">
-          <h3 className="connectors-category__label">{search ? group.label : `All ${group.label}`}</h3>
-          <div className="connectors-grid">
-            {group.entries.map(renderCard)}
-          </div>
+          <h3 className="connectors-category__label">
+            {search ? group.label : `All ${group.label}`}
+          </h3>
+          <div className="connectors-grid">{group.entries.map(renderCard)}</div>
         </div>
       ))}
       {filtered.length === 0 && (
@@ -225,21 +213,25 @@ function AppSetup({
     const unsub = connection.onMessage((_channel, msg) => {
       if (msg.type === 'connector_oauth_url') {
         // Open the authorization URL in the system browser
-        const url = (msg as { url: string }).url
-        if ((window as any).__TAURI__) {
+        const url = (msg as unknown as { url: string }).url
+        if ((window as unknown as { __TAURI__?: unknown }).__TAURI__) {
           import('@tauri-apps/plugin-shell').then(({ open }) => open(url))
         } else {
           window.open(url, '_blank')
         }
       }
       if (msg.type === 'connector_oauth_complete') {
-        const complete = msg as { success: boolean; error?: string }
+        const complete = msg as unknown as { success: boolean; error?: string }
         setOauthWaiting(false)
         unsub()
         if (complete.success) {
           onBack()
         } else {
-          setTestResult({ success: false, tools: [], error: complete.error || 'Authorization failed' })
+          setTestResult({
+            success: false,
+            tools: [],
+            error: complete.error || 'Authorization failed',
+          })
         }
       }
     })
@@ -333,7 +325,11 @@ function AppSetup({
     const unsub = connection.onMessage((_channel, msg) => {
       if (msg.type === 'connector_test_response' && msg.id === entry.id) {
         setTesting(false)
-        setTestResult({ success: msg.success, tools: msg.tools || [], error: msg.error })
+        setTestResult({
+          success: msg.success as boolean,
+          tools: (msg.tools || []) as string[],
+          error: msg.error as string | undefined,
+        })
         unsub()
       }
     })
@@ -345,8 +341,18 @@ function AppSetup({
   }
 
   return (
-    <div className="app-detail-overlay" onClick={onBack} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onBack() }}>
-      <div className="app-detail" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+    <div
+      className="app-detail-overlay"
+      onClick={onBack}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') onBack()
+      }}
+    >
+      <div
+        className="app-detail"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
         {/* Close */}
         <button type="button" className="app-detail__close" onClick={onBack}>
           <X size={18} strokeWidth={1.5} />
@@ -419,8 +425,8 @@ function AppSetup({
               <div className="app-detail__setup-guide">
                 <h4 className="app-detail__setup-guide-title">How to get your credentials</h4>
                 <ol className="app-detail__setup-guide-steps">
-                  {entry.setupGuide.steps.map((step, i) => (
-                    <li key={i}>{step}</li>
+                  {entry.setupGuide.steps.map((step) => (
+                    <li key={step}>{step}</li>
                   ))}
                 </ol>
                 <a
@@ -442,9 +448,7 @@ function AppSetup({
                   type="password"
                   placeholder={`Paste your ${envKey.toLowerCase().replace(/_/g, ' ')}`}
                   value={envValues[envKey] || ''}
-                  onChange={(e) =>
-                    setEnvValues((prev) => ({ ...prev, [envKey]: e.target.value }))
-                  }
+                  onChange={(e) => setEnvValues((prev) => ({ ...prev, [envKey]: e.target.value }))}
                 />
               </div>
             ))}
@@ -551,10 +555,7 @@ function CustomApiTab({
   const [apiKey, setApiKey] = useState('')
 
   const apiConnectors = connectors.filter(
-    (c) =>
-      c.type === 'api' &&
-      (!search ||
-        c.name.toLowerCase().includes(search.toLowerCase())),
+    (c) => c.type === 'api' && (!search || c.name.toLowerCase().includes(search.toLowerCase())),
   )
 
   const handleAdd = () => {
@@ -681,9 +682,7 @@ function CustomMcpTab({
   const [jsonConfig, setJsonConfig] = useState('')
 
   const mcpConnectors = connectors.filter(
-    (c) =>
-      c.type === 'mcp' &&
-      (!search || c.name.toLowerCase().includes(search.toLowerCase())),
+    (c) => c.type === 'mcp' && (!search || c.name.toLowerCase().includes(search.toLowerCase())),
   )
 
   const handleAddForm = () => {
@@ -891,7 +890,9 @@ function CustomMcpTab({
                   <label htmlFor="mcp-json-config">MCP Server Config (JSON)</label>
                   <textarea
                     id="mcp-json-config"
-                    placeholder={'{\n  "name": "My Server",\n  "command": "npx",\n  "args": ["-y", "@my/mcp-server"],\n  "env": { "API_KEY": "..." }\n}'}
+                    placeholder={
+                      '{\n  "name": "My Server",\n  "command": "npx",\n  "args": ["-y", "@my/mcp-server"],\n  "env": { "API_KEY": "..." }\n}'
+                    }
                     value={jsonConfig}
                     onChange={(e) => setJsonConfig(e.target.value)}
                     rows={8}

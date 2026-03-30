@@ -9,7 +9,7 @@ import {
 } from '@anton/protocol'
 import { create } from 'zustand'
 import { type Artifact, type ArtifactRenderType, extractArtifact } from './artifacts.js'
-import { type ConnectionStatus, connection } from './connection.js'
+import { type ConnectionStatus, type WsPayload, connection } from './connection.js'
 import {
   type Conversation,
   autoTitle,
@@ -23,6 +23,60 @@ import {
   saveActiveProjectId,
   saveProjects as savePersistedProjects,
 } from './projects.js'
+import type {
+  WsAgentCreated,
+  WsAgentDeleted,
+  WsAgentRunLogsResponse,
+  WsAgentStatusMsg,
+  WsAgentUpdated,
+  WsAgentsListResponse,
+  WsArtifact,
+  WsAskUser,
+  WsAuthOk,
+  WsBrowserState,
+  WsCompactionComplete,
+  WsConfirm,
+  WsConnectorAdded,
+  WsConnectorRegistryListResponse,
+  WsConnectorRemoved,
+  WsConnectorStatus,
+  WsConnectorUpdated,
+  WsConnectorsListResponse,
+  WsContextInfo,
+  WsDone,
+  WsError,
+  WsJobEvent,
+  WsPlanConfirm,
+  WsProjectCreated,
+  WsProjectDeleted,
+  WsProjectFilesListResponse,
+  WsProjectSessionsListResponse,
+  WsProjectUpdated,
+  WsProjectsListResponse,
+  WsProviderSetDefaultResponse,
+  WsProvidersListResponse,
+  WsPublishArtifactResponse,
+  WsSessionCreated,
+  WsSessionDestroyed,
+  WsSessionHistoryResponse,
+  WsSessionsListResponse,
+  WsSteerAck,
+  WsSubAgentEnd,
+  WsSubAgentProgress,
+  WsSubAgentStart,
+  WsTasksUpdate,
+  WsText,
+  WsTextReplace,
+  WsThinking,
+  WsTitleUpdate,
+  WsTokenUpdate,
+  WsToolCall,
+  WsToolResult,
+  WsUpdateAvailable,
+  WsUpdateCheckResponse,
+  WsUpdateProgress,
+  WsUsageStatsResponse,
+} from './ws-messages.js'
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -158,8 +212,9 @@ function parseCitationSources(output: string): CitationSource[] {
     const end = output.indexOf(' -->', jsonStart)
     if (end !== -1) {
       try {
-        const raw: Array<{ i: number; t: string; d: string; u: string }> =
-          JSON.parse(output.slice(jsonStart, end))
+        const raw: Array<{ i: number; t: string; d: string; u: string }> = JSON.parse(
+          output.slice(jsonStart, end),
+        )
         return raw.map((s) => ({
           index: s.i,
           title: s.t,
@@ -276,7 +331,7 @@ interface AppState {
 
   // Citations: maps assistant message ID → sources extracted from web_search
   citations: Map<string, CitationSource[]>
-  _pendingCitationSourcesQueue: CitationSource[][]
+  _pendingCitationSourcesQueue: CitationSource[]
   _pendingWebSearchToolCallIds: Set<string>
 
   // Browser viewer
@@ -305,7 +360,7 @@ interface AppState {
   // Sync-first protocol: sessions currently loading history from server
   _syncingSessionIds: Set<string>
   // Messages received while a session was still syncing (queued for replay)
-  _pendingSyncMessages: Map<string, Array<Record<string, unknown>>>
+  _pendingSyncMessages: Map<string, WsPayload[]>
   // Pagination: whether a session has older messages to load
   _sessionHasMore: Map<string, boolean>
   // Sessions currently loading older messages (scroll-up pagination)
@@ -399,7 +454,12 @@ interface AppState {
   setProviders: (providers: ProviderInfo[], defaults: { provider: string; model: string }) => void
 
   // Conversation actions
-  newConversation: (title?: string, sessionId?: string, projectId?: string, agentSessionId?: string) => string
+  newConversation: (
+    title?: string,
+    sessionId?: string,
+    projectId?: string,
+    agentSessionId?: string,
+  ) => string
   appendConversation: (title?: string, sessionId?: string, projectId?: string) => string
   switchConversation: (id: string) => void
   deleteConversation: (id: string) => void
@@ -586,9 +646,12 @@ export const useStore = create<AppState>((set, get) => {
     })(),
     setTheme: (theme) => {
       localStorage.setItem('anton-theme', theme)
-      const resolved = theme === 'system'
-        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-        : theme
+      const resolved =
+        theme === 'system'
+          ? window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light'
+          : theme
       document.documentElement.setAttribute('data-theme', resolved)
       set({ theme, resolvedTheme: resolved })
     },
@@ -741,7 +804,12 @@ export const useStore = create<AppState>((set, get) => {
       } else if (status === 'idle' && prev === 'working') {
         const started = get().workingStartedAt
         const duration = started ? Date.now() - started : null
-        set({ agentStatus: status, lastTurnDurationMs: duration, turnStatsConversationId: get().activeConversationId, workingSessionId: null })
+        set({
+          agentStatus: status,
+          lastTurnDurationMs: duration,
+          turnStatsConversationId: get().activeConversationId,
+          workingSessionId: null,
+        })
       } else {
         set({
           agentStatus: status,
@@ -789,7 +857,14 @@ export const useStore = create<AppState>((set, get) => {
 
     newConversation: (title, sessionId, projectId, agentSessionId) => {
       const { currentProvider, currentModel } = get()
-      const conv = createConversation(title, sessionId, projectId, currentProvider, currentModel, agentSessionId)
+      const conv = createConversation(
+        title,
+        sessionId,
+        projectId,
+        currentProvider,
+        currentModel,
+        agentSessionId,
+      )
       set((state) => {
         const conversations = [conv, ...state.conversations]
         saveConversations(conversations)
@@ -968,11 +1043,11 @@ export const useStore = create<AppState>((set, get) => {
         saveConversations(conversations)
         // Associate pending citation sources with new assistant message
         const citationUpdate: Record<string, unknown> = {}
-        if (newMsgId && state._pendingCitationSources?.length > 0) {
+        if (newMsgId && state._pendingCitationSourcesQueue?.length > 0) {
           const newCitations = new Map(state.citations)
-          newCitations.set(newMsgId, state._pendingCitationSources)
+          newCitations.set(newMsgId, state._pendingCitationSourcesQueue)
           citationUpdate.citations = newCitations
-          citationUpdate._pendingCitationSources = []
+          citationUpdate._pendingCitationSourcesQueue = []
         }
         return {
           conversations,
@@ -1018,11 +1093,11 @@ export const useStore = create<AppState>((set, get) => {
         saveConversations(conversations)
         // Associate pending citation sources with new assistant message
         const citationUpdate: Record<string, unknown> = {}
-        if (newMsgId && state._pendingCitationSources?.length > 0) {
+        if (newMsgId && state._pendingCitationSourcesQueue?.length > 0) {
           const newCitations = new Map(state.citations)
-          newCitations.set(newMsgId, state._pendingCitationSources)
+          newCitations.set(newMsgId, state._pendingCitationSourcesQueue)
           citationUpdate.citations = newCitations
-          citationUpdate._pendingCitationSources = []
+          citationUpdate._pendingCitationSourcesQueue = []
         }
         return { conversations, ...citationUpdate }
       })
@@ -1100,9 +1175,7 @@ export const useStore = create<AppState>((set, get) => {
 
       // Replay any messages that arrived while we were syncing
       if (queuedMessages.length > 0) {
-        console.log(
-          `[Sync] Replaying ${queuedMessages.length} queued messages for ${sessionId}`,
-        )
+        console.log(`[Sync] Replaying ${queuedMessages.length} queued messages for ${sessionId}`)
         for (const queued of queuedMessages) {
           handleWsMessage(Channel.AI, queued)
         }
@@ -1370,8 +1443,8 @@ connection.onStatusChange((status) => {
   useStore.getState().setConnectionStatus(status)
 })
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function handleWsMessage(channel: number, msg: any) {
+// ── WS message type interfaces ─────────────────────────────────────
+function handleWsMessage(channel: number, msg: WsPayload) {
   const store = useStore.getState()
 
   // Debug logging for all messages
@@ -1380,60 +1453,66 @@ function handleWsMessage(channel: number, msg: any) {
   // ── CONTROL channel: auth_ok version info + update messages ──
   if (channel === Channel.CONTROL) {
     if (msg.type === 'auth_ok') {
-      store.setAgentVersionInfo(msg.version || '', msg.gitHash || '')
+      const m = msg as unknown as WsAuthOk
+      store.setAgentVersionInfo(m.version || '', m.gitHash || '')
       // If agent already knows about an update, store it
-      if (msg.updateAvailable) {
+      if (m.updateAvailable) {
         store.setUpdateInfo({
-          currentVersion: msg.version,
-          latestVersion: msg.updateAvailable.version,
+          currentVersion: m.version,
+          latestVersion: m.updateAvailable.version,
           updateAvailable: true,
-          changelog: msg.updateAvailable.changelog,
-          releaseUrl: msg.updateAvailable.releaseUrl,
+          changelog: m.updateAvailable.changelog,
+          releaseUrl: m.updateAvailable.releaseUrl,
         })
       }
     } else if (msg.type === 'update_check_response') {
+      const m = msg as unknown as WsUpdateCheckResponse
       store.setUpdateInfo({
-        currentVersion: msg.currentVersion,
-        latestVersion: msg.latestVersion,
-        updateAvailable: msg.updateAvailable,
-        changelog: msg.changelog,
-        releaseUrl: msg.releaseUrl,
+        currentVersion: m.currentVersion,
+        latestVersion: m.latestVersion,
+        updateAvailable: m.updateAvailable,
+        changelog: m.changelog,
+        releaseUrl: m.releaseUrl,
       })
     } else if (msg.type === 'update_progress') {
-      store.setUpdateProgress(msg.stage, msg.message)
+      const m = msg as unknown as WsUpdateProgress
+      store.setUpdateProgress(m.stage, m.message)
     }
     // Don't return — let other control messages fall through for ping/pong etc.
   }
 
   // ── EVENTS channel: job events ──
   if (channel === Channel.EVENTS && msg.type === 'job_event') {
+    const m = msg as unknown as WsJobEvent
     // Refresh job list when a job state changes
-    if (msg.projectId === store.activeProjectId) {
-      connection.sendAgentsList(msg.projectId)
+    if (m.projectId === store.activeProjectId) {
+      connection.sendAgentsList(m.projectId)
     }
     return
   }
 
   // ── EVENTS channel: agent status + update notifications ──
   if (channel === Channel.EVENTS && msg.type === 'update_available') {
+    const m = msg as unknown as WsUpdateAvailable
     store.setUpdateInfo({
-      currentVersion: msg.currentVersion,
-      latestVersion: msg.latestVersion,
+      currentVersion: m.currentVersion,
+      latestVersion: m.latestVersion,
       updateAvailable: true,
-      changelog: msg.changelog,
-      releaseUrl: msg.releaseUrl,
+      changelog: m.changelog,
+      releaseUrl: m.releaseUrl,
     })
     return
   }
 
   if (channel === Channel.EVENTS && msg.type === 'agent_status') {
-    console.log(`[WS] Agent status: ${msg.status}`, msg.detail || '', msg.sessionId || '')
-    const sid: string | undefined = msg.sessionId
+    const m = msg as unknown as WsAgentStatusMsg
+    console.log(`[WS] Agent status: ${m.status}`, m.detail || '', m.sessionId || '')
+    const sid: string | undefined = m.sessionId
 
     // Update per-session status map
     if (sid) {
       const statuses = new Map(store.sessionStatuses)
-      statuses.set(sid, { status: msg.status, detail: msg.detail })
+      statuses.set(sid, { status: m.status, detail: m.detail })
       useStore.setState({ sessionStatuses: statuses })
     }
 
@@ -1441,16 +1520,16 @@ function handleWsMessage(channel: number, msg: any) {
     // affect the UI of unrelated conversations
     const activeConv = store.getActiveConversation()
     if (sid === activeConv?.sessionId) {
-      store.setAgentStatus(msg.status, sid)
-      store.setAgentStatusDetail(msg.detail || null)
-      if (msg.status === 'idle') {
+      store.setAgentStatus(m.status, sid)
+      store.setAgentStatusDetail(m.detail || null)
+      if (m.status === 'idle') {
         store.clearAgentSteps()
       }
     } else if (!sid) {
       // Legacy path: no sessionId means it's for the active session
-      store.setAgentStatus(msg.status)
-      store.setAgentStatusDetail(msg.detail || null)
-      if (msg.status === 'idle') {
+      store.setAgentStatus(m.status)
+      store.setAgentStatusDetail(m.detail || null)
+      if (m.status === 'idle') {
         store.clearAgentSteps()
       }
     }
@@ -1465,7 +1544,7 @@ function handleWsMessage(channel: number, msg: any) {
   // ── Session-aware message routing ─────────────────────────────
   // Determine whether this message belongs to the active conversation or another one.
   // If it has a sessionId that matches a non-active conversation, route it there.
-  const msgSessionId: string | undefined = msg.sessionId
+  const msgSessionId: string | undefined = msg.sessionId as string | undefined
   const activeConv = store.getActiveConversation()
   const isForActiveSession = !msgSessionId || activeConv?.sessionId === msgSessionId
   // Helper: add message to the correct conversation
@@ -1498,11 +1577,7 @@ function handleWsMessage(channel: number, msg: any) {
     'project_sessions_list_response',
     'providers_list_response',
   ])
-  if (
-    msgSessionId &&
-    store._syncingSessionIds.has(msgSessionId) &&
-    !syncExempt.has(msg.type)
-  ) {
+  if (msgSessionId && store._syncingSessionIds.has(msgSessionId) && !syncExempt.has(msg.type)) {
     // Queue this message for replay after history loads
     const pending = new Map(store._pendingSyncMessages)
     const queue = pending.get(msgSessionId) ?? []
@@ -1515,19 +1590,22 @@ function handleWsMessage(channel: number, msg: any) {
 
   switch (msg.type) {
     // ── Steering ack — user message sent while agent was working ──
-    case 'steer_ack':
+    case 'steer_ack': {
+      const m = msg as unknown as WsSteerAck
       addMsg({
         id: `steer_${Date.now()}`,
         role: 'user',
-        content: msg.content,
+        content: m.content,
         timestamp: Date.now(),
         isSteering: true,
       })
       break
+    }
 
     // ── Chat messages ──────────────────────────────────────────
     case 'text': {
-      const textContent = msg.content ?? ''
+      const m = msg as unknown as WsText
+      const textContent = m.content ?? ''
       if (!textContent) break
       console.log(`[WS] AI text chunk: "${textContent.slice(0, 80)}..."`)
       // Track that this session is actively streaming
@@ -1541,37 +1619,41 @@ function handleWsMessage(channel: number, msg: any) {
       break
     }
 
-    case 'thinking':
+    case 'thinking': {
+      const m = msg as unknown as WsThinking
       addMsg({
         id: `think_${Date.now()}`,
         role: 'system',
-        content: msg.text,
+        content: m.text,
         timestamp: Date.now(),
       })
       store.setAgentStatus('working', msgSessionId)
       break
+    }
 
     case 'text_replace': {
+      const m = msg as unknown as WsTextReplace
       // Strip internal tags from the displayed message
-      if (msg.remove) {
-        store.replaceAssistantText(msg.remove, '', msgSessionId)
+      if (m.remove) {
+        store.replaceAssistantText(m.remove, '', msgSessionId)
       }
       break
     }
 
     case 'tool_call': {
+      const m = msg as unknown as WsToolCall
       // Tools with dedicated UI — don't pollute the message timeline
       const uiOnlyTools = new Set(['ask_user', 'task_tracker', 'plan_confirm'])
-      if (uiOnlyTools.has(msg.name)) {
+      if (uiOnlyTools.has(m.name)) {
         // Track the ID so we can skip its tool_result too
         store._hiddenToolCallIds = store._hiddenToolCallIds || new Set()
-        store._hiddenToolCallIds.add(msg.id)
+        store._hiddenToolCallIds.add(m.id)
         store.setAgentStatus('working', msgSessionId)
         break
       }
       // Reset assistant message tracking so any text AFTER this tool call
       // creates a new assistant bubble (shows reasoning between tool groups)
-      if (!msg.parentToolCallId) {
+      if (!m.parentToolCallId) {
         if (isForActiveSession) {
           useStore.setState({ _currentAssistantMsgId: null })
         } else if (msgSessionId) {
@@ -1579,26 +1661,26 @@ function handleWsMessage(channel: number, msg: any) {
         }
       }
       // Track tool name so tool_result can inherit it
-      store._toolCallNames.set(msg.id, { name: msg.name, input: msg.input })
+      store._toolCallNames.set(m.id, { name: m.name, input: m.input })
       addMsg({
-        id: `tc_${msg.id}`,
+        id: `tc_${m.id}`,
         role: 'tool',
-        content: `Running: ${msg.name}`,
-        toolName: msg.name,
-        toolInput: msg.input,
+        content: `Running: ${m.name}`,
+        toolName: m.name,
+        toolInput: m.input,
         timestamp: Date.now(),
-        parentToolCallId: msg.parentToolCallId,
+        parentToolCallId: m.parentToolCallId,
       })
       // Track web_search calls for citation extraction
-      if (msg.name === 'web_search') {
-        store._pendingWebSearchToolCallIds.add(msg.id)
+      if (m.name === 'web_search') {
+        store._pendingWebSearchToolCallIds.add(m.id)
       }
-      if (!msg.parentToolCallId) {
+      if (!m.parentToolCallId) {
         store.addAgentStep({
-          id: msg.id,
+          id: m.id,
           type: 'tool_call',
-          label: `Running: ${msg.name}`,
-          toolName: msg.name,
+          label: `Running: ${m.name}`,
+          toolName: m.name,
           status: 'active',
           timestamp: Date.now(),
         })
@@ -1608,37 +1690,38 @@ function handleWsMessage(channel: number, msg: any) {
     }
 
     case 'tool_result': {
+      const m = msg as unknown as WsToolResult
       // Skip results for tools with dedicated UI
-      if (store._hiddenToolCallIds?.has(msg.id)) {
-        store._hiddenToolCallIds.delete(msg.id)
+      if (store._hiddenToolCallIds?.has(m.id)) {
+        store._hiddenToolCallIds.delete(m.id)
         break
       }
       // Inherit toolName/toolInput from matching tool_call
-      const callInfo = store._toolCallNames.get(msg.id)
+      const callInfo = store._toolCallNames.get(m.id)
       const resultMsg: ChatMessage = {
-        id: `tr_${msg.id}`,
+        id: `tr_${m.id}`,
         role: 'tool',
-        content: msg.output,
-        isError: msg.isError,
+        content: m.output,
+        isError: m.isError,
         timestamp: Date.now(),
-        parentToolCallId: msg.parentToolCallId,
+        parentToolCallId: m.parentToolCallId,
         ...(callInfo && { toolName: callInfo.name, toolInput: callInfo.input }),
       }
-      store._toolCallNames.delete(msg.id)
+      store._toolCallNames.delete(m.id)
       addMsg(resultMsg)
       // Extract citation sources from web_search results
-      if (store._pendingWebSearchToolCallIds.has(msg.id)) {
-        store._pendingWebSearchToolCallIds.delete(msg.id)
-        if (!msg.isError) {
-          const sources = parseCitationSources(msg.output)
+      if (store._pendingWebSearchToolCallIds.has(m.id)) {
+        store._pendingWebSearchToolCallIds.delete(m.id)
+        if (!m.isError) {
+          const sources = parseCitationSources(m.output)
           if (sources.length > 0) {
-            store._pendingCitationSources = sources
+            store._pendingCitationSourcesQueue = sources
           }
         }
       }
-      if (!msg.parentToolCallId) {
-        store.updateAgentStep(msg.id, {
-          status: msg.isError ? 'error' : 'complete',
+      if (!m.parentToolCallId) {
+        store.updateAgentStep(m.id, {
+          status: m.isError ? 'error' : 'complete',
         })
       }
 
@@ -1646,90 +1729,107 @@ function handleWsMessage(channel: number, msg: any) {
     }
 
     // ── Sub-agent lifecycle ──────────────────────────────────────
-    case 'sub_agent_start':
+    case 'sub_agent_start': {
+      const m = msg as unknown as WsSubAgentStart
       addMsg({
-        id: `sa_start_${msg.toolCallId}`,
+        id: `sa_start_${m.toolCallId}`,
         role: 'tool',
-        content: msg.task,
+        content: m.task,
         toolName: 'sub_agent',
-        toolInput: { task: msg.task },
+        toolInput: { task: m.task },
         timestamp: Date.now(),
       })
       break
+    }
 
-    case 'sub_agent_end':
+    case 'sub_agent_end': {
+      const m = msg as unknown as WsSubAgentEnd
       addMsg({
-        id: `sa_end_${msg.toolCallId}`,
+        id: `sa_end_${m.toolCallId}`,
         role: 'tool',
-        content: msg.success ? 'Sub-agent completed' : 'Sub-agent failed',
-        isError: !msg.success,
+        content: m.success ? 'Sub-agent completed' : 'Sub-agent failed',
+        isError: !m.success,
         timestamp: Date.now(),
-        parentToolCallId: msg.toolCallId,
+        parentToolCallId: m.toolCallId,
       })
       break
+    }
 
-    case 'sub_agent_progress':
+    case 'sub_agent_progress': {
+      const m = msg as unknown as WsSubAgentProgress
       // Live progress text from sub-agent — rendered inside SubAgentGroup pill
       addMsg({
-        id: `sa_progress_${msg.toolCallId}_${Date.now()}`,
+        id: `sa_progress_${m.toolCallId}_${Date.now()}`,
         role: 'assistant',
-        content: msg.content,
+        content: m.content,
         timestamp: Date.now(),
-        parentToolCallId: msg.toolCallId,
+        parentToolCallId: m.toolCallId,
       })
       break
+    }
 
-    case 'artifact':
+    case 'artifact': {
+      const m = msg as unknown as WsArtifact
       // Server-side artifact detection — add directly to store
       store.addArtifact({
-        id: msg.id,
-        type: msg.artifactType,
-        renderType: msg.renderType,
-        title: msg.title,
-        filename: msg.filename,
-        filepath: msg.filepath,
-        language: msg.language,
-        content: msg.content,
-        toolCallId: `tc_${msg.toolCallId}`,
+        id: m.id,
+        type: m.artifactType,
+        renderType: m.renderType,
+        title: m.title,
+        filename: m.filename,
+        filepath: m.filepath,
+        language: m.language || '',
+        content: m.content,
+        toolCallId: `tc_${m.toolCallId}`,
         timestamp: Date.now(),
         conversationId: store.activeConversationId || undefined,
         projectId: store.activeProjectId || undefined,
       })
       break
+    }
 
-    case 'publish_artifact_response':
-      if (msg.success && msg.artifactId) {
-        store.updateArtifactPublishStatus(msg.artifactId, msg.publicUrl, msg.slug)
+    case 'publish_artifact_response': {
+      const m = msg as unknown as WsPublishArtifactResponse
+      if (m.success && m.artifactId) {
+        store.updateArtifactPublishStatus(m.artifactId, m.publicUrl, m.slug)
       }
       break
+    }
 
-    case 'confirm':
+    case 'confirm': {
+      const m = msg as unknown as WsConfirm
       store.setPendingConfirm({
-        id: msg.id,
-        command: msg.command,
-        reason: msg.reason,
+        id: m.id,
+        command: m.command,
+        reason: m.reason,
         sessionId: msgSessionId,
       })
       break
+    }
 
-    case 'plan_confirm':
+    case 'plan_confirm': {
+      const m = msg as unknown as WsPlanConfirm
       store.setPendingPlan({
-        id: msg.id,
-        title: msg.title,
-        content: msg.content,
+        id: m.id,
+        title: m.title,
+        content: m.content,
         sessionId: msgSessionId,
       })
       break
+    }
 
-    case 'ask_user':
+    case 'ask_user': {
+      const m = msg as unknown as WsAskUser
       store.setPendingAskUser({
-        id: msg.id,
-        questions: msg.questions,
+        id: m.id,
+        questions: m.questions,
         sessionId: msgSessionId,
       })
       break
+    }
 
     case 'error': {
+      const m = msg as unknown as WsError
       // Clear syncing flag if this error is for a session we're waiting on
       if (msgSessionId && store._syncingSessionIds.has(msgSessionId)) {
         const syncing = new Set(store._syncingSessionIds)
@@ -1740,7 +1840,7 @@ function handleWsMessage(channel: number, msg: any) {
       }
 
       // Session permanently gone — remove the stale conversation from the sidebar
-      if (msg.code === 'session_not_found' && msgSessionId) {
+      if (m.code === 'session_not_found' && msgSessionId) {
         const staleConv = store.conversations.find((c) => c.sessionId === msgSessionId)
         if (staleConv) {
           store.deleteConversation(staleConv.id)
@@ -1755,14 +1855,14 @@ function handleWsMessage(channel: number, msg: any) {
         addMsg({
           id: `err_${Date.now()}`,
           role: 'system',
-          content: msg.message,
+          content: m.message,
           isError: true,
           timestamp: Date.now(),
         })
       } else {
         console.warn(
           '[WS] Received error without sessionId, not adding to conversation:',
-          msg.message,
+          m.message,
         )
       }
       // Only set global error status if this error belongs to the active session
@@ -1779,22 +1879,23 @@ function handleWsMessage(channel: number, msg: any) {
       break
     }
 
-    case 'title_update':
-      console.log('[WS] title_update received:', { sessionId: msg.sessionId, title: msg.title })
-      if (msg.sessionId) {
-        const matchingConv = store.findConversationBySession(msg.sessionId)
+    case 'title_update': {
+      const m = msg as unknown as WsTitleUpdate
+      console.log('[WS] title_update received:', { sessionId: m.sessionId, title: m.title })
+      if (m.sessionId) {
+        const matchingConv = store.findConversationBySession(m.sessionId)
         console.log(
           '[WS] title_update matching conv:',
           matchingConv?.id,
           matchingConv?.sessionId,
           matchingConv?.title,
         )
-        store.updateConversationTitle(msg.sessionId, msg.title)
+        store.updateConversationTitle(m.sessionId, m.title)
         // Also update projectSessions so sidebar reflects the new title
-        if (store.projectSessions.some((s: SessionMeta) => s.id === msg.sessionId)) {
+        if (store.projectSessions.some((s: SessionMeta) => s.id === m.sessionId)) {
           store.setProjectSessions(
             store.projectSessions.map((s: SessionMeta) =>
-              s.id === msg.sessionId ? { ...s, title: msg.title } : s,
+              s.id === m.sessionId ? { ...s, title: m.title } : s,
             ),
           )
         }
@@ -1802,35 +1903,38 @@ function handleWsMessage(channel: number, msg: any) {
         console.warn('[WS] title_update has no sessionId, skipping')
       }
       break
+    }
 
     case 'tasks_update': {
-      if (msg.tasks) {
+      const m = msg as unknown as WsTasksUpdate
+      if (m.tasks) {
         // Always store tasks per-session so they persist across conversation switches
         if (msgSessionId) {
           const sessionTasks = new Map(store._sessionTasks)
-          sessionTasks.set(msgSessionId, msg.tasks)
+          sessionTasks.set(msgSessionId, m.tasks)
           const updates: Partial<AppState> = { _sessionTasks: sessionTasks }
           // Only update the visible currentTasks if this is the active session
           if (isForActiveSession) {
-            updates.currentTasks = msg.tasks
+            updates.currentTasks = m.tasks
           }
           useStore.setState(updates)
         } else if (isForActiveSession) {
-          useStore.setState({ currentTasks: msg.tasks })
+          useStore.setState({ currentTasks: m.tasks })
         }
       }
       break
     }
 
     case 'browser_state': {
+      const m = msg as unknown as WsBrowserState
       if (isForActiveSession) {
         const wasActive = store.browserState?.active
         store.setBrowserState({
-          url: msg.url,
-          title: msg.title,
-          screenshot: msg.screenshot,
-          lastAction: msg.lastAction,
-          elementCount: msg.elementCount,
+          url: m.url,
+          title: m.title,
+          screenshot: m.screenshot,
+          lastAction: m.lastAction,
+          elementCount: m.elementCount,
         })
         // Auto-open browser viewer on first browser event
         if (!wasActive) {
@@ -1849,14 +1953,16 @@ function handleWsMessage(channel: number, msg: any) {
     }
 
     case 'token_update': {
+      const m = msg as unknown as WsTokenUpdate
       // Streaming token update — update turnUsage live so the UI can show a counter
-      if (isForActiveSession && msg.usage) {
-        store.setUsage(msg.usage, null)
+      if (isForActiveSession && m.usage) {
+        store.setUsage(m.usage, null)
       }
       break
     }
 
     case 'done': {
+      const m = msg as unknown as WsDone
       // Detect silent failures: server says "done" but never sent any text/tool events
       const doneConv = msgSessionId
         ? store.findConversationBySession(msgSessionId)
@@ -1864,7 +1970,7 @@ function handleWsMessage(channel: number, msg: any) {
       const lastMsg = doneConv?.messages[doneConv.messages.length - 1]
       const wasWorking = store.agentStatus === 'working'
       const noResponse = wasWorking && lastMsg?.role === 'user'
-      const zeroTokens = msg.usage && msg.usage.inputTokens === 0 && msg.usage.outputTokens === 0
+      const zeroTokens = m.usage && m.usage.inputTokens === 0 && m.usage.outputTokens === 0
 
       if (noResponse && zeroTokens) {
         console.error(
@@ -1947,13 +2053,13 @@ function handleWsMessage(channel: number, msg: any) {
         })
       }
 
-      if (msg.usage) {
-        store.setUsage(msg.usage, msg.cumulativeUsage || null)
+      if (m.usage) {
+        store.setUsage(m.usage, m.cumulativeUsage || null)
       }
       // Track the actual model used for this turn (display only)
-      if (msg.provider && msg.model) {
+      if (m.provider && m.model) {
         try {
-          useStore.setState({ lastResponseProvider: msg.provider, lastResponseModel: msg.model })
+          useStore.setState({ lastResponseProvider: m.provider, lastResponseModel: m.model })
         } catch {
           /* ignore during HMR transitions */
         }
@@ -1963,48 +2069,55 @@ function handleWsMessage(channel: number, msg: any) {
 
     // ── Session responses ──────────────────────────────────────
     case 'session_created': {
+      const m = msg as unknown as WsSessionCreated
       // Session created — update session ID and persist model on the conversation.
       // The server echoes back the actual provider/model being used for this session.
       // Update currentProvider/currentModel since this is a fresh session the user just created.
-      store.setCurrentSession(msg.id, msg.provider, msg.model)
-      store.resolvePendingSession(msg.id)
+      store.setCurrentSession(m.id, m.provider, m.model)
+      store.resolvePendingSession(m.id)
       break
     }
 
     case 'context_info': {
+      const m = msg as unknown as WsContextInfo
       // Store context info on the conversation linked to this session
       const convs = store.conversations.map((c: Conversation) =>
-        c.sessionId === msg.sessionId
+        c.sessionId === m.sessionId
           ? {
               ...c,
               contextInfo: {
-                globalMemories: msg.globalMemories || [],
-                conversationMemories: msg.conversationMemories || [],
-                crossConversationMemories: msg.crossConversationMemories || [],
-                projectId: msg.projectId,
+                globalMemories: m.globalMemories || [],
+                conversationMemories: m.conversationMemories || [],
+                crossConversationMemories: m.crossConversationMemories || [],
+                projectId: m.projectId,
               },
             }
           : c,
       )
-      saveConversations(convs)
-      useStore.setState({ conversations: convs })
+      saveConversations(convs as Conversation[])
+      useStore.setState({ conversations: convs as Conversation[] })
       break
     }
 
-    case 'sessions_list_response':
-      store.setSessions(msg.sessions)
+    case 'sessions_list_response': {
+      const m = msg as unknown as WsSessionsListResponse
+      store.setSessions(m.sessions)
       break
+    }
 
-    case 'usage_stats_response':
+    case 'usage_stats_response': {
+      const m = msg as unknown as WsUsageStatsResponse
       store.setUsageStats({
-        totals: msg.totals,
-        byModel: msg.byModel,
-        byDay: msg.byDay,
-        sessions: msg.sessions,
+        totals: m.totals,
+        byModel: m.byModel,
+        byDay: m.byDay,
+        sessions: m.sessions,
       })
       break
+    }
 
     case 'session_history_response': {
+      const m = msg as unknown as WsSessionHistoryResponse
       // Convert server history entries to ChatMessage format
       type HistoryEntry = {
         seq: number
@@ -2021,7 +2134,7 @@ function handleWsMessage(channel: number, msg: any) {
       // and render Q&A summaries instead
       const uiOnlyHistoryTools = new Set(['ask_user', 'task_tracker', 'plan_confirm'])
       const hiddenHistoryIds = new Set<string>()
-      for (const entry of msg.messages as HistoryEntry[]) {
+      for (const entry of m.messages as HistoryEntry[]) {
         if (
           entry.role === 'tool_call' &&
           entry.toolName &&
@@ -2034,10 +2147,10 @@ function handleWsMessage(channel: number, msg: any) {
 
       // Build ask_user Q&A summary messages from tool_result content
       const askUserSummaries: ChatMessage[] = []
-      for (const entry of msg.messages as HistoryEntry[]) {
+      for (const entry of m.messages as HistoryEntry[]) {
         if (entry.role === 'tool_result' && entry.toolId && hiddenHistoryIds.has(entry.toolId)) {
           // Find the matching tool_call to check if it's ask_user
-          const call = (msg.messages as HistoryEntry[]).find(
+          const call = (m.messages as HistoryEntry[]).find(
             (e: HistoryEntry) => e.role === 'tool_call' && e.toolId === entry.toolId,
           )
           if (call?.toolName === 'ask_user' && entry.content) {
@@ -2061,7 +2174,7 @@ function handleWsMessage(channel: number, msg: any) {
         }
       }
 
-      const historyMessages: ChatMessage[] = (msg.messages as HistoryEntry[])
+      const historyMessages: ChatMessage[] = (m.messages as HistoryEntry[])
         .filter((entry: HistoryEntry) => {
           // Skip tools with dedicated UI
           if (entry.toolId && hiddenHistoryIds.has(entry.toolId)) return false
@@ -2101,25 +2214,36 @@ function handleWsMessage(channel: number, msg: any) {
         (a, b) => a.timestamp - b.timestamp,
       )
       // Determine if this is a first page (sync) or an older-page (scroll-up pagination)
-      const isFirstPage = !store._loadingOlderSessions.has(msg.id)
+      const isFirstPage = !store._loadingOlderSessions.has(m.id)
 
       // Update hasMore for this session
       const hasMoreMap = new Map(store._sessionHasMore)
-      hasMoreMap.set(msg.id, msg.hasMore ?? false)
+      hasMoreMap.set(m.id, (m.hasMore ?? false) as boolean)
       useStore.setState({ _sessionHasMore: hasMoreMap })
 
       if (isFirstPage) {
         // First page: replace messages (server authoritative)
-        store.loadSessionMessages(msg.id, allMessages)
+        store.loadSessionMessages(m.id, allMessages)
       } else {
         // Older page: prepend to existing messages
-        store.prependSessionMessages(msg.id, allMessages)
+        store.prependSessionMessages(m.id, allMessages)
       }
 
       // Use server-sent artifacts if available (first page includes all artifacts)
-      if (msg.artifacts && Array.isArray(msg.artifacts) && msg.artifacts.length > 0) {
+      if (m.artifacts && Array.isArray(m.artifacts) && m.artifacts.length > 0) {
         store.clearArtifacts()
-        for (const a of msg.artifacts) {
+        for (const _a of m.artifacts as unknown[]) {
+          const a = _a as {
+            id: string
+            type: string
+            renderType: string
+            title?: string
+            filename?: string
+            filepath?: string
+            language?: string
+            content: string
+            toolCallId: string
+          }
           store.addArtifact({
             id: a.id,
             type: a.type as 'file' | 'output' | 'artifact',
@@ -2127,7 +2251,7 @@ function handleWsMessage(channel: number, msg: any) {
             title: a.title,
             filename: a.filename,
             filepath: a.filepath,
-            language: a.language,
+            language: (a.language as string) || '',
             content: a.content,
             toolCallId: a.toolCallId,
             timestamp: Date.now(),
@@ -2186,32 +2310,38 @@ function handleWsMessage(channel: number, msg: any) {
       break
     }
 
-    case 'session_destroyed':
-      store.setSessions(store.sessions.filter((s: SessionMeta) => s.id !== msg.id))
+    case 'session_destroyed': {
+      const m = msg as unknown as WsSessionDestroyed
+      store.setSessions(store.sessions.filter((s: SessionMeta) => s.id !== m.id))
       // Also remove from projectSessions so project view updates immediately
-      if (store.projectSessions.some((s: SessionMeta) => s.id === msg.id)) {
-        store.setProjectSessions(store.projectSessions.filter((s: SessionMeta) => s.id !== msg.id))
+      if (store.projectSessions.some((s: SessionMeta) => s.id === m.id)) {
+        store.setProjectSessions(store.projectSessions.filter((s: SessionMeta) => s.id !== m.id))
       }
       break
+    }
 
     // ── Provider responses ─────────────────────────────────────
-    case 'providers_list_response':
-      store.setProviders(msg.providers, msg.defaults)
+    case 'providers_list_response': {
+      const m = msg as unknown as WsProvidersListResponse
+      store.setProviders(m.providers, m.defaults)
       break
+    }
 
     case 'provider_set_key_response':
-      if (msg.success) connection.sendProvidersList()
+      if (msg.success as boolean) connection.sendProvidersList()
       break
 
     case 'provider_set_models_response':
-      if (msg.success) connection.sendProvidersList()
+      if (msg.success as boolean) connection.sendProvidersList()
       break
 
-    case 'provider_set_default_response':
-      if (msg.success) {
-        store.setCurrentSession(store.currentSessionId || '', msg.provider, msg.model)
+    case 'provider_set_default_response': {
+      const m = msg as unknown as WsProviderSetDefaultResponse
+      if (m.success) {
+        store.setCurrentSession(store.currentSessionId || '', m.provider, m.model)
       }
       break
+    }
 
     // ── Compaction ──────────────────────────────────────────────
     case 'compaction_start':
@@ -2223,108 +2353,141 @@ function handleWsMessage(channel: number, msg: any) {
       })
       break
 
-    case 'compaction_complete':
+    case 'compaction_complete': {
+      const m = msg as unknown as WsCompactionComplete
       addMsg({
         id: `compact_done_${Date.now()}`,
         role: 'system',
-        content: `Context compacted: ${msg.compactedMessages} messages summarized (compaction #${msg.totalCompactions})`,
+        content: `Context compacted: ${m.compactedMessages} messages summarized (compaction #${m.totalCompactions})`,
         timestamp: Date.now(),
       })
       break
+    }
 
     // ── Project responses ──────────────────────────────────────
-    case 'project_created':
-      store.addProject(msg.project)
-      store.setActiveProject(msg.project.id)
-      connection.sendProjectSessionsList(msg.project.id)
+    case 'project_created': {
+      const m = msg as unknown as WsProjectCreated
+      store.addProject(m.project)
+      store.setActiveProject(m.project.id)
+      connection.sendProjectSessionsList(m.project.id)
       break
+    }
 
-    case 'projects_list_response':
-      store.setProjects(msg.projects)
+    case 'projects_list_response': {
+      const m = msg as unknown as WsProjectsListResponse
+      store.setProjects(m.projects)
       break
+    }
 
-    case 'project_updated':
-      store.updateProject(msg.project.id, msg.project)
+    case 'project_updated': {
+      const m = msg as unknown as WsProjectUpdated
+      store.updateProject(m.project.id, m.project)
       break
+    }
 
-    case 'project_deleted':
-      store.removeProject(msg.id)
+    case 'project_deleted': {
+      const m = msg as unknown as WsProjectDeleted
+      store.removeProject(m.id)
       break
+    }
 
-    case 'project_files_list_response':
-      if (msg.projectId === store.activeProjectId) {
-        store.setProjectFiles(msg.files)
+    case 'project_files_list_response': {
+      const m = msg as unknown as WsProjectFilesListResponse
+      if (m.projectId === store.activeProjectId) {
+        store.setProjectFiles(m.files)
       }
       break
+    }
 
-    case 'project_sessions_list_response':
-      if (msg.projectId === store.activeProjectId) {
-        store.setProjectSessions(msg.sessions)
+    case 'project_sessions_list_response': {
+      const m = msg as unknown as WsProjectSessionsListResponse
+      if (m.projectId === store.activeProjectId) {
+        store.setProjectSessions(m.sessions)
       }
       break
+    }
 
     // ── Agent responses ──────────────────────────────────────────
-    case 'agents_list_response':
-      if (msg.projectId === store.activeProjectId) {
-        store.setProjectAgents(msg.agents)
+    case 'agents_list_response': {
+      const m = msg as unknown as WsAgentsListResponse
+      if (m.projectId === store.activeProjectId) {
+        store.setProjectAgents(m.agents)
       }
       break
+    }
 
     case 'agent_created': {
+      const m = msg as unknown as WsAgentCreated
       const agents = [...store.projectAgents]
-      const idx = agents.findIndex((a) => a.sessionId === msg.agent.sessionId)
-      if (idx >= 0) agents[idx] = msg.agent
-      else agents.push(msg.agent)
+      const idx = agents.findIndex((a) => a.sessionId === m.agent.sessionId)
+      if (idx >= 0) agents[idx] = m.agent
+      else agents.push(m.agent)
       store.setProjectAgents(agents)
       break
     }
 
     case 'agent_updated': {
+      const m = msg as unknown as WsAgentUpdated
       const agents = store.projectAgents.map((a) =>
-        a.sessionId === msg.agent.sessionId ? msg.agent : a,
+        a.sessionId === m.agent.sessionId ? m.agent : a,
       )
       store.setProjectAgents(agents)
       break
     }
 
     case 'agent_deleted': {
-      const agents = store.projectAgents.filter((a) => a.sessionId !== msg.sessionId)
+      const m = msg as unknown as WsAgentDeleted
+      const agents = store.projectAgents.filter((a) => a.sessionId !== m.sessionId)
       store.setProjectAgents(agents)
       break
     }
 
-    case 'agent_run_logs_response':
-      useStore.setState({ agentRunLogs: msg.logs, agentRunLogsLoading: false })
+    case 'agent_run_logs_response': {
+      const m = msg as unknown as WsAgentRunLogsResponse
+      useStore.setState({ agentRunLogs: m.logs, agentRunLogsLoading: false })
       break
+    }
 
     // ── Connector responses ──────────────────────────────────────
-    case 'connectors_list_response':
-      store.setConnectors(msg.connectors)
+    case 'connectors_list_response': {
+      const m = msg as unknown as WsConnectorsListResponse
+      store.setConnectors(m.connectors)
       break
+    }
 
-    case 'connector_added':
-      store.addOrUpdateConnector(msg.connector)
+    case 'connector_added': {
+      const m = msg as unknown as WsConnectorAdded
+      store.addOrUpdateConnector(m.connector)
       break
+    }
 
-    case 'connector_updated':
-      store.addOrUpdateConnector(msg.connector)
+    case 'connector_updated': {
+      const m = msg as unknown as WsConnectorUpdated
+      store.addOrUpdateConnector(m.connector)
       break
+    }
 
-    case 'connector_removed':
-      store.removeConnector(msg.id)
+    case 'connector_removed': {
+      const m = msg as unknown as WsConnectorRemoved
+      store.removeConnector(m.id)
       break
+    }
 
-    case 'connector_status':
-      store.updateConnectorStatus(msg.id, {
-        connected: msg.connected,
-        toolCount: msg.toolCount,
-        error: msg.error,
+    case 'connector_status': {
+      const m = msg as unknown as WsConnectorStatus
+      store.updateConnectorStatus(m.id, {
+        connected: m.connected,
+        toolCount: m.toolCount,
+        error: m.error,
       })
       break
+    }
 
-    case 'connector_registry_list_response':
-      store.setConnectorRegistry(msg.entries)
+    case 'connector_registry_list_response': {
+      const m = msg as unknown as WsConnectorRegistryListResponse
+      store.setConnectorRegistry(m.entries)
       break
+    }
   }
 }
 

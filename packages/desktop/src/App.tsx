@@ -2,17 +2,17 @@ import { AnimatePresence } from 'framer-motion'
 import { FolderOpen, PanelLeft, Ticket } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { AgentChat } from './components/AgentChat.js'
-import { DebugOverlay } from './components/chat/DebugOverlay.js'
 import { Connect } from './components/Connect.js'
+import { FileBrowser } from './components/FileBrowser.js'
 import { MachineInfoPanel } from './components/MachineInfoPanel.js'
 import { ModeSelector } from './components/ModeSelector.js'
 import { SidePanel } from './components/SidePanel.js'
 import { Sidebar } from './components/Sidebar.js'
-import { SettingsModal } from './components/settings/SettingsModal.js'
-import { FileBrowser } from './components/FileBrowser.js'
 import { Terminal } from './components/Terminal.js'
+import { DebugOverlay } from './components/chat/DebugOverlay.js'
 import { ProjectList } from './components/projects/ProjectList.js'
 import { ProjectView } from './components/projects/ProjectView.js'
+import { SettingsModal } from './components/settings/SettingsModal.js'
 import { connection } from './lib/connection.js'
 import { useConnectionStatus, useStore } from './lib/store.js'
 
@@ -20,7 +20,9 @@ export function App() {
   const [connected, setConnected] = useState(false)
   const [showMachineInfo, setShowMachineInfo] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [settingsPage, setSettingsPage] = useState<'general' | 'models' | 'connectors' | 'usage'>('general')
+  const [settingsPage, setSettingsPage] = useState<'general' | 'models' | 'connectors' | 'usage'>(
+    'general',
+  )
   const [settingsConnectorId, setSettingsConnectorId] = useState<string | undefined>()
   const status = useConnectionStatus()
   const activeView = useStore((s) => s.activeView)
@@ -33,16 +35,19 @@ export function App() {
   const sidebarCollapsed = useStore((s) => s.sidebarCollapsed)
   const toggleSidebar = useStore((s) => s.toggleSidebar)
   const sidePanelOpen = artifactPanelOpen || pendingPlan !== null
-  const machineName = connection.currentConfig?.host?.replace('.antoncomputer.in', '') ?? ''
+  const _machineName = connection.currentConfig?.host?.replace('.antoncomputer.in', '') ?? ''
   const activeProjectId = useStore((s) => s.activeProjectId)
   const projects = useStore((s) => s.projects)
   const theme = useStore((s) => s.theme)
 
   // Apply theme on mount + listen for system preference changes
   useEffect(() => {
-    const resolved = theme === 'system'
-      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-      : theme
+    const resolved =
+      theme === 'system'
+        ? window.matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light'
+        : theme
     document.documentElement.setAttribute('data-theme', resolved)
 
     if (theme === 'system') {
@@ -183,7 +188,8 @@ export function App() {
   }
 
   // For sidebar compatibility — map store view to sidebar view
-  const sidebarView = activeView === 'chat' ? 'agent' : activeView === 'terminal' ? 'terminal' : 'agent'
+  const sidebarView =
+    activeView === 'chat' ? 'agent' : activeView === 'terminal' ? 'terminal' : 'agent'
   const handleSidebarViewChange = (view: 'agent' | 'terminal') => {
     setActiveView(view === 'agent' ? 'chat' : 'terminal')
   }
@@ -253,7 +259,15 @@ export function App() {
             >
               <span className="workspace-topbar__connectionDot" />
               <span className="workspace-topbar__connectionLabel">
-                {status === 'connected' ? 'Connected' : status === 'connecting' ? 'Connecting...' : status === 'authenticating' ? 'Verifying...' : status === 'error' ? 'Error' : 'Disconnected'}
+                {status === 'connected'
+                  ? 'Connected'
+                  : status === 'connecting'
+                    ? 'Connecting...'
+                    : status === 'authenticating'
+                      ? 'Verifying...'
+                      : status === 'error'
+                        ? 'Error'
+                        : 'Disconnected'}
               </span>
             </button>
             {sessionUsage && activeView === 'chat' && (
@@ -273,9 +287,7 @@ export function App() {
 
         <div className="workspace-body">
           {activeView === 'chat' && <AgentChat />}
-          {activeView === 'projects' && (
-            activeProjectId ? <ProjectView /> : <ProjectList />
-          )}
+          {activeView === 'projects' && (activeProjectId ? <ProjectView /> : <ProjectList />)}
           {activeView === 'terminal' && (
             <>
               <Terminal />
@@ -290,7 +302,15 @@ export function App() {
       </div>
 
       {showMachineInfo && <MachineInfoPanel onClose={() => setShowMachineInfo(false)} />}
-      <SettingsModal open={showSettings} onClose={() => { setShowSettings(false); setSettingsConnectorId(undefined) }} initialPage={settingsPage} initialConnectorId={settingsConnectorId} />
+      <SettingsModal
+        open={showSettings}
+        onClose={() => {
+          setShowSettings(false)
+          setSettingsConnectorId(undefined)
+        }}
+        initialPage={settingsPage}
+        initialConnectorId={settingsConnectorId}
+      />
       <DebugOverlay />
     </div>
   )

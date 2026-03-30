@@ -87,7 +87,12 @@ function formatResults(query: string, results: ExaProxyResult[]): string {
     if (r.summary) parts.push(`    Summary: ${r.summary}`)
     if (r.text) {
       // Include page content (already truncated by the proxy)
-      parts.push(`    Content:\n${r.text.split('\n').map((l) => `      ${l}`).join('\n')}`)
+      parts.push(
+        `    Content:\n${r.text
+          .split('\n')
+          .map((l) => `      ${l}`)
+          .join('\n')}`,
+      )
     } else if (r.highlights && r.highlights.length > 0) {
       parts.push(`    Highlights:\n${r.highlights.map((h) => `      - ${h}`).join('\n')}`)
     }

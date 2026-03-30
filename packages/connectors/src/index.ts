@@ -13,20 +13,22 @@ export { LinearConnector } from './linear/index.js'
 export { GranolaConnector } from './granola/index.js'
 export { GoogleDocsConnector } from './google-docs/index.js'
 export { GoogleSheetsConnector } from './google-sheets/index.js'
+export { GoogleSearchConsoleConnector } from './google-search-console/index.js'
 
-import type { ConnectorFactory } from './types.js'
-import { SlackConnector } from './slack/index.js'
+import { ExaConnector } from './exa/index.js'
 import { GitHubConnector } from './github/index.js'
 import { GmailConnector } from './gmail/index.js'
-import { NotionConnector } from './notion/index.js'
-import { TelegramConnector } from './telegram/index.js'
-import { ExaConnector } from './exa/index.js'
 import { GoogleCalendarConnector } from './google-calendar/index.js'
-import { GoogleDriveConnector } from './google-drive/index.js'
-import { LinearConnector } from './linear/index.js'
-import { GranolaConnector } from './granola/index.js'
 import { GoogleDocsConnector } from './google-docs/index.js'
+import { GoogleDriveConnector } from './google-drive/index.js'
+import { GoogleSearchConsoleConnector } from './google-search-console/index.js'
 import { GoogleSheetsConnector } from './google-sheets/index.js'
+import { GranolaConnector } from './granola/index.js'
+import { LinearConnector } from './linear/index.js'
+import { NotionConnector } from './notion/index.js'
+import { SlackConnector } from './slack/index.js'
+import { TelegramConnector } from './telegram/index.js'
+import type { ConnectorFactory } from './types.js'
 
 /** Built-in direct connector factories keyed by provider ID. */
 export const CONNECTOR_FACTORIES: Record<string, ConnectorFactory> = {
@@ -42,4 +44,5 @@ export const CONNECTOR_FACTORIES: Record<string, ConnectorFactory> = {
   granola: () => new GranolaConnector(),
   'google-docs': () => new GoogleDocsConnector(),
   'google-sheets': () => new GoogleSheetsConnector(),
+  'google-search-console': () => new GoogleSearchConsoleConnector(),
 }

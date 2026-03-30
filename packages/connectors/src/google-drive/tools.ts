@@ -1,6 +1,6 @@
-import { Type, type TSchema, type Static } from '@sinclair/typebox'
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core'
-import { GoogleDriveAPI, formatSize, GOOGLE_EXPORT_FORMATS } from './api.js'
+import { type Static, type TSchema, Type } from '@sinclair/typebox'
+import { GOOGLE_EXPORT_FORMATS, type GoogleDriveAPI, formatSize } from './api.js'
 
 function toolResult(output: string, isError = false) {
   return { content: [{ type: 'text' as const, text: output }], details: { raw: output, isError } }
@@ -8,7 +8,11 @@ function toolResult(output: string, isError = false) {
 
 function defineTool<T extends TSchema>(
   def: Omit<AgentTool<T>, 'execute'> & {
-    execute: (id: string, params: Static<T>, signal?: AbortSignal) => Promise<AgentToolResult<unknown>>
+    execute: (
+      id: string,
+      params: Static<T>,
+      signal?: AbortSignal,
+    ) => Promise<AgentToolResult<unknown>>
   },
 ): AgentTool {
   return def as AgentTool
@@ -16,15 +20,22 @@ function defineTool<T extends TSchema>(
 
 export function createGoogleDriveTools(api: GoogleDriveAPI): AgentTool[] {
   return [
-
     defineTool({
       name: 'gdrive_list_files',
       label: 'List Files',
-      description: '[Google Drive] List files in Google Drive, optionally filtered by folder or query.',
+      description:
+        '[Google Drive] List files in Google Drive, optionally filtered by folder or query.',
       parameters: Type.Object({
-        query: Type.Optional(Type.String({ description: 'Drive query (e.g. "name contains \'report\'" or "\'folderID\' in parents")' })),
+        query: Type.Optional(
+          Type.String({
+            description:
+              'Drive query (e.g. "name contains \'report\'" or "\'folderID\' in parents")',
+          }),
+        ),
         page_size: Type.Optional(Type.Number({ description: 'Max results (default: 20)' })),
-        order_by: Type.Optional(Type.String({ description: 'Sort order (default: modifiedTime desc)' })),
+        order_by: Type.Optional(
+          Type.String({ description: 'Sort order (default: modifiedTime desc)' }),
+        ),
       }),
       async execute(_id, params) {
         try {
@@ -86,19 +97,25 @@ export function createGoogleDriveTools(api: GoogleDriveAPI): AgentTool[] {
       async execute(_id, params) {
         try {
           const file = await api.getFile(params.file_id)
-          return toolResult(JSON.stringify({
-            id: file.id,
-            name: file.name,
-            type: file.mimeType,
-            size: formatSize(file.size),
-            created: file.createdTime,
-            modified: file.modifiedTime,
-            description: file.description ?? null,
-            starred: file.starred,
-            owners: file.owners?.map((o) => o.emailAddress),
-            webViewLink: file.webViewLink,
-            downloadLink: file.webContentLink ?? null,
-          }, null, 2))
+          return toolResult(
+            JSON.stringify(
+              {
+                id: file.id,
+                name: file.name,
+                type: file.mimeType,
+                size: formatSize(file.size),
+                created: file.createdTime,
+                modified: file.modifiedTime,
+                description: file.description ?? null,
+                starred: file.starred,
+                owners: file.owners?.map((o) => o.emailAddress),
+                webViewLink: file.webViewLink,
+                downloadLink: file.webContentLink ?? null,
+              },
+              null,
+              2,
+            ),
+          )
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
         }
@@ -108,7 +125,8 @@ export function createGoogleDriveTools(api: GoogleDriveAPI): AgentTool[] {
     defineTool({
       name: 'gdrive_read_file',
       label: 'Read File',
-      description: '[Google Drive] Read the text content of a file. Works for plain text files and Google Docs/Sheets/Slides.',
+      description:
+        '[Google Drive] Read the text content of a file. Works for plain text files and Google Docs/Sheets/Slides.',
       parameters: Type.Object({
         file_id: Type.String({ description: 'File ID' }),
       }),
@@ -128,7 +146,7 @@ export function createGoogleDriveTools(api: GoogleDriveAPI): AgentTool[] {
           // Truncate very large files
           const maxChars = 50000
           if (content.length > maxChars) {
-            content = content.slice(0, maxChars) + `\n\n[Truncated — ${content.length - maxChars} more characters]`
+            content = `${content.slice(0, maxChars)}\n\n[Truncated — ${content.length - maxChars} more characters]`
           }
 
           return toolResult(content)
@@ -144,12 +162,16 @@ export function createGoogleDriveTools(api: GoogleDriveAPI): AgentTool[] {
       description: '[Google Drive] Create a new folder in Google Drive.',
       parameters: Type.Object({
         name: Type.String({ description: 'Folder name' }),
-        parent_id: Type.Optional(Type.String({ description: 'Parent folder ID (default: My Drive root)' })),
+        parent_id: Type.Optional(
+          Type.String({ description: 'Parent folder ID (default: My Drive root)' }),
+        ),
       }),
       async execute(_id, params) {
         try {
           const folder = await api.createFolder(params.name, params.parent_id)
-          return toolResult(`Folder created: ${folder.name} (ID: ${folder.id})\n${folder.webViewLink ?? ''}`)
+          return toolResult(
+            `Folder created: ${folder.name} (ID: ${folder.id})\n${folder.webViewLink ?? ''}`,
+          )
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
         }
@@ -164,7 +186,9 @@ export function createGoogleDriveTools(api: GoogleDriveAPI): AgentTool[] {
         name: Type.String({ description: 'File name (include extension, e.g. report.txt)' }),
         content: Type.String({ description: 'File content (text)' }),
         mime_type: Type.Optional(Type.String({ description: 'MIME type (default: text/plain)' })),
-        parent_id: Type.Optional(Type.String({ description: 'Parent folder ID (default: My Drive root)' })),
+        parent_id: Type.Optional(
+          Type.String({ description: 'Parent folder ID (default: My Drive root)' }),
+        ),
       }),
       async execute(_id, params) {
         try {
@@ -174,7 +198,9 @@ export function createGoogleDriveTools(api: GoogleDriveAPI): AgentTool[] {
             params.mime_type ?? 'text/plain',
             params.parent_id,
           )
-          return toolResult(`File uploaded: ${file.name} (ID: ${file.id})\n${file.webViewLink ?? ''}`)
+          return toolResult(
+            `File uploaded: ${file.name} (ID: ${file.id})\n${file.webViewLink ?? ''}`,
+          )
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
         }
@@ -206,20 +232,25 @@ export function createGoogleDriveTools(api: GoogleDriveAPI): AgentTool[] {
       async execute(_id, _params) {
         try {
           const about = await api.getAbout()
-          const used = parseInt(about.storageQuota.usage)
-          const limit = parseInt(about.storageQuota.limit)
-          return toolResult(JSON.stringify({
-            user: about.user.displayName,
-            email: about.user.emailAddress,
-            used: formatSize(String(used)),
-            limit: formatSize(String(limit)),
-            usedPercent: limit ? `${((used / limit) * 100).toFixed(1)}%` : 'unlimited',
-          }, null, 2))
+          const used = Number.parseInt(about.storageQuota.usage)
+          const limit = Number.parseInt(about.storageQuota.limit)
+          return toolResult(
+            JSON.stringify(
+              {
+                user: about.user.displayName,
+                email: about.user.emailAddress,
+                used: formatSize(String(used)),
+                limit: formatSize(String(limit)),
+                usedPercent: limit ? `${((used / limit) * 100).toFixed(1)}%` : 'unlimited',
+              },
+              null,
+              2,
+            ),
+          )
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
         }
       },
     }),
-
   ]
 }

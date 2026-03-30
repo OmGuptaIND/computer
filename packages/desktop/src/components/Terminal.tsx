@@ -69,9 +69,9 @@ export function Terminal() {
     const unsub = connection.onMessage((channel, msg) => {
       if (channel === Channel.TERMINAL && msg.type === 'pty_data' && msg.id === TERMINAL_ID) {
         try {
-          term.write(atob(msg.data))
+          term.write(atob(msg.data as string))
         } catch {
-          term.write(msg.data)
+          term.write(msg.data as string)
         }
       }
     })

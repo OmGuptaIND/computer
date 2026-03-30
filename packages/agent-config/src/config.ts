@@ -742,7 +742,9 @@ export function appendMessageToSession(
       meta.messageCount = (meta.messageCount ?? 0) + 1
       meta.lastActiveAt = Date.now()
       writeFileSync(mPath, JSON.stringify(meta, null, 2), 'utf-8')
-    } catch { /* skip meta update on error */ }
+    } catch {
+      /* skip meta update on error */
+    }
   }
 
   return true
@@ -1269,7 +1271,10 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     category: 'productivity',
     type: 'oauth',
     oauthProvider: 'gmail',
-    oauthScopes: ['https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/gmail.send'],
+    oauthScopes: [
+      'https://www.googleapis.com/auth/gmail.modify',
+      'https://www.googleapis.com/auth/gmail.send',
+    ],
     requiredEnv: [],
     featured: true,
     setupGuide: {
@@ -1451,6 +1456,27 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
       ],
       url: 'https://sheets.google.com',
       urlLabel: 'Google Sheets',
+    },
+  },
+  {
+    id: 'google-search-console',
+    name: 'Google Search Console',
+    description: 'Search analytics, top queries, page performance, URL inspection, and sitemaps',
+    icon: '📈',
+    category: 'productivity',
+    type: 'oauth',
+    oauthProvider: 'google',
+    oauthScopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
+    requiredEnv: [],
+    featured: true,
+    setupGuide: {
+      steps: [
+        'Click "Connect Google Search Console" to authorize with your Google account',
+        'Anton will request read-only access to your Search Console data',
+        'Make sure your site is already verified in Search Console',
+      ],
+      url: 'https://search.google.com/search-console',
+      urlLabel: 'Search Console',
     },
   },
 ]

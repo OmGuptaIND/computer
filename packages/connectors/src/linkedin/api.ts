@@ -49,7 +49,11 @@ export class LinkedInAPI {
   }
 
   /** Create a text post on behalf of the authenticated member. */
-  async createPost(authorUrn: string, text: string, visibility: 'PUBLIC' | 'CONNECTIONS' = 'PUBLIC'): Promise<string> {
+  async createPost(
+    authorUrn: string,
+    text: string,
+    visibility: 'PUBLIC' | 'CONNECTIONS' = 'PUBLIC',
+  ): Promise<string> {
     const body = {
       author: authorUrn,
       lifecycleState: 'PUBLISHED',
@@ -82,10 +86,15 @@ export class LinkedInAPI {
 
   /** List organizations where the member is an admin. */
   async getAdminOrganizations(): Promise<LinkedInOrg[]> {
-    const data = await this.request<{ elements: Array<{ organizationalTarget: string }> }>(
+    const data = await this.request<{
+      elements: Array<{
+        organizationalTarget: string
+        'organizationalTarget~'?: { id?: number; localizedName?: string; vanityName?: string }
+      }>
+    }>(
       '/v2/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&projection=(elements*(organizationalTarget~(id,localizedName,vanityName)))',
     )
-    return (data.elements ?? []).map((el: any) => ({
+    return (data.elements ?? []).map((el) => ({
       id: el['organizationalTarget~']?.id?.toString() ?? '',
       name: el['organizationalTarget~']?.localizedName ?? '',
       vanityName: el['organizationalTarget~']?.vanityName,

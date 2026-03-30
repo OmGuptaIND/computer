@@ -1,7 +1,7 @@
 import {
   Activity,
-  BarChart,
   Ban,
+  BarChart,
   Box,
   Clock,
   Database,
@@ -26,12 +26,7 @@ import {
 } from 'lucide-react'
 import type React from 'react'
 import { useMemo, useState } from 'react'
-import {
-  type Skill,
-  addCustomSkill,
-  getSkills,
-  removeCustomSkill,
-} from '../lib/skills.js'
+import { type Skill, addCustomSkill, getSkills, removeCustomSkill } from '../lib/skills.js'
 import { SkillDialog } from './skills/SkillDialog.js'
 import { Modal } from './ui/Modal.js'
 
@@ -86,7 +81,9 @@ export function SidebarSkillsPanel() {
   return (
     <div className="sidebar-skills">
       <div className="sidebar-skills__header">
-        <span className="sidebar-section-label" style={{ padding: 0 }}>Skills</span>
+        <span className="sidebar-section-label" style={{ padding: 0 }}>
+          Skills
+        </span>
         <button
           type="button"
           className="sidebar-skills__add-btn"
@@ -187,7 +184,9 @@ function AddSkillDialog({
     <Modal open={open} onClose={onClose} title="Add Custom Skill">
       <div className="add-skill-form">
         <div className="add-skill-form__field">
-          <label className="add-skill-form__label" htmlFor="add-skill-name">Name *</label>
+          <label className="add-skill-form__label" htmlFor="add-skill-name">
+            Name *
+          </label>
           <input
             id="add-skill-name"
             type="text"
@@ -198,7 +197,9 @@ function AddSkillDialog({
           />
         </div>
         <div className="add-skill-form__field">
-          <label className="add-skill-form__label" htmlFor="add-skill-command">Command *</label>
+          <label className="add-skill-form__label" htmlFor="add-skill-command">
+            Command *
+          </label>
           <input
             id="add-skill-command"
             type="text"
@@ -209,7 +210,9 @@ function AddSkillDialog({
           />
         </div>
         <div className="add-skill-form__field">
-          <label className="add-skill-form__label" htmlFor="add-skill-category">Category</label>
+          <label className="add-skill-form__label" htmlFor="add-skill-category">
+            Category
+          </label>
           <input
             id="add-skill-category"
             type="text"
@@ -220,7 +223,9 @@ function AddSkillDialog({
           />
         </div>
         <div className="add-skill-form__field">
-          <label className="add-skill-form__label" htmlFor="add-skill-description">Description</label>
+          <label className="add-skill-form__label" htmlFor="add-skill-description">
+            Description
+          </label>
           <input
             id="add-skill-description"
             type="text"
@@ -231,7 +236,9 @@ function AddSkillDialog({
           />
         </div>
         <div className="add-skill-form__field">
-          <label className="add-skill-form__label" htmlFor="add-skill-prompt">Prompt *</label>
+          <label className="add-skill-form__label" htmlFor="add-skill-prompt">
+            Prompt *
+          </label>
           <textarea
             id="add-skill-prompt"
             className="add-skill-form__textarea"
@@ -242,11 +249,7 @@ function AddSkillDialog({
           />
         </div>
         <div className="add-skill-form__actions">
-          <button
-            type="button"
-            className="add-skill-form__cancel"
-            onClick={onClose}
-          >
+          <button type="button" className="add-skill-form__cancel" onClick={onClose}>
             Cancel
           </button>
           <button

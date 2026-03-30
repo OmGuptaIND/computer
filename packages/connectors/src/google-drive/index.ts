@@ -22,7 +22,10 @@ export class GoogleDriveConnector implements DirectConnector {
   async testConnection(): Promise<{ success: boolean; error?: string; info?: string }> {
     try {
       const about = await this.api.getAbout()
-      return { success: true, info: `Connected as ${about.user.displayName} (${about.user.emailAddress})` }
+      return {
+        success: true,
+        info: `Connected as ${about.user.displayName} (${about.user.emailAddress})`,
+      }
     } catch (err) {
       return { success: false, error: (err as Error).message }
     }

@@ -1,5 +1,5 @@
 import type { AgentTool } from '@mariozechner/pi-agent-core'
-import type { DirectConnector, ConnectorFactory, TokenGetter } from './types.js'
+import type { ConnectorFactory, DirectConnector, TokenGetter } from './types.js'
 
 /**
  * Manages active direct API connectors.
@@ -28,7 +28,9 @@ export class ConnectorManager {
       const connector = factory()
       connector.setToken(token)
       this.connectors.set(providerId, connector)
-      console.log(`[ConnectorManager] Activated: ${connector.name} (${connector.getTools().length} tools)`)
+      console.log(
+        `[ConnectorManager] Activated: ${connector.name} (${connector.getTools().length} tools)`,
+      )
     } catch (err) {
       console.error(`[ConnectorManager] Failed to activate ${providerId}:`, err)
     }
@@ -87,7 +89,9 @@ export class ConnectorManager {
     const connector = factory()
     connector.setToken(token)
     this.connectors.set(providerId, connector)
-    console.log(`[ConnectorManager] Activated: ${connector.name} (${connector.getTools().length} tools)`)
+    console.log(
+      `[ConnectorManager] Activated: ${connector.name} (${connector.getTools().length} tools)`,
+    )
   }
 
   /** Refresh a connector's token. */

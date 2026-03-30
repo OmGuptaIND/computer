@@ -70,8 +70,8 @@ export interface AgentMetadata {
   originConversationId?: string
   /** Token budget controls */
   tokenBudget?: {
-    perRun: number      // max tokens per run (0 = unlimited)
-    monthly: number     // max tokens per month (0 = unlimited)
+    perRun: number // max tokens per run (0 = unlimited)
+    monthly: number // max tokens per month (0 = unlimited)
     usedThisMonth: number
   }
   /** Current status */

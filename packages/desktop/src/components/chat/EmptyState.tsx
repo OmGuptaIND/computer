@@ -5,7 +5,7 @@ import { connection } from '../../lib/connection.js'
 import type { Skill } from '../../lib/skills.js'
 import type { ChatImageAttachment } from '../../lib/store.js'
 import { useStore } from '../../lib/store.js'
-import { generateSuggestions, type PersonalizedSuggestion } from '../../lib/suggestions.js'
+import { type PersonalizedSuggestion, generateSuggestions } from '../../lib/suggestions.js'
 import { AntonLogo } from '../AntonLogo.js'
 import { ChatInput } from './ChatInput.js'
 
@@ -110,7 +110,9 @@ export function EmptyState({ onSend, onSkillSelect }: Props) {
               onClick={() => setActiveCategory(cat.id)}
               className={`empty-state__tab${activeCategory === cat.id ? ' empty-state__tab--active' : ''}`}
             >
-              {cat.Icon && <cat.Icon size={14} strokeWidth={1.5} className="empty-state__tab-icon" />}
+              {cat.Icon && (
+                <cat.Icon size={14} strokeWidth={1.5} className="empty-state__tab-icon" />
+              )}
               <span>{cat.label}</span>
             </button>
           ))}

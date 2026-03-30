@@ -1,4 +1,14 @@
-import { Activity, Brain, Clock, Cpu, Database, FileText, FolderOpen, GitBranch, Layers } from 'lucide-react'
+import {
+  Activity,
+  Brain,
+  Clock,
+  Cpu,
+  Database,
+  FileText,
+  FolderOpen,
+  GitBranch,
+  Layers,
+} from 'lucide-react'
 import { useStore } from '../../lib/store.js'
 
 export function ContextPanelContent() {
@@ -35,7 +45,10 @@ export function ContextPanelContent() {
           <div className="context-panel__path">~/.anton/conversations/{sessionId}/</div>
           <div className="context-panel__file-list">
             <FileRow name="workspace/" desc="Scratch files for this conversation" />
-            <FileRow name="memory/" desc={`${contextInfo?.conversationMemories.length ?? 0} memory files`} />
+            <FileRow
+              name="memory/"
+              desc={`${contextInfo?.conversationMemories.length ?? 0} memory files`}
+            />
             <FileRow name="context.json" desc="Assembled context snapshot" />
           </div>
         </Section>
@@ -45,12 +58,8 @@ export function ContextPanelContent() {
       {(currentProvider || currentModel) && (
         <Section icon={Cpu} title="Model">
           <div className="context-panel__kv">
-            {currentProvider && (
-              <KVRow label="Provider" value={currentProvider} />
-            )}
-            {currentModel && (
-              <KVRow label="Model" value={currentModel} />
-            )}
+            {currentProvider && <KVRow label="Provider" value={currentProvider} />}
+            {currentModel && <KVRow label="Model" value={currentModel} />}
           </div>
         </Section>
       )}
@@ -81,7 +90,10 @@ export function ContextPanelContent() {
               <MemoryBadge label="Conversation" count={contextInfo!.conversationMemories.length} />
             )}
             {contextInfo!.crossConversationMemories.length > 0 && (
-              <MemoryBadge label="Cross-conv" count={contextInfo!.crossConversationMemories.length} />
+              <MemoryBadge
+                label="Cross-conv"
+                count={contextInfo!.crossConversationMemories.length}
+              />
             )}
           </div>
         </Section>
@@ -120,7 +132,10 @@ export function ContextPanelContent() {
         <Section icon={GitBranch} title="From Other Conversations">
           <div className="context-panel__memory-list">
             {contextInfo.crossConversationMemories.map((ref) => (
-              <div key={`${ref.fromConversation}-${ref.memoryKey}`} className="context-panel__memory-item context-panel__memory-item--cross">
+              <div
+                key={`${ref.fromConversation}-${ref.memoryKey}`}
+                className="context-panel__memory-item context-panel__memory-item--cross"
+              >
                 <FileText size={12} strokeWidth={1.5} />
                 <div>
                   <span>{ref.memoryKey}</span>
@@ -177,7 +192,11 @@ export function ContextPanelContent() {
 
 // ── Helpers ──
 
-function Section({ icon: Icon, title, children }: {
+function Section({
+  icon: Icon,
+  title,
+  children,
+}: {
   icon: React.ElementType
   title: string
   children: React.ReactNode
@@ -188,9 +207,7 @@ function Section({ icon: Icon, title, children }: {
         <Icon size={14} strokeWidth={1.5} />
         <span>{title}</span>
       </div>
-      <div className="context-panel__section-body">
-        {children}
-      </div>
+      <div className="context-panel__section-body">{children}</div>
     </div>
   )
 }

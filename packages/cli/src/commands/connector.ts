@@ -41,7 +41,8 @@ const REGISTRY: RegistryEntry[] = [
     icon: '🔍',
     type: 'api',
     requires: 'Search proxy URL and bearer token',
-    example: 'anton connector add exa-search --url https://search-proxy.workers.dev --api-key tok_...',
+    example:
+      'anton connector add exa-search --url https://search-proxy.workers.dev --api-key tok_...',
   },
   {
     id: 'telegram',
@@ -162,7 +163,9 @@ function handleList() {
     for (const c of connectors) {
       const status = c.enabled ? theme.success('●') : theme.dim('○')
       const detail = c.baseUrl || (c.apiKey ? `${c.apiKey.slice(0, 8)}...` : c.command || '')
-      console.log(`  ${status} ${theme.bold(c.name)} ${theme.dim(`(${c.id})`)}  ${theme.dim(detail)}`)
+      console.log(
+        `  ${status} ${theme.bold(c.name)} ${theme.dim(`(${c.id})`)}  ${theme.dim(detail)}`,
+      )
     }
   } else {
     console.log(`\n  ${theme.dim('No connectors configured.')}`)
@@ -183,7 +186,9 @@ function handleList() {
     }
   }
 
-  console.log(`  ${theme.dim('Add with:')} ${theme.brand('anton connector add <id> --url <url> | --api-key <key> | --env KEY=value')}\n`)
+  console.log(
+    `  ${theme.dim('Add with:')} ${theme.brand('anton connector add <id> --url <url> | --api-key <key> | --env KEY=value')}\n`,
+  )
 }
 
 function handleAdd(args: string[]) {
@@ -193,10 +198,14 @@ function handleAdd(args: string[]) {
     console.log('\n  Options:')
     console.log(`    ${theme.dim('--url <url>')}               Base URL (for SearXNG, etc.)`)
     console.log(`    ${theme.dim('--api-key <key>')}           API key (for Brave Search, etc.)`)
-    console.log(`    ${theme.dim('--env KEY=value')}           Environment variable (for MCP connectors)`)
+    console.log(
+      `    ${theme.dim('--env KEY=value')}           Environment variable (for MCP connectors)`,
+    )
     console.log(`    ${theme.dim('--name <name>')}             Display name`)
     console.log('\n  Examples:')
-    console.log(`    ${theme.brand('anton connector add exa-search --url https://search-proxy.workers.dev --api-key tok_...')}`)
+    console.log(
+      `    ${theme.brand('anton connector add exa-search --url https://search-proxy.workers.dev --api-key tok_...')}`,
+    )
     console.log(`    ${theme.brand('anton connector add github --env GITHUB_TOKEN=ghp_...')}\n`)
 
     // Show registry

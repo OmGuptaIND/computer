@@ -9,11 +9,11 @@
 
 import { randomBytes } from 'node:crypto'
 import type { AgentConfig } from '@anton/agent-config'
-import { TokenStore, type StoredToken } from './token-store.js'
+import type { StoredToken, TokenStore } from './token-store.js'
 
 interface PendingFlow {
   nonce: string
-  connectorId: string   // the registry ID (e.g. 'google-calendar')
+  connectorId: string // the registry ID (e.g. 'google-calendar')
   oauthProvider: string // the proxy provider (e.g. 'google')
   createdAt: number
 }
@@ -48,7 +48,12 @@ export class OAuthFlow {
     const effectiveProvider = oauthProvider ?? connectorId
 
     const nonce = randomBytes(32).toString('hex')
-    this.pending.set(nonce, { nonce, connectorId, oauthProvider: effectiveProvider, createdAt: Date.now() })
+    this.pending.set(nonce, {
+      nonce,
+      connectorId,
+      oauthProvider: effectiveProvider,
+      createdAt: Date.now(),
+    })
 
     // Auto-expire after 10 minutes
     setTimeout(() => this.pending.delete(nonce), 10 * 60 * 1000)
@@ -99,9 +104,7 @@ export class OAuthFlow {
       provider: pending.connectorId,
       accessToken: body.access_token,
       refreshToken: body.refresh_token,
-      expiresAt: body.expires_in
-        ? Math.floor(Date.now() / 1000) + body.expires_in
-        : undefined,
+      expiresAt: body.expires_in ? Math.floor(Date.now() / 1000) + body.expires_in : undefined,
       metadata: body.metadata,
     }
 
@@ -173,18 +176,10 @@ export class OAuthFlow {
   }
 
   private getProxyUrl(): string | null {
-    return (
-      process.env.OAUTH_PROXY_URL ||
-      this.config.oauth?.proxyUrl ||
-      null
-    )
+    return process.env.OAUTH_PROXY_URL || this.config.oauth?.proxyUrl || null
   }
 
   private getCallbackBaseUrl(): string | null {
-    return (
-      process.env.OAUTH_CALLBACK_BASE_URL ||
-      this.config.oauth?.callbackBaseUrl ||
-      null
-    )
+    return process.env.OAUTH_CALLBACK_BASE_URL || this.config.oauth?.callbackBaseUrl || null
   }
 }

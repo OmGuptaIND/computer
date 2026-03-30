@@ -74,7 +74,10 @@ export class GitHubAPI {
     return data.repositories ?? []
   }
 
-  async getRepo(owner: string, repo: string): Promise<{
+  async getRepo(
+    owner: string,
+    repo: string,
+  ): Promise<{
     full_name: string
     description: string | null
     private: boolean

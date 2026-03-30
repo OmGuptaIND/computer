@@ -98,20 +98,24 @@ export class LinearAPI {
   }
 
   async listProjects(teamId?: string): Promise<LinearProject[]> {
-    const filter = teamId ? `(filter: { accessibleTeams: { id: { eq: "${teamId}" } } })` : '(first: 50)'
+    const filter = teamId
+      ? `(filter: { accessibleTeams: { id: { eq: "${teamId}" } } })`
+      : '(first: 50)'
     const data = await this.query<{ projects: { nodes: LinearProject[] } }>(`
       query { projects${filter} { nodes { id name description state url } } }
     `)
     return data.projects.nodes
   }
 
-  async listIssues(opts: {
-    teamId?: string
-    assigneeId?: string
-    stateType?: string
-    priority?: number
-    first?: number
-  } = {}): Promise<LinearIssue[]> {
+  async listIssues(
+    opts: {
+      teamId?: string
+      assigneeId?: string
+      stateType?: string
+      priority?: number
+      first?: number
+    } = {},
+  ): Promise<LinearIssue[]> {
     const filters: string[] = []
     if (opts.teamId) filters.push(`team: { id: { eq: "${opts.teamId}" } }`)
     if (opts.assigneeId) filters.push(`assignee: { id: { eq: "${opts.assigneeId}" } }`)
@@ -156,7 +160,9 @@ export class LinearAPI {
     assigneeId?: string
     dueDate?: string
   }): Promise<{ id: string; identifier: string; url: string }> {
-    const data = await this.query<{ issueCreate: { success: boolean; issue: { id: string; identifier: string; url: string } } }>(
+    const data = await this.query<{
+      issueCreate: { success: boolean; issue: { id: string; identifier: string; url: string } }
+    }>(
       `mutation CreateIssue($input: IssueCreateInput!) {
         issueCreate(input: $input) { success issue { id identifier url } }
       }`,
@@ -166,8 +172,13 @@ export class LinearAPI {
     return data.issueCreate.issue
   }
 
-  async updateIssue(id: string, input: Record<string, unknown>): Promise<{ id: string; identifier: string; url: string }> {
-    const data = await this.query<{ issueUpdate: { success: boolean; issue: { id: string; identifier: string; url: string } } }>(
+  async updateIssue(
+    id: string,
+    input: Record<string, unknown>,
+  ): Promise<{ id: string; identifier: string; url: string }> {
+    const data = await this.query<{
+      issueUpdate: { success: boolean; issue: { id: string; identifier: string; url: string } }
+    }>(
       `mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
         issueUpdate(id: $id, input: $input) { success issue { id identifier url } }
       }`,

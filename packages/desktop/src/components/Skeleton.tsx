@@ -23,9 +23,11 @@ export function Skeleton({
     if (!width) style.width = '32px'
     if (!height) style.height = style.width
   } else if (variant === 'rect') {
-    style.borderRadius = typeof borderRadius === 'number' ? `${borderRadius}px` : (borderRadius || '8px')
+    style.borderRadius =
+      typeof borderRadius === 'number' ? `${borderRadius}px` : borderRadius || '8px'
   } else {
-    style.borderRadius = typeof borderRadius === 'number' ? `${borderRadius}px` : (borderRadius || '4px')
+    style.borderRadius =
+      typeof borderRadius === 'number' ? `${borderRadius}px` : borderRadius || '4px'
     if (!height) style.height = '14px'
   }
 
@@ -38,7 +40,10 @@ export function SkeletonLines({ count = 3, gap = 8 }: { count?: number; gap?: nu
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: `${gap}px` }}>
       {Array.from({ length: count }, (_, i) => (
-        <Skeleton key={`skeleton-line-${widths[i % widths.length]}-${i}`} width={widths[i % widths.length]} />
+        <Skeleton
+          key={`skeleton-line-${widths[i % widths.length]}-${i}`}
+          width={widths[i % widths.length]}
+        />
       ))}
     </div>
   )

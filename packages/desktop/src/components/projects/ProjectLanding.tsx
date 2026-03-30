@@ -1,17 +1,7 @@
 import type { AgentSession } from '@anton/protocol'
 import type { Project } from '@anton/protocol'
 import { motion } from 'framer-motion'
-import {
-  Bot,
-  Clock,
-  ListChecks,
-  MoreHorizontal,
-  Play,
-  Plus,
-  Send,
-  Square,
-  Trash2,
-} from 'lucide-react'
+import { Bot, ListChecks, MoreHorizontal, Play, Plus, Send, Square, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { cronToHuman, formatRelativeTime } from '../../lib/agent-utils.js'
 import { connection } from '../../lib/connection.js'
@@ -127,8 +117,14 @@ function AgentCard({
           <>
             <div
               className="agent-row__menu-backdrop"
-              onClick={(e) => { e.stopPropagation(); setShowMenu(false) }}
-              onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') setShowMenu(false) }}
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowMenu(false)
+              }}
+              onKeyDown={(e) => {
+                e.stopPropagation()
+                if (e.key === 'Escape') setShowMenu(false)
+              }}
             />
             <div className="agent-row__menu">
               <button

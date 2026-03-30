@@ -25,7 +25,9 @@ const systemPrompt = readFileSync(join(root, 'prompts', 'system.md'), 'utf-8')
 const projectTypesDir = join(root, 'prompts', 'project-types')
 const projectTypePrompts = {}
 if (existsSync(projectTypesDir)) {
-  for (const file of readdirSync(projectTypesDir).filter(f => f.endsWith('.md')).sort()) {
+  for (const file of readdirSync(projectTypesDir)
+    .filter((f) => f.endsWith('.md'))
+    .sort()) {
     const name = file.replace('.md', '')
     projectTypePrompts[name] = readFileSync(join(projectTypesDir, file), 'utf-8')
   }
@@ -36,7 +38,9 @@ const referencesDir = join(root, 'prompts', 'references')
 const references = {}
 let referencePacks = {}
 if (existsSync(referencesDir)) {
-  for (const file of readdirSync(referencesDir).filter(f => f.endsWith('.md')).sort()) {
+  for (const file of readdirSync(referencesDir)
+    .filter((f) => f.endsWith('.md'))
+    .sort()) {
     const name = file.replace('.md', '')
     references[name] = readFileSync(join(referencesDir, file), 'utf-8')
   }

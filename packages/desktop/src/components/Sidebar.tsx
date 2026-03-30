@@ -119,11 +119,7 @@ export function Sidebar({ onViewChange, onOpenSettings, onOpenMachineInfo }: Pro
         {/* New thread button — only in chat mode */}
         {currentView === 'chat' && (
           <div className="sidebar-primary">
-            <button
-              type="button"
-              className="sidebar-new-thread"
-              onClick={handleNewTask}
-            >
+            <button type="button" className="sidebar-new-thread" onClick={handleNewTask}>
               <Plus size={14} strokeWidth={1.5} />
               <span>New thread</span>
             </button>
@@ -302,12 +298,24 @@ function ConversationMenu({ onDelete }: { onDelete: (e: React.MouseEvent) => voi
       </button>
       {open && (
         <>
-          <div className="sidebar-conv-menu__backdrop" onClick={(e) => { e.stopPropagation(); setOpen(false) }} onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false) }} />
+          <div
+            className="sidebar-conv-menu__backdrop"
+            onClick={(e) => {
+              e.stopPropagation()
+              setOpen(false)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setOpen(false)
+            }}
+          />
           <div className="sidebar-conv-menu">
             <button
               type="button"
               className="sidebar-conv-menu__item"
-              onClick={(e) => { e.stopPropagation(); setOpen(false) }}
+              onClick={(e) => {
+                e.stopPropagation()
+                setOpen(false)
+              }}
             >
               <Pencil size={14} strokeWidth={1.5} />
               <span>Rename</span>
@@ -315,7 +323,10 @@ function ConversationMenu({ onDelete }: { onDelete: (e: React.MouseEvent) => voi
             <button
               type="button"
               className="sidebar-conv-menu__item sidebar-conv-menu__item--danger"
-              onClick={(e) => { onDelete(e); setOpen(false) }}
+              onClick={(e) => {
+                onDelete(e)
+                setOpen(false)
+              }}
             >
               <Trash2 size={14} strokeWidth={1.5} />
               <span>Delete</span>
@@ -389,7 +400,11 @@ function ProjectFolder({ projectId, name, isActive, sessions, onClick }: Project
           className={`sidebar-project-folder__header${isActive ? ' sidebar-project-folder__header--active' : ''}`}
           onClick={onClick}
         >
-          {isActive ? <ChevronDown size={14} strokeWidth={1.5} /> : <ChevronRight size={14} strokeWidth={1.5} />}
+          {isActive ? (
+            <ChevronDown size={14} strokeWidth={1.5} />
+          ) : (
+            <ChevronRight size={14} strokeWidth={1.5} />
+          )}
           <FolderOpen size={14} strokeWidth={1.5} />
           <span className="sidebar-project-folder__name">{name}</span>
         </button>
@@ -437,13 +452,16 @@ function ProjectFolder({ projectId, name, isActive, sessions, onClick }: Project
 
       {isActive && (
         <div className="sidebar-project-folder__threads">
-          {sessions.length > 0 ? sessions.map((session) => {
-              const conv = useStore.getState().findConversationBySession(session.id)
+          {sessions.length > 0 ? (
+            sessions.map((session) => {
+              const _conv = useStore.getState().findConversationBySession(session.id)
               return (
                 <div
                   key={session.id}
                   onClick={() => handleThreadClick(session.id)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleThreadClick(session.id) }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') handleThreadClick(session.id)
+                  }}
                   className={`sidebar-recent__item${activeProjectSessionId === session.id ? ' sidebar-recent__item--active' : ''}`}
                 >
                   <span className="sidebar-recent__title">
@@ -459,7 +477,8 @@ function ProjectFolder({ projectId, name, isActive, sessions, onClick }: Project
                   </button>
                 </div>
               )
-            }) : (
+            })
+          ) : (
             <div className="sidebar-project-folder__empty">No threads</div>
           )}
         </div>

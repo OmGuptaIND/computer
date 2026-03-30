@@ -22,7 +22,10 @@ export class GoogleSheetsConnector implements DirectConnector {
   async testConnection(): Promise<{ success: boolean; error?: string; info?: string }> {
     try {
       const sheets = await this.api.listSpreadsheets(1)
-      return { success: true, info: `Connected — found ${sheets.length > 0 ? 'spreadsheets' : 'no spreadsheets yet'}` }
+      return {
+        success: true,
+        info: `Connected — found ${sheets.length > 0 ? 'spreadsheets' : 'no spreadsheets yet'}`,
+      }
     } catch (err) {
       return { success: false, error: (err as Error).message }
     }

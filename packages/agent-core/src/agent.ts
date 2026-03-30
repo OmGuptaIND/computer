@@ -24,12 +24,12 @@ import { executeBrowser } from './tools/browser.js'
 import { executeClipboard } from './tools/clipboard.js'
 import { executeCodeSearch } from './tools/code-search.js'
 import { executeDatabase } from './tools/database.js'
+import type { DeliverResultHandler } from './tools/deliver-result.js'
 import { executeDiff } from './tools/diff.js'
 import { executeFilesystem } from './tools/filesystem.js'
 import { executeGit } from './tools/git.js'
 import { executeHttpApi } from './tools/http-api.js'
 import { executeImage } from './tools/image.js'
-import type { DeliverResultHandler } from './tools/deliver-result.js'
 import type { JobActionHandler, JobToolInput } from './tools/job.js'
 import { executeMemory } from './tools/memory.js'
 import { executeNetwork } from './tools/network.js'
@@ -62,7 +62,14 @@ function humanizeCron(expr: string): string {
     return n === 1 ? 'every hour' : `every ${n} hours`
   }
   // Daily at HH:MM
-  if (min !== '*' && hour !== '*' && !hour.includes('/') && dom === '*' && mon === '*' && dow === '*') {
+  if (
+    min !== '*' &&
+    hour !== '*' &&
+    !hour.includes('/') &&
+    dom === '*' &&
+    mon === '*' &&
+    dow === '*'
+  ) {
     const h = Number(hour)
     const m = String(min).padStart(2, '0')
     const ampm = h >= 12 ? 'PM' : 'AM'
@@ -993,15 +1000,19 @@ export function buildTools(
             { description: 'Operation to perform' },
           ),
           name: Type.Optional(Type.String({ description: 'Agent name (for create)' })),
-          description: Type.Optional(Type.String({ description: 'What the agent does (for create)' })),
+          description: Type.Optional(
+            Type.String({ description: 'What the agent does (for create)' }),
+          ),
           prompt: Type.Optional(
             Type.String({
-              description: 'Instructions for the agent — what it should do on each run. Be specific.',
+              description:
+                'Instructions for the agent — what it should do on each run. Be specific.',
             }),
           ),
           schedule: Type.Optional(
             Type.String({
-              description: 'Cron expression for scheduling, e.g. "0 9 * * *" for daily at 9am, "0 */6 * * *" for every 6 hours. Omit for manual-only.',
+              description:
+                'Cron expression for scheduling, e.g. "0 9 * * *" for daily at 9am, "0 */6 * * *" for every 6 hours. Omit for manual-only.',
             }),
           ),
           agent_id: Type.Optional(
@@ -1016,15 +1027,20 @@ export function buildTools(
               const scheduleDesc = params.schedule
                 ? `Schedule: ${humanizeCron(params.schedule)}`
                 : 'Trigger: manual only'
-              const answers = await askUser([{
-                question: `Create agent "${params.name || 'Untitled'}"?`,
-                description: [params.description, scheduleDesc].filter(Boolean).join('\n'),
-                options: ['Yes, create it', 'No, cancel'],
-                allowFreeText: false,
-              }])
+              const answers = await askUser([
+                {
+                  question: `Create agent "${params.name || 'Untitled'}"?`,
+                  description: [params.description, scheduleDesc].filter(Boolean).join('\n'),
+                  options: ['Yes, create it', 'No, cancel'],
+                  allowFreeText: false,
+                },
+              ])
               // Check if user rejected
               const answer = Object.values(answers)[0]
-              if (answer && (answer.toLowerCase().includes('no') || answer.toLowerCase().includes('cancel'))) {
+              if (
+                answer &&
+                (answer.toLowerCase().includes('no') || answer.toLowerCase().includes('cancel'))
+              ) {
                 return toolResult('Agent creation cancelled by user.')
               }
             }
@@ -1034,14 +1050,19 @@ export function buildTools(
           if (params.operation === 'delete' && getAskUser) {
             const askUser = getAskUser()
             if (askUser) {
-              const answers = await askUser([{
-                question: `Delete agent "${params.agent_id}"?`,
-                description: 'This will remove the agent and its conversation history.',
-                options: ['Yes, delete it', 'No, keep it'],
-                allowFreeText: false,
-              }])
+              const answers = await askUser([
+                {
+                  question: `Delete agent "${params.agent_id}"?`,
+                  description: 'This will remove the agent and its conversation history.',
+                  options: ['Yes, delete it', 'No, keep it'],
+                  allowFreeText: false,
+                },
+              ])
               const answer = Object.values(answers)[0]
-              if (answer && (answer.toLowerCase().includes('no') || answer.toLowerCase().includes('keep'))) {
+              if (
+                answer &&
+                (answer.toLowerCase().includes('no') || answer.toLowerCase().includes('keep'))
+              ) {
                 return toolResult('Agent deletion cancelled by user.')
               }
             }
@@ -1072,10 +1093,11 @@ export function buildTools(
         description:
           'Send your results back to the conversation that created you. ' +
           'Use this after completing your task to deliver findings, summaries, or data to the user. ' +
-          'Only call this when you have meaningful results to share — don\'t spam empty updates.',
+          "Only call this when you have meaningful results to share — don't spam empty updates.",
         parameters: Type.Object({
           content: Type.String({
-            description: 'The full result to deliver — findings, data, summaries. Formatted as markdown.',
+            description:
+              'The full result to deliver — findings, data, summaries. Formatted as markdown.',
           }),
           summary: Type.Optional(
             Type.String({
@@ -1096,10 +1118,11 @@ export function buildTools(
 
   // ── Web search (Exa via CF worker proxy) ──────────────────────────
   {
-    const exa = config.connectors.find((c) => c.id === 'exa-search' && c.enabled && c.baseUrl && c.apiKey)
-    const provider: import('./tools/web-search.js').SearchProvider | null = exa?.baseUrl && exa?.apiKey
-      ? { baseUrl: exa.baseUrl, token: exa.apiKey }
-      : null
+    const exa = config.connectors.find(
+      (c) => c.id === 'exa-search' && c.enabled && c.baseUrl && c.apiKey,
+    )
+    const provider: import('./tools/web-search.js').SearchProvider | null =
+      exa?.baseUrl && exa?.apiKey ? { baseUrl: exa.baseUrl, token: exa.apiKey } : null
 
     tools.push(
       defineTool({
@@ -1121,7 +1144,10 @@ export function buildTools(
             }),
           ),
           startPublishedDate: Type.Optional(
-            Type.String({ description: 'Filter results published after this ISO date (e.g. "2025-01-01T00:00:00.000Z")' }),
+            Type.String({
+              description:
+                'Filter results published after this ISO date (e.g. "2025-01-01T00:00:00.000Z")',
+            }),
           ),
           endPublishedDate: Type.Optional(
             Type.String({ description: 'Filter results published before this ISO date' }),

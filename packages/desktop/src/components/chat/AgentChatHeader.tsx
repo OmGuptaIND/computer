@@ -21,9 +21,7 @@ export function AgentChatHeader({ agent }: Props) {
           className={`agent-chat-header__dot${isRunning ? ' agent-chat-header__dot--running' : isError ? ' agent-chat-header__dot--error' : ''}`}
         />
         <span className="agent-chat-header__name">{meta.name}</span>
-        {meta.description && (
-          <span className="agent-chat-header__desc">{meta.description}</span>
-        )}
+        {meta.description && <span className="agent-chat-header__desc">{meta.description}</span>}
       </div>
       <div className="agent-chat-header__right">
         {meta.schedule?.cron && (
@@ -47,7 +45,11 @@ export function AgentChatHeader({ agent }: Props) {
           }}
           aria-label={isRunning ? 'Stop agent' : 'Run agent'}
         >
-          {isRunning ? <Square size={13} strokeWidth={1.5} /> : <Play size={13} strokeWidth={1.5} />}
+          {isRunning ? (
+            <Square size={13} strokeWidth={1.5} />
+          ) : (
+            <Play size={13} strokeWidth={1.5} />
+          )}
         </button>
       </div>
     </div>

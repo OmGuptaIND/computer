@@ -36,6 +36,7 @@ function SparkStar({ size = 14 }: { size?: number }) {
       viewBox="0 0 16 16"
       fill="currentColor"
       className="thinking-indicator__star"
+      aria-hidden="true"
     >
       <path d="M8 0l1.8 5.2L16 8l-6.2 2.8L8 16l-1.8-5.2L0 8l6.2-2.8z" />
     </svg>
@@ -129,11 +130,12 @@ export function TaskProgressBar({ grouped }: Props) {
               {doneTasks}/{totalTasks}
             </span>
           )}
-          {totalTasks > 0 && (
-            expanded
-              ? <ChevronDown size={14} strokeWidth={1.5} />
-              : <ChevronUp size={14} strokeWidth={1.5} />
-          )}
+          {totalTasks > 0 &&
+            (expanded ? (
+              <ChevronDown size={14} strokeWidth={1.5} />
+            ) : (
+              <ChevronUp size={14} strokeWidth={1.5} />
+            ))}
         </div>
       </button>
 
@@ -142,34 +144,37 @@ export function TaskProgressBar({ grouped }: Props) {
         <div className="task-progress-bar__checklist">
           {hasTrackerTasks
             ? currentTasks.map((task, i) => (
-              <div key={`${task.content}-${i}`} className="task-progress-bar__item">
-                <span className={`task-progress-bar__item-check${task.status === 'completed' ? ' task-progress-bar__item-check--done' : ''}`}>
-                  {task.status === 'completed' ? (
-                    <Check size={12} strokeWidth={2} />
-                  ) : task.status === 'in_progress' ? (
-                    <Loader2 size={12} strokeWidth={1.5} className="tool-tree__spinner" />
-                  ) : (
-                    <span className="task-progress-bar__item-dot" />
-                  )}
-                </span>
-                <span className="task-progress-bar__item-text">
-                  {task.status === 'in_progress' ? task.activeForm : task.content}
-                </span>
-              </div>
-            ))
+                <div key={`${task.content}-${i}`} className="task-progress-bar__item">
+                  <span
+                    className={`task-progress-bar__item-check${task.status === 'completed' ? ' task-progress-bar__item-check--done' : ''}`}
+                  >
+                    {task.status === 'completed' ? (
+                      <Check size={12} strokeWidth={2} />
+                    ) : task.status === 'in_progress' ? (
+                      <Loader2 size={12} strokeWidth={1.5} className="tool-tree__spinner" />
+                    ) : (
+                      <span className="task-progress-bar__item-dot" />
+                    )}
+                  </span>
+                  <span className="task-progress-bar__item-text">
+                    {task.status === 'in_progress' ? task.activeForm : task.content}
+                  </span>
+                </div>
+              ))
             : taskSections.map((task, i) => (
-              <div key={`${task.title}-${i}`} className="task-progress-bar__item">
-                <span className={`task-progress-bar__item-check${task.done ? ' task-progress-bar__item-check--done' : ''}`}>
-                  {task.done ? (
-                    <Check size={12} strokeWidth={2} />
-                  ) : (
-                    <Loader2 size={12} strokeWidth={1.5} className="tool-tree__spinner" />
-                  )}
-                </span>
-                <span className="task-progress-bar__item-text">{task.title}</span>
-              </div>
-            ))
-          }
+                <div key={`${task.title}-${i}`} className="task-progress-bar__item">
+                  <span
+                    className={`task-progress-bar__item-check${task.done ? ' task-progress-bar__item-check--done' : ''}`}
+                  >
+                    {task.done ? (
+                      <Check size={12} strokeWidth={2} />
+                    ) : (
+                      <Loader2 size={12} strokeWidth={1.5} className="tool-tree__spinner" />
+                    )}
+                  </span>
+                  <span className="task-progress-bar__item-text">{task.title}</span>
+                </div>
+              ))}
         </div>
       )}
 

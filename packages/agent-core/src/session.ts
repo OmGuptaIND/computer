@@ -710,7 +710,12 @@ export class Session {
   /** Re-build the tools list and push it to the running agent — call after adding/removing a connector. */
   refreshConnectorTools(): void {
     if (!this._toolCallbacks) return
-    const newTools = buildTools(this.config, this._toolCallbacks, this._mcpManager, this._connectorManager)
+    const newTools = buildTools(
+      this.config,
+      this._toolCallbacks,
+      this._mcpManager,
+      this._connectorManager,
+    )
     this.piAgent.setTools(newTools)
     console.log(`[session ${this.id}] refreshed tools (${newTools.length} total)`)
   }
@@ -977,7 +982,8 @@ export class Session {
           title: toolInput.title as string,
           filename: toolInput.filename as string | undefined,
           filepath: toolInput.filename as string | undefined,
-          language: artifactType === 'code' ? (toolInput.language as string) || 'text' : artifactType,
+          language:
+            artifactType === 'code' ? (toolInput.language as string) || 'text' : artifactType,
           content: (toolInput.content as string) || '',
           toolCallId: `tc_${call.toolId}`,
         })
@@ -989,12 +995,25 @@ export class Session {
         const filename = filepath?.split('/').pop() || 'untitled'
         const ext = filename.split('.').pop()?.toLowerCase() || ''
         const langMap: Record<string, string> = {
-          html: 'html', css: 'css', js: 'javascript', ts: 'typescript',
-          tsx: 'typescript', jsx: 'javascript', py: 'python', md: 'markdown',
-          json: 'json', svg: 'svg', sh: 'bash', yml: 'yaml', yaml: 'yaml',
+          html: 'html',
+          css: 'css',
+          js: 'javascript',
+          ts: 'typescript',
+          tsx: 'typescript',
+          jsx: 'javascript',
+          py: 'python',
+          md: 'markdown',
+          json: 'json',
+          svg: 'svg',
+          sh: 'bash',
+          yml: 'yaml',
+          yaml: 'yaml',
         }
         const renderMap: Record<string, string> = {
-          html: 'html', svg: 'svg', md: 'markdown', markdown: 'markdown',
+          html: 'html',
+          svg: 'svg',
+          md: 'markdown',
+          markdown: 'markdown',
         }
         const language = langMap[ext] || ext || 'text'
         artifacts.push({

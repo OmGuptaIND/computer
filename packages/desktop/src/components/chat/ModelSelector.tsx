@@ -37,7 +37,11 @@ export function ModelSelector() {
 
   return (
     <>
-      <button type="button" className="model-selector__trigger" onClick={() => setSettingsOpen(true)}>
+      <button
+        type="button"
+        className="model-selector__trigger"
+        onClick={() => setSettingsOpen(true)}
+      >
         {hasAnyKey && <ProviderIcon provider={currentProvider} size={14} />}
         <span className="model-selector__label">{displayModel}</span>
         <ChevronDown size={14} strokeWidth={1.5} className="model-selector__chevron" />

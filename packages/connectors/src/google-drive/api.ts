@@ -40,22 +40,29 @@ export class GoogleDriveAPI {
     return res.json() as Promise<T>
   }
 
-  async listFiles(opts: {
-    q?: string
-    pageSize?: number
-    orderBy?: string
-    fields?: string
-  } = {}): Promise<{ files: DriveFile[]; nextPageToken?: string }> {
+  async listFiles(
+    opts: {
+      q?: string
+      pageSize?: number
+      orderBy?: string
+      fields?: string
+    } = {},
+  ): Promise<{ files: DriveFile[]; nextPageToken?: string }> {
     const params = new URLSearchParams()
     if (opts.q) params.set('q', opts.q)
     params.set('pageSize', String(opts.pageSize ?? 20))
     params.set('orderBy', opts.orderBy ?? 'modifiedTime desc')
-    params.set('fields', opts.fields ?? 'files(id,name,mimeType,size,modifiedTime,webViewLink,parents),nextPageToken')
+    params.set(
+      'fields',
+      opts.fields ?? 'files(id,name,mimeType,size,modifiedTime,webViewLink,parents),nextPageToken',
+    )
     return this.request(`/files?${params}`)
   }
 
   async getFile(fileId: string): Promise<DriveFile> {
-    return this.request(`/files/${fileId}?fields=id,name,mimeType,size,modifiedTime,createdTime,webViewLink,webContentLink,parents,description,starred,owners`)
+    return this.request(
+      `/files/${fileId}?fields=id,name,mimeType,size,modifiedTime,createdTime,webViewLink,webContentLink,parents,description,starred,owners`,
+    )
   }
 
   async readFile(fileId: string): Promise<string> {
@@ -76,7 +83,10 @@ export class GoogleDriveAPI {
   }
 
   async searchFiles(query: string, pageSize = 20): Promise<DriveFile[]> {
-    const result = await this.listFiles({ q: `fullText contains '${query.replace(/'/g, "\\'")}'`, pageSize })
+    const result = await this.listFiles({
+      q: `fullText contains '${query.replace(/'/g, "\\'")}'`,
+      pageSize,
+    })
     return result.files
   }
 
@@ -93,7 +103,12 @@ export class GoogleDriveAPI {
     })
   }
 
-  async uploadFile(name: string, content: string, mimeType: string, parentId?: string): Promise<DriveFile> {
+  async uploadFile(
+    name: string,
+    content: string,
+    mimeType: string,
+    parentId?: string,
+  ): Promise<DriveFile> {
     const metadata: Record<string, unknown> = { name }
     if (parentId) metadata.parents = [parentId]
 
@@ -110,18 +125,25 @@ export class GoogleDriveAPI {
       `--${boundary}--`,
     ].join('\r\n')
 
-    return this.request('/files?uploadType=multipart', {
-      method: 'POST',
-      headers: { 'Content-Type': `multipart/related; boundary="${boundary}"` },
-      body,
-    }, UPLOAD_BASE)
+    return this.request(
+      '/files?uploadType=multipart',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': `multipart/related; boundary="${boundary}"` },
+        body,
+      },
+      UPLOAD_BASE,
+    )
   }
 
   async deleteFile(fileId: string): Promise<void> {
     await this.request(`/files/${fileId}`, { method: 'DELETE' })
   }
 
-  async getAbout(): Promise<{ user: { displayName: string; emailAddress: string }; storageQuota: { limit: string; usage: string } }> {
+  async getAbout(): Promise<{
+    user: { displayName: string; emailAddress: string }
+    storageQuota: { limit: string; usage: string }
+  }> {
     return this.request('/about?fields=user,storageQuota')
   }
 }
@@ -129,7 +151,7 @@ export class GoogleDriveAPI {
 /** Human-readable file size */
 export function formatSize(bytes?: string): string {
   if (!bytes) return 'unknown size'
-  const n = parseInt(bytes)
+  const n = Number.parseInt(bytes)
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`

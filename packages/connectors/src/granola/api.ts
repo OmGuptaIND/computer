@@ -59,13 +59,15 @@ export class GranolaAPI {
     return res.json() as Promise<T>
   }
 
-  async listNotes(opts: {
-    pageSize?: number
-    cursor?: string
-    createdAfter?: string
-    createdBefore?: string
-    updatedAfter?: string
-  } = {}): Promise<GranolaListResponse> {
+  async listNotes(
+    opts: {
+      pageSize?: number
+      cursor?: string
+      createdAfter?: string
+      createdBefore?: string
+      updatedAfter?: string
+    } = {},
+  ): Promise<GranolaListResponse> {
     const params = new URLSearchParams()
     if (opts.pageSize) params.set('page_size', String(Math.min(opts.pageSize, 30)))
     if (opts.cursor) params.set('cursor', opts.cursor)

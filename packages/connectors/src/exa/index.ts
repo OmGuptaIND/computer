@@ -21,7 +21,12 @@ export class ExaConnector implements DirectConnector {
 
   async testConnection(): Promise<{ success: boolean; error?: string; info?: string }> {
     try {
-      const { results } = await this.api.search('test', { numResults: 1, text: false, highlights: false, summary: false })
+      const { results } = await this.api.search('test', {
+        numResults: 1,
+        text: false,
+        highlights: false,
+        summary: false,
+      })
       return { success: true, info: `Connected — returned ${results.length} result` }
     } catch (err) {
       return { success: false, error: (err as Error).message }

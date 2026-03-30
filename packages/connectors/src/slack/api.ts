@@ -42,9 +42,7 @@ export class SlackAPI {
 
   // ── Channels ──
 
-  async listChannels(
-    opts: { types?: string; limit?: number; cursor?: string } = {},
-  ): Promise<{
+  async listChannels(opts: { types?: string; limit?: number; cursor?: string } = {}): Promise<{
     channels: Array<{
       id: string
       name: string
@@ -66,7 +64,11 @@ export class SlackAPI {
 
   // ── Messages ──
 
-  async postMessage(channel: string, text: string, opts?: { thread_ts?: string }): Promise<{
+  async postMessage(
+    channel: string,
+    text: string,
+    opts?: { thread_ts?: string },
+  ): Promise<{
     ts: string
     channel: string
   }> {

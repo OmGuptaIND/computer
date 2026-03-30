@@ -1,18 +1,9 @@
+import { Channel } from '@anton/protocol'
 import { AnimatePresence, motion } from 'framer-motion'
-import {
-  ArrowLeft,
-  Check,
-  Code2,
-  Copy,
-  Download,
-  Eye,
-  Globe,
-  Link,
-} from 'lucide-react'
+import { ArrowLeft, Check, Code2, Copy, Download, Eye, Globe, Link } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import type { Artifact } from '../../lib/artifacts.js'
 import { getArtifactFileExtension, getArtifactTypeLabel } from '../../lib/artifacts.js'
-import { Channel } from '@anton/protocol'
 import { connection } from '../../lib/connection.js'
 import { useStore } from '../../lib/store.js'
 import { HighlightedBlock, MarkdownRenderer } from '../chat/MarkdownRenderer.js'
@@ -171,11 +162,7 @@ export function ArtifactDetailView() {
     <div className="artifact-detail">
       {/* Header */}
       <div className="artifact-detail__header">
-        <button
-          type="button"
-          className="artifact-detail__back"
-          onClick={() => setViewMode('list')}
-        >
+        <button type="button" className="artifact-detail__back" onClick={() => setViewMode('list')}>
           <ArrowLeft size={16} strokeWidth={1.5} />
         </button>
         <div className="artifact-detail__title-group">
@@ -200,11 +187,7 @@ export function ArtifactDetailView() {
           >
             {artifact.publishedUrl}
           </a>
-          <button
-            type="button"
-            className="artifact-detail__copy-url"
-            onClick={handleCopyUrl}
-          >
+          <button type="button" className="artifact-detail__copy-url" onClick={handleCopyUrl}>
             {copiedUrl ? <Check size={12} /> : <Link size={12} />}
           </button>
         </div>

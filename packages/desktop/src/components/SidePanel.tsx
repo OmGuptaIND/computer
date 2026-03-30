@@ -22,7 +22,7 @@ const DEFAULT_WIDTH = 440
 
 export function SidePanel() {
   const artifacts = useStore((s) => s.artifacts)
-  const pendingPlan = useStore((s) => s.pendingPlan)
+  const _pendingPlan = useStore((s) => s.pendingPlan)
   const browserState = useStore((s) => s.browserState)
   const sidePanelView = useStore((s) => s.sidePanelView)
   const setSidePanelView = useStore((s) => s.setSidePanelView)

@@ -1,8 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import {
-  ChevronDown,
-  ChevronRight,
-} from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useStore } from '../../lib/store.js'
 import { ToolTreeItem } from './ActionsGroup.js'
@@ -34,11 +31,7 @@ export function TaskSection({ title, actions, defaultExpanded = false }: Props) 
       className="tool-tree"
     >
       {/* Section header */}
-      <button
-        type="button"
-        className="tool-tree__header"
-        onClick={() => setExpanded(!expanded)}
-      >
+      <button type="button" className="tool-tree__header" onClick={() => setExpanded(!expanded)}>
         {expanded ? (
           <ChevronDown size={14} strokeWidth={1.5} className="tool-tree__chevron" />
         ) : (

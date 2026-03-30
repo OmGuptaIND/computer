@@ -25,7 +25,9 @@ export function MessageBubble({ message }: Props) {
       className={getContainerClass(message)}
     >
       {message.role === 'user' && (
-        <div className={`message__surface message__surface--user${message.isSteering ? ' message__surface--steering' : ''}`}>
+        <div
+          className={`message__surface message__surface--user${message.isSteering ? ' message__surface--steering' : ''}`}
+        >
           {message.attachments && message.attachments.length > 0 && (
             <div className="message__attachments">
               {message.attachments.map((attachment, index) => {
@@ -46,9 +48,7 @@ export function MessageBubble({ message }: Props) {
             </div>
           )}
           <div className="message__text">{message.content}</div>
-          {message.isSteering && (
-            <div className="message__steering-label">sent while working</div>
-          )}
+          {message.isSteering && <div className="message__steering-label">sent while working</div>}
         </div>
       )}
 
@@ -65,7 +65,9 @@ export function MessageBubble({ message }: Props) {
         <div
           className={message.isError ? 'system-message system-message--error' : 'system-message'}
         >
-          {message.isError && <AlertTriangle size={14} strokeWidth={1.5} className="system-message__icon" />}
+          {message.isError && (
+            <AlertTriangle size={14} strokeWidth={1.5} className="system-message__icon" />
+          )}
           <span className="system-message__text">{message.content}</span>
         </div>
       )}

@@ -41,7 +41,9 @@ export function ArtifactListItem({
         {artifact.title || artifact.filename || 'Untitled'}
       </span>
       <span className="artifact-list__item-badge">{getArtifactTypeLabel(artifact.renderType)}</span>
-      {artifact.publishedUrl && <span className="artifact-list__item-published" title="Published" />}
+      {artifact.publishedUrl && (
+        <span className="artifact-list__item-published" title="Published" />
+      )}
       <span className="artifact-list__item-time">{formatTimestamp(artifact.timestamp)}</span>
     </button>
   )

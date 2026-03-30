@@ -10,8 +10,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { AgentConfig } from '@anton/agent-config'
 import type { McpManager, Session } from '@anton/agent-core'
-import type { ConnectorManager } from '@anton/connectors'
 import { createSession, resumeSession } from '@anton/agent-core'
+import type { ConnectorManager } from '@anton/connectors'
 
 const TELEGRAM_API = 'https://api.telegram.org'
 const MAX_MESSAGE_LENGTH = 4096
@@ -44,7 +44,7 @@ export class TelegramBotHandler {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: webhookUrl, allowed_updates: ['message'] }),
     })
-    const data = await res.json() as { ok: boolean; description?: string }
+    const data = (await res.json()) as { ok: boolean; description?: string }
     if (data.ok) {
       console.log(`  Telegram webhook registered: ${webhookUrl}`)
     } else {
@@ -55,7 +55,9 @@ export class TelegramBotHandler {
   /** Express-style HTTP handler for POST /_anton/telegram/webhook */
   handle(req: IncomingMessage, res: ServerResponse): void {
     let body = ''
-    req.on('data', (chunk: Buffer) => { body += chunk.toString() })
+    req.on('data', (chunk: Buffer) => {
+      body += chunk.toString()
+    })
     req.on('end', () => {
       // Acknowledge immediately — Telegram requires < 5s response
       res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -104,10 +106,11 @@ export class TelegramBotHandler {
     if (session) return session
 
     // Try to resume from disk first
-    session = resumeSession(sessionId, this.config, {
-      mcpManager: this.mcpManager,
-      connectorManager: this.connectorManager,
-    }) ?? undefined
+    session =
+      resumeSession(sessionId, this.config, {
+        mcpManager: this.mcpManager,
+        connectorManager: this.connectorManager,
+      }) ?? undefined
 
     if (!session) {
       session = createSession(sessionId, this.config, {

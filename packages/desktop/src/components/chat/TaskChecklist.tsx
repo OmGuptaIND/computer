@@ -1,7 +1,7 @@
+import type { TaskItem } from '@anton/protocol'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, ChevronDown, ChevronRight, Circle, Loader2 } from 'lucide-react'
 import { useState } from 'react'
-import type { TaskItem } from '@anton/protocol'
 
 interface Props {
   tasks: TaskItem[]
@@ -33,9 +33,7 @@ export function TaskChecklist({ tasks }: Props) {
         ) : (
           <ChevronRight size={14} strokeWidth={1.5} className="task-checklist__chevron" />
         )}
-        <span className="task-checklist__title">
-          {allDone ? 'Completed' : 'Working'}
-        </span>
+        <span className="task-checklist__title">{allDone ? 'Completed' : 'Working'}</span>
         <span className="task-checklist__count">
           {completed}/{total}
         </span>
@@ -62,10 +60,16 @@ export function TaskChecklist({ tasks }: Props) {
                     ) : task.status === 'in_progress' ? (
                       <Loader2 size={14} strokeWidth={1.5} className="tool-tree__spinner" />
                     ) : (
-                      <Circle size={10} strokeWidth={1.5} className="task-checklist__icon--pending" />
+                      <Circle
+                        size={10}
+                        strokeWidth={1.5}
+                        className="task-checklist__icon--pending"
+                      />
                     )}
                   </span>
-                  <span className={`task-checklist__item-text task-checklist__item-text--${task.status}`}>
+                  <span
+                    className={`task-checklist__item-text task-checklist__item-text--${task.status}`}
+                  >
                     {task.status === 'in_progress' ? task.activeForm : task.content}
                   </span>
                 </div>

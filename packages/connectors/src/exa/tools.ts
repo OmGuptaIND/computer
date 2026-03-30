@@ -1,5 +1,5 @@
-import { Type, type TSchema, type Static } from '@sinclair/typebox'
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core'
+import { type Static, type TSchema, Type } from '@sinclair/typebox'
 import type { ExaAPI, ExaResult } from './api.js'
 
 function toolResult(output: string, isError = false) {
@@ -8,7 +8,11 @@ function toolResult(output: string, isError = false) {
 
 function defineTool<T extends TSchema>(
   def: Omit<AgentTool<T>, 'execute'> & {
-    execute: (id: string, params: Static<T>, signal?: AbortSignal) => Promise<AgentToolResult<unknown>>
+    execute: (
+      id: string,
+      params: Static<T>,
+      signal?: AbortSignal,
+    ) => Promise<AgentToolResult<unknown>>
   },
 ): AgentTool {
   return def as AgentTool
@@ -18,7 +22,8 @@ function formatResult(r: ExaResult): string {
   const parts: string[] = [`**${r.title}**`, `URL: ${r.url}`]
   if (r.publishedDate) parts.push(`Published: ${r.publishedDate}`)
   if (r.summary) parts.push(`Summary: ${r.summary}`)
-  if (r.highlights?.length) parts.push(`Highlights:\n${r.highlights.map((h) => `- ${h}`).join('\n')}`)
+  if (r.highlights?.length)
+    parts.push(`Highlights:\n${r.highlights.map((h) => `- ${h}`).join('\n')}`)
   if (r.text) parts.push(`Content:\n${r.text}`)
   return parts.join('\n')
 }
@@ -32,7 +37,9 @@ export function createExaTools(api: ExaAPI): AgentTool[] {
         '[Exa] Semantic web search. Returns full page summaries, highlights, and content. Use for research, fact-checking, and finding up-to-date information.',
       parameters: Type.Object({
         query: Type.String({ description: 'Search query' }),
-        num_results: Type.Optional(Type.Number({ description: 'Number of results (default: 5, max: 10)' })),
+        num_results: Type.Optional(
+          Type.Number({ description: 'Number of results (default: 5, max: 10)' }),
+        ),
         type: Type.Optional(
           Type.Union([Type.Literal('auto'), Type.Literal('neural'), Type.Literal('keyword')], {
             description: 'Search type: auto (default), neural (semantic), or keyword',
@@ -42,7 +49,10 @@ export function createExaTools(api: ExaAPI): AgentTool[] {
           Type.Array(Type.String(), { description: 'Only return results from these domains' }),
         ),
         start_published_date: Type.Optional(
-          Type.String({ description: 'Only return results published after this date (ISO format, e.g. 2024-01-01)' }),
+          Type.String({
+            description:
+              'Only return results published after this date (ISO format, e.g. 2024-01-01)',
+          }),
         ),
       }),
       async execute(_id, params) {
@@ -54,7 +64,9 @@ export function createExaTools(api: ExaAPI): AgentTool[] {
             startPublishedDate: params.start_published_date,
           })
           if (!results.length) return toolResult('No results found.')
-          const formatted = results.map((r, i) => `### Result ${i + 1}\n${formatResult(r)}`).join('\n\n---\n\n')
+          const formatted = results
+            .map((r, i) => `### Result ${i + 1}\n${formatResult(r)}`)
+            .join('\n\n---\n\n')
           return toolResult(`Found ${results.length} results:\n\n${formatted}`)
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
@@ -76,7 +88,9 @@ export function createExaTools(api: ExaAPI): AgentTool[] {
             numResults: Math.min(params.num_results ?? 5, 10),
           })
           if (!results.length) return toolResult('No similar pages found.')
-          const formatted = results.map((r, i) => `### Result ${i + 1}\n${formatResult(r)}`).join('\n\n---\n\n')
+          const formatted = results
+            .map((r, i) => `### Result ${i + 1}\n${formatResult(r)}`)
+            .join('\n\n---\n\n')
           return toolResult(`Found ${results.length} similar pages:\n\n${formatted}`)
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)

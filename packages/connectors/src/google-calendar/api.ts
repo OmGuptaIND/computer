@@ -51,15 +51,17 @@ export class GoogleCalendarAPI {
     return this.request('/users/me/calendarList')
   }
 
-  async listEvents(opts: {
-    calendarId?: string
-    timeMin?: string
-    timeMax?: string
-    maxResults?: number
-    q?: string
-    singleEvents?: boolean
-    orderBy?: string
-  } = {}): Promise<{ items: CalendarEvent[] }> {
+  async listEvents(
+    opts: {
+      calendarId?: string
+      timeMin?: string
+      timeMax?: string
+      maxResults?: number
+      q?: string
+      singleEvents?: boolean
+      orderBy?: string
+    } = {},
+  ): Promise<{ items: CalendarEvent[] }> {
     const calendarId = encodeURIComponent(opts.calendarId ?? 'primary')
     const params = new URLSearchParams()
     if (opts.timeMin) params.set('timeMin', opts.timeMin)
@@ -82,7 +84,11 @@ export class GoogleCalendarAPI {
     })
   }
 
-  async updateEvent(calendarId: string, eventId: string, event: Partial<CalendarEvent>): Promise<CalendarEvent> {
+  async updateEvent(
+    calendarId: string,
+    eventId: string,
+    event: Partial<CalendarEvent>,
+  ): Promise<CalendarEvent> {
     return this.request(`/calendars/${encodeURIComponent(calendarId)}/events/${eventId}`, {
       method: 'PATCH',
       body: JSON.stringify(event),
@@ -105,7 +111,12 @@ export function formatEvent(e: CalendarEvent) {
     end: e.end.dateTime ?? e.end.date,
     location: e.location ?? null,
     description: e.description ?? null,
-    attendees: e.attendees?.map((a) => ({ email: a.email, name: a.displayName, status: a.responseStatus })) ?? [],
+    attendees:
+      e.attendees?.map((a) => ({
+        email: a.email,
+        name: a.displayName,
+        status: a.responseStatus,
+      })) ?? [],
     organizer: e.organizer?.email ?? null,
     status: e.status ?? null,
     link: e.htmlLink ?? null,

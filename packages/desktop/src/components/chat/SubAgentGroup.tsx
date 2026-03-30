@@ -25,7 +25,7 @@ export function SubAgentGroup({ task, actions, result, defaultExpanded = false }
   )
 
   const isPending = !result
-  const isError = result?.isError
+  const _isError = result?.isError
   const errorCount = actions.filter((a) => a.result?.isError).length
 
   useEffect(() => {

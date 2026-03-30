@@ -3,7 +3,13 @@ import { ArrowRight, Monitor, Trash2, User, Wifi } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type ConnectionConfig, connection } from '../lib/connection.js'
 import { saveConversations } from '../lib/conversations.js'
-import { type SavedMachine, loadMachines, saveMachines, useConnectionStatus, useStore } from '../lib/store.js'
+import {
+  type SavedMachine,
+  loadMachines,
+  saveMachines,
+  useConnectionStatus,
+  useStore,
+} from '../lib/store.js'
 import { AntonLogo } from './AntonLogo.js'
 
 const PORT_PLAIN = 9876
@@ -27,44 +33,47 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
 
   const isConnecting = status === 'connecting' || status === 'authenticating'
 
-  const handleConnect = useCallback((config: ConnectionConfig, machineName?: string) => {
-    setError('')
+  const handleConnect = useCallback(
+    (config: ConnectionConfig, machineName?: string) => {
+      setError('')
 
-    // Clear stale session data if connecting to a different machine
-    const machineId = `${config.host}:${config.port}`
-    const lastMachineId = localStorage.getItem(LAST_MACHINE_KEY)
-    if (lastMachineId && lastMachineId !== machineId) {
-      saveConversations([])
-      localStorage.removeItem('anton.activeConversationId')
-      useStore.getState().resetForDisconnect()
-    }
-    localStorage.setItem(LAST_MACHINE_KEY, machineId)
-
-    const unsub = connection.onStatusChange((s, detail) => {
-      if (s === 'connected') {
-        if (remember || machineName) {
-          const existing = loadMachines()
-          const updated = existing.filter((m) => m.id !== machineId)
-          updated.push({
-            id: machineId,
-            name: machineName || config.host,
-            host: config.host,
-            port: config.port,
-            token: config.token,
-            useTLS: config.useTLS,
-          })
-          saveMachines(updated)
-        }
-        unsub()
-        onConnected()
-      } else if (s === 'error') {
-        setError(detail || 'Connection failed')
-        unsub()
+      // Clear stale session data if connecting to a different machine
+      const machineId = `${config.host}:${config.port}`
+      const lastMachineId = localStorage.getItem(LAST_MACHINE_KEY)
+      if (lastMachineId && lastMachineId !== machineId) {
+        saveConversations([])
+        localStorage.removeItem('anton.activeConversationId')
+        useStore.getState().resetForDisconnect()
       }
-    })
+      localStorage.setItem(LAST_MACHINE_KEY, machineId)
 
-    connection.connect(config)
-  }, [remember, onConnected])
+      const unsub = connection.onStatusChange((s, detail) => {
+        if (s === 'connected') {
+          if (remember || machineName) {
+            const existing = loadMachines()
+            const updated = existing.filter((m) => m.id !== machineId)
+            updated.push({
+              id: machineId,
+              name: machineName || config.host,
+              host: config.host,
+              port: config.port,
+              token: config.token,
+              useTLS: config.useTLS,
+            })
+            saveMachines(updated)
+          }
+          unsub()
+          onConnected()
+        } else if (s === 'error') {
+          setError(detail || 'Connection failed')
+          unsub()
+        }
+      })
+
+      connection.connect(config)
+    },
+    [remember, onConnected],
+  )
 
   const connectFromForm = () => {
     if (mode === 'username') {

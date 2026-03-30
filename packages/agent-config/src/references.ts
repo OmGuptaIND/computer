@@ -9,14 +9,11 @@
  * Pack definitions: ~/.anton/references/_packs.yaml → embedded defaults
  */
 
-import { existsSync, mkdirSync, readFileSync, } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { getAntonDir } from './config.js'
-import {
-  EMBEDDED_REFERENCE_PACKS,
-  EMBEDDED_REFERENCES,
-} from './embedded-prompts.js'
+import { EMBEDDED_REFERENCES, EMBEDDED_REFERENCE_PACKS } from './embedded-prompts.js'
 
 // ── Types ────────────────────────────────────────────────────────────
 

@@ -1,12 +1,12 @@
+import { Plug } from 'lucide-react'
 import type { JSX } from 'react'
-import { Plug, } from 'lucide-react'
 
 // Brand SVG icons for each built-in connector
 // Each renders at the given size prop (default 24)
 
 function BraveIcon({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M20.3 7.2l.7-1.6-1.6-1.7a3.1 3.1 0 00.1-2.1L18.2.5h-3L12 2.8 8.8.5h-3L4.5 1.8a3.1 3.1 0 00.1 2.1L3 5.6l.7 1.6-.4 2.7c0 .2 0 .4.1.6l2.3 7.4a9.3 9.3 0 004.1 5l1.6 1 .6.1.6-.1 1.6-1a9.3 9.3 0 004.1-5l2.3-7.4.1-.6-.4-2.7z"
         fill="#FB542B"
@@ -21,7 +21,7 @@ function BraveIcon({ size = 24 }: { size?: number }) {
 
 function TelegramIcon({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="12" cy="12" r="11" fill="#2AABEE" />
       <path
         d="M6.5 11.7l8.6-3.8c.4-.2.8 0 .7.4l-1.5 7.2c-.1.5-.4.6-.8.4l-2.3-1.7-1.1 1.1c-.1.1-.2.2-.4.2l.2-2.4 4.6-4.1c.2-.2 0-.3-.3-.1L8.8 13l-2.2-.7c-.5-.2-.5-.5.1-.7z"
@@ -33,7 +33,7 @@ function TelegramIcon({ size = 24 }: { size?: number }) {
 
 function GmailIcon({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <rect x="2" y="4" width="20" height="16" rx="2" fill="white" />
       {/* Left red flap */}
       <path d="M2 6.5V18a2 2 0 002 2h1.5V9.5L2 6.5z" fill="#EA4335" />
@@ -42,7 +42,7 @@ function GmailIcon({ size = 24 }: { size?: number }) {
       {/* Blue top-left diagonal */}
       <path d="M2 6a2 2 0 012-2h.5L12 11 19.5 4H20a2 2 0 012 2l-9.5 7L2 6z" fill="#4285F4" />
       {/* Green bottom fold */}
-      <path d="M5.5 9.5V20h13V9.5L12 15.5 5.5 9.5z" fill="#34A853" opacity="0.15"/>
+      <path d="M5.5 9.5V20h13V9.5L12 15.5 5.5 9.5z" fill="#34A853" opacity="0.15" />
       {/* The M center white cover */}
       <path d="M5.5 9.5L12 15.5l6.5-6V20H5.5V9.5z" fill="white" />
       {/* Yellow bottom-left triangle */}
@@ -53,10 +53,29 @@ function GmailIcon({ size = 24 }: { size?: number }) {
 
 function GoogleCalendarIcon({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="white" stroke="#4285F4" strokeWidth="1.2" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect
+        x="3"
+        y="3"
+        width="18"
+        height="18"
+        rx="2"
+        fill="white"
+        stroke="#4285F4"
+        strokeWidth="1.2"
+      />
       <rect x="3" y="3" width="18" height="5" rx="2" fill="#4285F4" />
-      <text x="12" y="17" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#4285F4" fontFamily="system-ui">17</text>
+      <text
+        x="12"
+        y="17"
+        textAnchor="middle"
+        fontSize="8"
+        fontWeight="bold"
+        fill="#4285F4"
+        fontFamily="system-ui"
+      >
+        17
+      </text>
       <rect x="7" y="3" width="2" height="3" rx="1" fill="#1A73E8" y1="1" />
       <rect x="15" y="3" width="2" height="3" rx="1" fill="#1A73E8" y1="1" />
     </svg>
@@ -65,7 +84,7 @@ function GoogleCalendarIcon({ size = 24 }: { size?: number }) {
 
 function NotionIcon({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <rect x="2" y="2" width="20" height="20" rx="4" fill="white" />
       {/* Notion's iconic skewed N */}
       <path
@@ -74,25 +93,16 @@ function NotionIcon({ size = 24 }: { size?: number }) {
         stroke="#37352F"
         strokeWidth="1.2"
       />
-      <path
-        d="M8.5 7.2l1.2.2v8.2l-1.2-.2V7.2z"
-        fill="#37352F"
-      />
-      <path
-        d="M9.7 7.4l5.6 7.2V8.4l-5.6-1V7.4z"
-        fill="#37352F"
-      />
-      <path
-        d="M15.3 14.6l1.2.2V8.6l-1.2-.2v6z"
-        fill="#37352F"
-      />
+      <path d="M8.5 7.2l1.2.2v8.2l-1.2-.2V7.2z" fill="#37352F" />
+      <path d="M9.7 7.4l5.6 7.2V8.4l-5.6-1V7.4z" fill="#37352F" />
+      <path d="M15.3 14.6l1.2.2V8.6l-1.2-.2v6z" fill="#37352F" />
     </svg>
   )
 }
 
 function GitHubIcon({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         fillRule="evenodd"
         clipRule="evenodd"
@@ -106,18 +116,30 @@ function GitHubIcon({ size = 24 }: { size?: number }) {
 
 function SlackIcon({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <path d="M6.5 14.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm1 0a1.5 1.5 0 013 0v4a1.5 1.5 0 01-3 0v-4z" fill="#E01E5A" />
-      <path d="M9.5 6.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 1a1.5 1.5 0 010 3h-4a1.5 1.5 0 110-3h4z" fill="#36C5F0" />
-      <path d="M17.5 9.5a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zm-1 0a1.5 1.5 0 01-3 0v-4a1.5 1.5 0 113 0v4z" fill="#2EB67D" />
-      <path d="M14.5 17.5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zm0-1a1.5 1.5 0 010-3h4a1.5 1.5 0 110 3h-4z" fill="#ECB22E" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M6.5 14.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm1 0a1.5 1.5 0 013 0v4a1.5 1.5 0 01-3 0v-4z"
+        fill="#E01E5A"
+      />
+      <path
+        d="M9.5 6.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 1a1.5 1.5 0 010 3h-4a1.5 1.5 0 110-3h4z"
+        fill="#36C5F0"
+      />
+      <path
+        d="M17.5 9.5a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zm-1 0a1.5 1.5 0 01-3 0v-4a1.5 1.5 0 113 0v4z"
+        fill="#2EB67D"
+      />
+      <path
+        d="M14.5 17.5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zm0-1a1.5 1.5 0 010-3h4a1.5 1.5 0 110 3h-4z"
+        fill="#ECB22E"
+      />
     </svg>
   )
 }
 
 function LinearIcon({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M3.52 12.84l7.64 7.64a9.03 9.03 0 01-7.64-7.64zm-.4-2.4a9.03 9.03 0 011.57-3.58l10.45 10.45a9.03 9.03 0 01-3.58 1.57L3.12 10.44zm3.2-4.88a9 9 0 0114.12 14.12L6.72 5.56z"
         fill="#5E6AD2"
@@ -128,7 +150,7 @@ function LinearIcon({ size = 24 }: { size?: number }) {
 
 function GoogleDriveIcon({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M8.6 3.5h6.8L22 14.8h-6.8L8.6 3.5z" fill="#0F9D58" opacity="0.9" />
       <path d="M2 14.8l3.4 5.7h13.2l3.4-5.7H2z" fill="#4285F4" opacity="0.9" />
       <path d="M8.6 3.5L2 14.8l3.4 5.7L12 9.2 8.6 3.5z" fill="#F4B400" opacity="0.9" />
@@ -138,7 +160,7 @@ function GoogleDriveIcon({ size = 24 }: { size?: number }) {
 
 function GranolaIcon({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <rect x="2" y="2" width="20" height="20" rx="6" fill="#FF5C35" />
       <rect x="6" y="11" width="2" height="6" rx="1" fill="white" />
       <rect x="10" y="7" width="2" height="10" rx="1" fill="white" />
@@ -148,9 +170,31 @@ function GranolaIcon({ size = 24 }: { size?: number }) {
   )
 }
 
+function GoogleSearchConsoleIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      {/* Rising bar chart */}
+      <rect x="2" y="14" width="3.5" height="7" rx="1" fill="#4285F4" />
+      <rect x="7" y="10" width="3.5" height="11" rx="1" fill="#34A853" />
+      <rect x="12" y="6" width="3.5" height="15" rx="1" fill="#FBBC04" />
+      {/* Magnifying glass */}
+      <circle cx="19" cy="6" r="3.2" stroke="#EA4335" strokeWidth="1.5" fill="none" />
+      <line
+        x1="21.2"
+        y1="8.2"
+        x2="23"
+        y2="10"
+        stroke="#EA4335"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 function GoogleDocsIcon({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       {/* Page background */}
       <rect x="4" y="2" width="16" height="20" rx="1.5" fill="#4285F4" />
       {/* Folded corner */}
@@ -165,7 +209,7 @@ function GoogleDocsIcon({ size = 24 }: { size?: number }) {
 
 function GoogleSheetsIcon({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       {/* Page background */}
       <rect x="4" y="2" width="16" height="20" rx="1.5" fill="#0F9D58" />
       {/* Folded corner */}
@@ -186,9 +230,17 @@ function GoogleSheetsIcon({ size = 24 }: { size?: number }) {
 
 function ExaSearchIcon({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="11" cy="11" r="6" stroke="#6366F1" strokeWidth="1.5" fill="none" />
-      <line x1="15.5" y1="15.5" x2="20" y2="20" stroke="#6366F1" strokeWidth="1.5" strokeLinecap="round" />
+      <line
+        x1="15.5"
+        y1="15.5"
+        x2="20"
+        y2="20"
+        stroke="#6366F1"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
       <path d="M9 11h4M11 9v4" stroke="#6366F1" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   )
@@ -196,6 +248,7 @@ function ExaSearchIcon({ size = 24 }: { size?: number }) {
 
 // Map connector IDs to their brand icon components
 const ICON_MAP: Record<string, (props: { size?: number }) => JSX.Element> = {
+  brave: BraveIcon,
   'exa-search': ExaSearchIcon,
   telegram: TelegramIcon,
   gmail: GmailIcon,
@@ -208,6 +261,7 @@ const ICON_MAP: Record<string, (props: { size?: number }) => JSX.Element> = {
   granola: GranolaIcon,
   'google-docs': GoogleDocsIcon,
   'google-sheets': GoogleSheetsIcon,
+  'google-search-console': GoogleSearchConsoleIcon,
 }
 
 /**

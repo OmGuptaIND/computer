@@ -1,9 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import {
-  ChevronDown,
-  ChevronRight,
-  PanelRight,
-} from 'lucide-react'
+import { ChevronDown, ChevronRight, PanelRight } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../../lib/store.js'
 import { ArtifactCard } from './ArtifactCard.js'
@@ -182,7 +178,12 @@ function getToolTarget(toolName: string, toolInput?: Record<string, unknown>): s
 }
 
 /** Get brief metadata from tool result (like "Read 261 lines", "exit 0") */
-function getToolMeta(toolName: string, toolInput?: Record<string, unknown>, resultContent?: string, isError?: boolean): string | null {
+function getToolMeta(
+  toolName: string,
+  toolInput?: Record<string, unknown>,
+  resultContent?: string,
+  isError?: boolean,
+): string | null {
   if (isError && resultContent) {
     const firstLine = resultContent.split('\n')[0]
     return firstLine.length > 80 ? `${firstLine.slice(0, 77)}...` : firstLine
@@ -253,7 +254,10 @@ function getGroupHeader(actions: ToolAction[]): string {
   // Multiple actions — group by type and summarize
   const types = new Map<string, number>()
   for (const a of actions) {
-    const label = getToolTypeLabel(a.call.toolName || 'unknown', a.call.toolInput as Record<string, unknown>)
+    const label = getToolTypeLabel(
+      a.call.toolName || 'unknown',
+      a.call.toolInput as Record<string, unknown>,
+    )
     types.set(label, (types.get(label) || 0) + 1)
   }
 
@@ -315,7 +319,9 @@ function ToolTreeItem({ action, isLast }: ToolTreeItemProps) {
             width={14}
             height={14}
             loading="lazy"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+            onError={(e) => {
+              ;(e.target as HTMLImageElement).style.display = 'none'
+            }}
           />
         )}
         <span className="tool-tree__type">{typeLabel}</span>
@@ -336,9 +342,7 @@ function ToolTreeItem({ action, isLast }: ToolTreeItemProps) {
         )}
       </div>
       {meta && (
-        <div className={`tool-tree__meta${isError ? ' tool-tree__meta--error' : ''}`}>
-          {meta}
-        </div>
+        <div className={`tool-tree__meta${isError ? ' tool-tree__meta--error' : ''}`}>{meta}</div>
       )}
 
       {/* Expanded result */}
@@ -412,11 +416,7 @@ export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
       className="tool-tree"
     >
       {/* Header */}
-      <button
-        type="button"
-        className="tool-tree__header"
-        onClick={() => setExpanded(!expanded)}
-      >
+      <button type="button" className="tool-tree__header" onClick={() => setExpanded(!expanded)}>
         {expanded ? (
           <ChevronDown size={14} strokeWidth={1.5} className="tool-tree__chevron" />
         ) : (
@@ -430,7 +430,9 @@ export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
             width={14}
             height={14}
             loading="lazy"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+            onError={(e) => {
+              ;(e.target as HTMLImageElement).style.display = 'none'
+            }}
           />
         )}
         <span className="tool-tree__header-text">{headerText}</span>
@@ -456,7 +458,10 @@ export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
                   <button
                     type="button"
                     className="tool-tree__show-more-items"
-                    onClick={(e) => { e.stopPropagation(); setShowAllItems(true) }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowAllItems(true)
+                    }}
                   >
                     Show {actions.length - 3} more
                   </button>

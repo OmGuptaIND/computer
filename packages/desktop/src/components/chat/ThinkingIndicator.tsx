@@ -36,6 +36,7 @@ function SparkStar({ size = 14 }: { size?: number }) {
       viewBox="0 0 16 16"
       fill="currentColor"
       className="thinking-indicator__star"
+      aria-hidden="true"
     >
       <path d="M8 0l1.8 5.2L16 8l-6.2 2.8L8 16l-1.8-5.2L0 8l6.2-2.8z" />
     </svg>

@@ -46,12 +46,18 @@ export class GmailAPI {
     return this.request('/users/me/profile')
   }
 
-  async listMessages(opts: {
-    q?: string
-    maxResults?: number
-    labelIds?: string[]
-    pageToken?: string
-  } = {}): Promise<{ messages?: Array<{ id: string; threadId: string }>; nextPageToken?: string; resultSizeEstimate?: number }> {
+  async listMessages(
+    opts: {
+      q?: string
+      maxResults?: number
+      labelIds?: string[]
+      pageToken?: string
+    } = {},
+  ): Promise<{
+    messages?: Array<{ id: string; threadId: string }>
+    nextPageToken?: string
+    resultSizeEstimate?: number
+  }> {
     const params = new URLSearchParams()
     if (opts.q) params.set('q', opts.q)
     if (opts.maxResults) params.set('maxResults', String(opts.maxResults))
@@ -60,7 +66,10 @@ export class GmailAPI {
     return this.request(`/users/me/messages?${params}`)
   }
 
-  async getMessage(id: string, format: 'full' | 'metadata' | 'minimal' = 'full'): Promise<GmailMessage> {
+  async getMessage(
+    id: string,
+    format: 'full' | 'metadata' | 'minimal' = 'full',
+  ): Promise<GmailMessage> {
     return this.request(`/users/me/messages/${id}?format=${format}`)
   }
 
@@ -118,7 +127,11 @@ export function buildRawEmail(opts: {
   lines.push(opts.body)
 
   const raw = lines.join('\r\n')
-  return Buffer.from(raw).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+  return Buffer.from(raw)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '')
 }
 
 /** Extract plain text body from a message */
@@ -128,14 +141,18 @@ export function extractBody(msg: GmailMessage): string {
 
   // Try top-level body
   if (payload.body?.data) {
-    return Buffer.from(payload.body.data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8')
+    return Buffer.from(payload.body.data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString(
+      'utf-8',
+    )
   }
 
   // Try parts
   if (payload.parts) {
     for (const part of payload.parts) {
       if (part.mimeType === 'text/plain' && part.body?.data) {
-        return Buffer.from(part.body.data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8')
+        return Buffer.from(part.body.data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString(
+          'utf-8',
+        )
       }
     }
   }

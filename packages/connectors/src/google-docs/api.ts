@@ -90,21 +90,25 @@ export class GoogleDocsAPI {
     await this.request(`${DOCS_BASE}/documents/${documentId}:batchUpdate`, {
       method: 'POST',
       body: JSON.stringify({
-        requests: [{ insertText: { location: { index: Math.max(1, endIndex - 1) }, text: '\n' + text } }],
+        requests: [
+          { insertText: { location: { index: Math.max(1, endIndex - 1) }, text: `\n${text}` } },
+        ],
       }),
     })
   }
 
-  async listDocuments(pageSize = 20): Promise<Array<{ id: string; name: string; modifiedTime: string; webViewLink: string }>> {
+  async listDocuments(
+    pageSize = 20,
+  ): Promise<Array<{ id: string; name: string; modifiedTime: string; webViewLink: string }>> {
     const params = new URLSearchParams({
       q: "mimeType='application/vnd.google-apps.document' and trashed=false",
       pageSize: String(pageSize),
       orderBy: 'modifiedTime desc',
       fields: 'files(id,name,modifiedTime,webViewLink)',
     })
-    const data = await this.request<{ files: Array<{ id: string; name: string; modifiedTime: string; webViewLink: string }> }>(
-      `${DRIVE_BASE}/files?${params}`,
-    )
+    const data = await this.request<{
+      files: Array<{ id: string; name: string; modifiedTime: string; webViewLink: string }>
+    }>(`${DRIVE_BASE}/files?${params}`)
     return data.files ?? []
   }
 }
@@ -128,8 +132,8 @@ export function extractDocText(doc: DocsDocument): string {
         }
 
         if (style.startsWith('HEADING_')) {
-          const level = parseInt(style.replace('HEADING_', ''))
-          lines.push('#'.repeat(level) + ' ' + text)
+          const level = Number.parseInt(style.replace('HEADING_', ''))
+          lines.push(`${'#'.repeat(level)} ${text}`)
         } else {
           lines.push(text)
         }
@@ -140,13 +144,16 @@ export function extractDocText(doc: DocsDocument): string {
             for (const cellEl of cell.content ?? []) {
               if (cellEl.paragraph) {
                 cellText.push(
-                  (cellEl.paragraph.elements ?? []).map((e) => e.textRun?.content ?? '').join('').trim(),
+                  (cellEl.paragraph.elements ?? [])
+                    .map((e) => e.textRun?.content ?? '')
+                    .join('')
+                    .trim(),
                 )
               }
             }
             return cellText.join(' ')
           })
-          lines.push('| ' + cells.join(' | ') + ' |')
+          lines.push(`| ${cells.join(' | ')} |`)
         }
       }
     }

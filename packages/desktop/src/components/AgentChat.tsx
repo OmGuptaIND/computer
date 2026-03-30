@@ -1,9 +1,9 @@
+import { Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { connection } from '../lib/connection.js'
 import type { Skill } from '../lib/skills.js'
 import type { ChatImageAttachment } from '../lib/store.js'
 import { useStore } from '../lib/store.js'
-import { Loader2 } from 'lucide-react'
 import { AgentChatHeader } from './chat/AgentChatHeader.js'
 import { AgentEmptyState } from './chat/AgentEmptyState.js'
 import { ChatInput } from './chat/ChatInput.js'
@@ -40,7 +40,6 @@ export function AgentChat() {
   // Extract stable identity props so the effect doesn't re-run on every message change
   const activeConvId = activeConv?.id
   const activeConvProjectId = activeConv?.projectId
-  const activeConvSessionId = activeConv?.sessionId
 
   // On mount: resume existing conversation's session, or create a new one
   // When used inside ProjectView, the active conversation will have a projectId —
@@ -89,7 +88,7 @@ export function AgentChat() {
         })
       }
     }
-  }, [activeConvId, activeConvProjectId, activeConvSessionId, activeView])
+  }, [activeConvId, activeConvProjectId, activeView])
 
   const handleSend = useCallback(
     async (text: string, attachments: ChatImageAttachment[] = []) => {
@@ -151,9 +150,9 @@ export function AgentChat() {
       let outboundText = text
       const freshConv = useStore.getState().getActiveConversation()
       if (freshConv?.agentSessionId && freshConv.messages.length <= 1) {
-        const agent = useStore.getState().projectAgents.find(
-          (a) => a.sessionId === freshConv.agentSessionId,
-        )
+        const agent = useStore
+          .getState()
+          .projectAgents.find((a) => a.sessionId === freshConv.agentSessionId)
         if (agent) {
           outboundText = `<agent_context>\nAgent: ${agent.agent.name}\nDescription: ${agent.agent.description}\nInstructions: ${agent.agent.instructions}\n</agent_context>\n\n${text}`
         }
@@ -169,16 +168,13 @@ export function AgentChat() {
     [addMessage, newConversation],
   )
 
-  const handleSteer = useCallback(
-    (text: string) => {
-      const store = useStore.getState()
-      const conv = store.getActiveConversation()
-      const sessionId = conv?.sessionId || store.currentSessionId
-      if (!sessionId) return
-      connection.sendSteerMessage(text, sessionId)
-    },
-    [],
-  )
+  const handleSteer = useCallback((text: string) => {
+    const store = useStore.getState()
+    const conv = store.getActiveConversation()
+    const sessionId = conv?.sessionId || store.currentSessionId
+    if (!sessionId) return
+    connection.sendSteerMessage(text, sessionId)
+  }, [])
 
   const handleCancelTurn = useCallback(() => {
     const store = useStore.getState()

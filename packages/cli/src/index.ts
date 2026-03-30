@@ -21,18 +21,18 @@
 import { render } from 'ink'
 import React from 'react'
 import { chatCommand } from './commands/chat.js'
+import { computerConfigCommand } from './commands/computer-config.js'
 import {
-  computerStartCommand,
   computerLogsCommand,
+  computerRestartCommand,
+  computerStartCommand,
   computerStatusCommand,
   computerStopCommand,
-  computerRestartCommand,
   computerUninstallCommand,
 } from './commands/computer-lifecycle.js'
-import { computerConfigCommand } from './commands/computer-config.js'
 import { computerSetupCommand } from './commands/computer-setup.js'
-import { connectorCommand } from './commands/connector.js'
 import { connectCommand } from './commands/connect.js'
+import { connectorCommand } from './commands/connector.js'
 import { machinesCommand } from './commands/machines.js'
 import { shellCommand } from './commands/shell.js'
 import { skillsCommand } from './commands/skills.js'
@@ -189,9 +189,7 @@ async function main() {
             console.log('')
             conn.disconnect()
           } catch (err: unknown) {
-            console.log(
-              `\n  ${theme.error(`Could not connect: ${(err as Error).message}`)}\n`,
-            )
+            console.log(`\n  ${theme.error(`Could not connect: ${(err as Error).message}`)}\n`)
           }
         }
       } else if (subcommand === 'update') {
@@ -274,7 +272,9 @@ async function main() {
         )
         console.log(`    ${theme.brand('anton computer config')}       Manage agent configuration`)
         console.log(`    ${theme.brand('anton computer status')}       Show agent + sidecar health`)
-        console.log(`    ${theme.brand('anton computer logs')}         View logs (agent|sidecar|deploy|all)`)
+        console.log(
+          `    ${theme.brand('anton computer logs')}         View logs (agent|sidecar|deploy|all)`,
+        )
         console.log(`    ${theme.brand('anton computer start')}        Start services`)
         console.log(`    ${theme.brand('anton computer stop')}         Stop services`)
         console.log(`    ${theme.brand('anton computer restart')}      Restart services`)
@@ -393,12 +393,18 @@ function showHelp() {
   // ── Connectors ──
   console.log(`  ${theme.bold('Connectors')}`)
   console.log()
-  console.log(`    ${theme.brand('anton connector')}                     List configured + available`)
-  console.log(`    ${theme.brand('anton connector add')} ${theme.dim('<id> [opts]')}     Add a connector`)
+  console.log(
+    `    ${theme.brand('anton connector')}                     List configured + available`,
+  )
+  console.log(
+    `    ${theme.brand('anton connector add')} ${theme.dim('<id> [opts]')}     Add a connector`,
+  )
   console.log(`      ${theme.dim('--url <url>')}                   SearXNG URL`)
   console.log(`      ${theme.dim('--api-key <key>')}               API key (Brave, etc.)`)
   console.log(`      ${theme.dim('--env KEY=value')}              Env var (MCP connectors)`)
-  console.log(`    ${theme.brand('anton connector remove')} ${theme.dim('<id>')}        Remove a connector`)
+  console.log(
+    `    ${theme.brand('anton connector remove')} ${theme.dim('<id>')}        Remove a connector`,
+  )
   console.log()
 
   // ── Other ──

@@ -46,7 +46,10 @@ export class NotionAPI {
     return res.json() as Promise<T>
   }
 
-  async search(query: string, filter?: { value: 'page' | 'database'; property: 'object' }): Promise<{
+  async search(
+    query: string,
+    filter?: { value: 'page' | 'database'; property: 'object' },
+  ): Promise<{
     results: Array<NotionPage | NotionDatabase>
     next_cursor: string | null
   }> {
@@ -64,7 +67,11 @@ export class NotionAPI {
     return this.request(`/blocks/${pageId}/children?page_size=100`)
   }
 
-  async createPage(parent: { database_id?: string; page_id?: string }, properties: Record<string, unknown>, children?: unknown[]): Promise<NotionPage> {
+  async createPage(
+    parent: { database_id?: string; page_id?: string },
+    properties: Record<string, unknown>,
+    children?: unknown[],
+  ): Promise<NotionPage> {
     const parentObj = parent.database_id
       ? { database_id: parent.database_id }
       : { page_id: parent.page_id }
@@ -92,12 +99,15 @@ export class NotionAPI {
     return this.request(`/databases/${databaseId}`)
   }
 
-  async queryDatabase(databaseId: string, opts: {
-    filter?: unknown
-    sorts?: unknown[]
-    page_size?: number
-    start_cursor?: string
-  } = {}): Promise<{ results: NotionPage[]; next_cursor: string | null; has_more: boolean }> {
+  async queryDatabase(
+    databaseId: string,
+    opts: {
+      filter?: unknown
+      sorts?: unknown[]
+      page_size?: number
+      start_cursor?: string
+    } = {},
+  ): Promise<{ results: NotionPage[]; next_cursor: string | null; has_more: boolean }> {
     return this.request(`/databases/${databaseId}/query`, {
       method: 'POST',
       body: JSON.stringify(opts),

@@ -12,12 +12,12 @@ import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  deleteAgentSession,
   getProjectSessionsDir,
   listProjectAgents,
-  saveAgentMetadata,
-  deleteAgentSession,
   loadAgentMemory,
   saveAgentMemory,
+  saveAgentMetadata,
 } from '@anton/agent-config'
 import type { AgentMetadata, AgentRunRecord, AgentSession } from '@anton/protocol'
 import { getNextCronTime, isValidCron } from './cron.js'
@@ -117,14 +117,12 @@ export class AgentManager {
       originConversationId: spec.originConversationId,
       tokenBudget: {
         perRun: 100_000, // default 100k
-        monthly: 0,       // unlimited
+        monthly: 0, // unlimited
         usedThisMonth: 0,
       },
       status: 'idle',
       lastRunAt: null,
-      nextRunAt: spec.schedule
-        ? getNextCronTime(spec.schedule)?.getTime() ?? null
-        : null,
+      nextRunAt: spec.schedule ? (getNextCronTime(spec.schedule)?.getTime() ?? null) : null,
       runCount: 0,
       createdAt: now,
     }
@@ -168,7 +166,10 @@ export class AgentManager {
 
   // ── Lifecycle ────────────────────────────────────────────────────
 
-  async runAgent(sessionId: string, trigger: 'cron' | 'manual' = 'manual'): Promise<AgentSession | undefined> {
+  async runAgent(
+    sessionId: string,
+    trigger: 'cron' | 'manual' = 'manual',
+  ): Promise<AgentSession | undefined> {
     const entry = this.agents.get(sessionId)
     if (!entry) return undefined
     if (entry.agent.status === 'running') return entry // already running
@@ -198,13 +199,18 @@ export class AgentManager {
       // Build trigger message
       const isFirstRun = entry.agent.runCount === 0
       const now = new Date()
-      const timestamp = now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
+      const timestamp = `${now.toISOString().replace('T', ' ').slice(0, 19)} UTC`
       const message = isFirstRun
         ? `[Run #1 — ${timestamp}] This is your first run. Execute your instructions. Build any scripts or tooling you need, then deliver results.\n\nIMPORTANT: At the end of your run, write a concise summary of what you did and what you built (file paths, script names, key outcomes). This will be saved as your memory for future runs.`
         : `[Run #${entry.agent.runCount + 1} — ${timestamp}] Scheduled run. Your instructions and memory from previous runs are in your system prompt. Re-use existing scripts and tooling. Execute your task and deliver results.\n\nIMPORTANT: At the end of your run, write a concise summary of what you did. This will be saved as your memory for future runs.`
 
       // Each run creates a fresh session — no accumulated context bloat
-      const result = await this.sendMessage(sessionId, message, entry.agent.instructions, agentMemory)
+      const result = await this.sendMessage(
+        sessionId,
+        message,
+        entry.agent.instructions,
+        agentMemory,
+      )
       runRecord.runSessionId = result.runSessionId
 
       // Check if the LLM actually ran
@@ -213,7 +219,8 @@ export class AgentManager {
         entry.agent.status = 'error'
         entry.agent.lastRunAt = Date.now()
         runRecord.status = 'error'
-        runRecord.error = 'No events produced — LLM may not have been called. Check API key or session state.'
+        runRecord.error =
+          'No events produced — LLM may not have been called. Check API key or session state.'
       } else {
         // Run completed successfully
         entry.agent.status = 'idle'

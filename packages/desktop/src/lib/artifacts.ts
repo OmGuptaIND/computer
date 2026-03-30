@@ -45,7 +45,10 @@ export function getArtifactTypeLabel(renderType: ArtifactRenderType): string {
   return TYPE_LABELS[renderType] || renderType
 }
 
-export function getArtifactFileExtension(renderType: ArtifactRenderType, language?: string): string {
+export function getArtifactFileExtension(
+  renderType: ArtifactRenderType,
+  language?: string,
+): string {
   if (renderType === 'code' && language) {
     // Reverse lookup from EXT_MAP
     for (const [ext, lang] of Object.entries(EXT_MAP)) {

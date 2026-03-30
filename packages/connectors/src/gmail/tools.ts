@@ -1,6 +1,6 @@
-import { Type, type TSchema, type Static } from '@sinclair/typebox'
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core'
-import { GmailAPI, buildRawEmail, extractBody, getHeader } from './api.js'
+import { type Static, type TSchema, Type } from '@sinclair/typebox'
+import { type GmailAPI, buildRawEmail, extractBody, getHeader } from './api.js'
 
 function toolResult(output: string, isError = false) {
   return { content: [{ type: 'text' as const, text: output }], details: { raw: output, isError } }
@@ -8,7 +8,11 @@ function toolResult(output: string, isError = false) {
 
 function defineTool<T extends TSchema>(
   def: Omit<AgentTool<T>, 'execute'> & {
-    execute: (id: string, params: Static<T>, signal?: AbortSignal) => Promise<AgentToolResult<unknown>>
+    execute: (
+      id: string,
+      params: Static<T>,
+      signal?: AbortSignal,
+    ) => Promise<AgentToolResult<unknown>>
   },
 ): AgentTool {
   return def as AgentTool
@@ -21,8 +25,14 @@ export function createGmailTools(api: GmailAPI): AgentTool[] {
       label: 'List Inbox',
       description: '[Gmail] List recent emails from your inbox. Supports Gmail search syntax.',
       parameters: Type.Object({
-        query: Type.Optional(Type.String({ description: 'Gmail search query (e.g. "from:boss@example.com is:unread")' })),
-        max_results: Type.Optional(Type.Number({ description: 'Max emails to return (default: 20)' })),
+        query: Type.Optional(
+          Type.String({
+            description: 'Gmail search query (e.g. "from:boss@example.com is:unread")',
+          }),
+        ),
+        max_results: Type.Optional(
+          Type.Number({ description: 'Max emails to return (default: 20)' }),
+        ),
       }),
       async execute(_id, params) {
         try {
@@ -143,12 +153,17 @@ export function createGmailTools(api: GmailAPI): AgentTool[] {
       label: 'Search Emails',
       description: '[Gmail] Search emails using Gmail search syntax.',
       parameters: Type.Object({
-        query: Type.String({ description: 'Gmail search query (e.g. "from:alice subject:meeting after:2024/01/01")' }),
+        query: Type.String({
+          description: 'Gmail search query (e.g. "from:alice subject:meeting after:2024/01/01")',
+        }),
         max_results: Type.Optional(Type.Number({ description: 'Max results (default: 20)' })),
       }),
       async execute(_id, params) {
         try {
-          const list = await api.listMessages({ q: params.query, maxResults: params.max_results ?? 20 })
+          const list = await api.listMessages({
+            q: params.query,
+            maxResults: params.max_results ?? 20,
+          })
           if (!list.messages?.length) return toolResult('No messages found.')
 
           const summaries = await Promise.all(
@@ -163,7 +178,9 @@ export function createGmailTools(api: GmailAPI): AgentTool[] {
               }
             }),
           )
-          return toolResult(`Found ${list.resultSizeEstimate ?? list.messages.length} results:\n${JSON.stringify(summaries, null, 2)}`)
+          return toolResult(
+            `Found ${list.resultSizeEstimate ?? list.messages.length} results:\n${JSON.stringify(summaries, null, 2)}`,
+          )
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
         }

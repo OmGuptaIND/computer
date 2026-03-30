@@ -322,7 +322,9 @@ export async function computerLogsCommand(args: {
     console.log(`    ${theme.brand('anton computer logs deploy')}        Deployment logs`)
     console.log(`    ${theme.brand('anton computer logs all')}           Agent + sidecar combined`)
     console.log(`      ${theme.dim('-f')}                               Follow (tail -f)`)
-    console.log(`      ${theme.dim('-n <lines>')}                       Number of lines (default: 50)`)
+    console.log(
+      `      ${theme.dim('-n <lines>')}                       Number of lines (default: 50)`,
+    )
     console.log()
     process.exit(1)
   }

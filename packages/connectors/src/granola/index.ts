@@ -22,7 +22,10 @@ export class GranolaConnector implements DirectConnector {
   async testConnection(): Promise<{ success: boolean; error?: string; info?: string }> {
     try {
       const result = await this.api.listNotes({ pageSize: 1 })
-      return { success: true, info: `Connected — ${result.has_more ? 'multiple' : result.notes.length} note(s) available` }
+      return {
+        success: true,
+        info: `Connected — ${result.has_more ? 'multiple' : result.notes.length} note(s) available`,
+      }
     } catch (err) {
       return { success: false, error: (err as Error).message }
     }

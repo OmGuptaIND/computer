@@ -285,13 +285,10 @@ export function App({ machine }: AppProps) {
     [conn],
   )
 
-  const handleSessionSelect = useCallback(
-    (_id: string) => {
-      setMessages([])
-      setOverlay('none')
-    },
-    [],
-  )
+  const handleSessionSelect = useCallback((_id: string) => {
+    setMessages([])
+    setOverlay('none')
+  }, [])
 
   const handleNewSession = useCallback(() => {
     setOverlay('models') // pick a model for the new session

@@ -1,6 +1,6 @@
 import { Plus, Settings2, Unplug, X } from 'lucide-react'
-import { createPortal } from 'react-dom'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { connection } from '../../lib/connection.js'
 import { type ConnectorStatusInfo, useStore } from '../../lib/store.js'
 import { ConnectorIcon } from '../connectors/ConnectorIcons.js'
@@ -16,7 +16,11 @@ export function ConnectorPill() {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState<{ top: number; left: number; direction: 'up' | 'down' }>({ top: 0, left: 0, direction: 'up' })
+  const [pos, setPos] = useState<{ top: number; left: number; direction: 'up' | 'down' }>({
+    top: 0,
+    left: 0,
+    direction: 'up',
+  })
 
   useEffect(() => {
     connection.sendConnectorsList()
@@ -45,10 +49,7 @@ export function ConnectorPill() {
     if (!open) return
     const handler = (e: MouseEvent) => {
       const target = e.target as Node
-      if (
-        triggerRef.current?.contains(target) ||
-        dropdownRef.current?.contains(target)
-      ) return
+      if (triggerRef.current?.contains(target) || dropdownRef.current?.contains(target)) return
       setOpen(false)
     }
     document.addEventListener('mousedown', handler)
@@ -87,80 +88,77 @@ export function ConnectorPill() {
     setOpen(!open)
   }
 
-  const dropdown = open ? createPortal(
-    <div
-      ref={dropdownRef}
-      className="connector-dropdown"
-      style={{
-        position: 'fixed',
-        left: Math.min(pos.left, window.innerWidth - 330),
-        ...(pos.direction === 'up'
-          ? { bottom: window.innerHeight - pos.top }
-          : { top: pos.top }),
-        zIndex: 9999,
-      }}
-    >
-      {/* Configured connectors with toggles (show all, not just connected) */}
-      {connectors.map((c) => (
-        <div key={c.id} className="connector-dropdown__item">
-          <div className="connector-dropdown__item-left">
-            <ConnectorIcon id={c.id} size={20} />
-            <span className="connector-dropdown__item-name">{c.name}</span>
-          </div>
-          <label className="connector-dropdown__toggle">
-            <input
-              type="checkbox"
-              checked={c.enabled}
-              onChange={() => handleToggle(c)}
-            />
-            <span className="connector-dropdown__toggle-track" />
-          </label>
-        </div>
-      ))}
-
-      {/* Unconnected from registry */}
-      {unconnectedRegistry.map((r) => (
+  const dropdown = open
+    ? createPortal(
         <div
-          key={r.id}
-          className="connector-dropdown__item connector-dropdown__item--unconnected"
-          onClick={() => {
-            setOpen(false)
-            window.dispatchEvent(new CustomEvent('open-settings', { detail: { tab: 'connectors', connectorId: r.id } }))
-          }}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              setOpen(false)
-              window.dispatchEvent(new CustomEvent('open-settings', { detail: { tab: 'connectors', connectorId: r.id } }))
-            }
+          ref={dropdownRef}
+          className="connector-dropdown"
+          style={{
+            position: 'fixed',
+            left: Math.min(pos.left, window.innerWidth - 330),
+            ...(pos.direction === 'up'
+              ? { bottom: window.innerHeight - pos.top }
+              : { top: pos.top }),
+            zIndex: 9999,
           }}
         >
-          <div className="connector-dropdown__item-left">
-            <ConnectorIcon id={r.id} size={20} />
-            <span className="connector-dropdown__item-name">{r.name}</span>
-          </div>
-          <span className="connector-dropdown__item-connect">Connect</span>
-        </div>
-      ))}
+          {/* Configured connectors with toggles (show all, not just connected) */}
+          {connectors.map((c) => (
+            <div key={c.id} className="connector-dropdown__item">
+              <div className="connector-dropdown__item-left">
+                <ConnectorIcon id={c.id} size={20} />
+                <span className="connector-dropdown__item-name">{c.name}</span>
+              </div>
+              <label className="connector-dropdown__toggle">
+                <input type="checkbox" checked={c.enabled} onChange={() => handleToggle(c)} />
+                <span className="connector-dropdown__toggle-track" />
+              </label>
+            </div>
+          ))}
 
-      {/* Footer */}
-      <div className="connector-dropdown__footer">
-        <button type="button" className="connector-dropdown__footer-btn" onClick={openSettings}>
-          <Plus size={16} strokeWidth={1.5} />
-          <span>Add connectors</span>
-          {totalAvailable - unconnectedRegistry.length > 0 && (
-            <span className="connector-dropdown__footer-count">+{totalAvailable - unconnectedRegistry.length}</span>
-          )}
-        </button>
-        <button type="button" className="connector-dropdown__footer-btn" onClick={openSettings}>
-          <Settings2 size={16} strokeWidth={1.5} />
-          <span>Manage connectors</span>
-        </button>
-      </div>
-    </div>,
-    document.body,
-  ) : null
+          {/* Unconnected from registry */}
+          {unconnectedRegistry.map((r) => (
+            <button
+              type="button"
+              key={r.id}
+              className="connector-dropdown__item connector-dropdown__item--unconnected"
+              onClick={() => {
+                setOpen(false)
+                window.dispatchEvent(
+                  new CustomEvent('open-settings', {
+                    detail: { tab: 'connectors', connectorId: r.id },
+                  }),
+                )
+              }}
+            >
+              <div className="connector-dropdown__item-left">
+                <ConnectorIcon id={r.id} size={20} />
+                <span className="connector-dropdown__item-name">{r.name}</span>
+              </div>
+              <span className="connector-dropdown__item-connect">Connect</span>
+            </button>
+          ))}
+
+          {/* Footer */}
+          <div className="connector-dropdown__footer">
+            <button type="button" className="connector-dropdown__footer-btn" onClick={openSettings}>
+              <Plus size={16} strokeWidth={1.5} />
+              <span>Add connectors</span>
+              {totalAvailable - unconnectedRegistry.length > 0 && (
+                <span className="connector-dropdown__footer-count">
+                  +{totalAvailable - unconnectedRegistry.length}
+                </span>
+              )}
+            </button>
+            <button type="button" className="connector-dropdown__footer-btn" onClick={openSettings}>
+              <Settings2 size={16} strokeWidth={1.5} />
+              <span>Manage connectors</span>
+            </button>
+          </div>
+        </div>,
+        document.body,
+      )
+    : null
 
   return (
     <div className="connector-pill-wrap">
@@ -207,7 +205,9 @@ export function ConnectorPill() {
 export function ConnectorBanner() {
   const connectors = useStore((s) => s.connectors)
   const registry = useStore((s) => s.connectorRegistry)
-  const [dismissed, setDismissed] = useState(() => localStorage.getItem('connector-banner-dismissed') === '1')
+  const [dismissed, setDismissed] = useState(
+    () => localStorage.getItem('connector-banner-dismissed') === '1',
+  )
 
   const dismiss = () => {
     setDismissed(true)
@@ -224,32 +224,31 @@ export function ConnectorBanner() {
   }
 
   return (
-    <div
-      className="connector-banner"
-      onClick={openConnectors}
-      onKeyDown={(e) => { if (e.key === 'Enter') openConnectors() }}
-      role="button"
-      tabIndex={0}
-    >
-      <div className="connector-banner__left">
-        <Unplug size={16} strokeWidth={1.5} />
-        <span>Connect your tools</span>
-      </div>
-      <div className="connector-banner__right">
-        {registry.slice(0, 6).map((r) => (
-          <span key={r.id} className="connector-banner__icon">
-            <ConnectorIcon id={r.id} size={20} />
-          </span>
-        ))}
-        <button
-          type="button"
-          className="connector-banner__dismiss"
-          onClick={(e) => { e.stopPropagation(); dismiss() }}
-          aria-label="Dismiss"
-        >
-          <X size={14} strokeWidth={1.5} />
-        </button>
-      </div>
+    <div className="connector-banner">
+      <button type="button" className="connector-banner__main" onClick={openConnectors}>
+        <div className="connector-banner__left">
+          <Unplug size={16} strokeWidth={1.5} />
+          <span>Connect your tools</span>
+        </div>
+        <div className="connector-banner__right">
+          {registry.slice(0, 6).map((r) => (
+            <span key={r.id} className="connector-banner__icon">
+              <ConnectorIcon id={r.id} size={20} />
+            </span>
+          ))}
+        </div>
+      </button>
+      <button
+        type="button"
+        className="connector-banner__dismiss"
+        onClick={(e) => {
+          e.stopPropagation()
+          dismiss()
+        }}
+        aria-label="Dismiss"
+      >
+        <X size={14} strokeWidth={1.5} />
+      </button>
     </div>
   )
 }

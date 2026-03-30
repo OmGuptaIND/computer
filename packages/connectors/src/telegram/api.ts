@@ -45,16 +45,26 @@ export class TelegramBotAPI {
     return this.call('getMe')
   }
 
-  async sendMessage(chatId: string | number, text: string, opts: {
-    parse_mode?: 'Markdown' | 'HTML'
-    reply_to_message_id?: number
-    disable_notification?: boolean
-  } = {}): Promise<TelegramMessage> {
+  async sendMessage(
+    chatId: string | number,
+    text: string,
+    opts: {
+      parse_mode?: 'Markdown' | 'HTML'
+      reply_to_message_id?: number
+      disable_notification?: boolean
+    } = {},
+  ): Promise<TelegramMessage> {
     return this.call('sendMessage', { chat_id: chatId, text, ...opts })
   }
 
-  async getUpdates(opts: { offset?: number; limit?: number; timeout?: number } = {}): Promise<TelegramUpdate[]> {
-    return this.call('getUpdates', { limit: opts.limit ?? 10, offset: opts.offset, timeout: opts.timeout ?? 0 })
+  async getUpdates(
+    opts: { offset?: number; limit?: number; timeout?: number } = {},
+  ): Promise<TelegramUpdate[]> {
+    return this.call('getUpdates', {
+      limit: opts.limit ?? 10,
+      offset: opts.offset,
+      timeout: opts.timeout ?? 0,
+    })
   }
 
   async getChat(chatId: string | number): Promise<{
@@ -77,7 +87,15 @@ export class TelegramBotAPI {
     return this.call('pinChatMessage', { chat_id: chatId, message_id: messageId })
   }
 
-  async forwardMessage(toChatId: string | number, fromChatId: string | number, messageId: number): Promise<TelegramMessage> {
-    return this.call('forwardMessage', { chat_id: toChatId, from_chat_id: fromChatId, message_id: messageId })
+  async forwardMessage(
+    toChatId: string | number,
+    fromChatId: string | number,
+    messageId: number,
+  ): Promise<TelegramMessage> {
+    return this.call('forwardMessage', {
+      chat_id: toChatId,
+      from_chat_id: fromChatId,
+      message_id: messageId,
+    })
   }
 }

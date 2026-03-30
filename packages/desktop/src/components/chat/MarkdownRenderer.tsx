@@ -117,13 +117,28 @@ export function MarkdownRenderer({ content, citations }: Props) {
           th: ({ children }) => <th className="markdown-body__th">{children}</th>,
           td: ({ children }) => <td className="markdown-body__td">{children}</td>,
           h1: ({ children }) => (
-            <h1 id={slugify(children)} className="markdown-body__heading markdown-body__heading--h1">{children}</h1>
+            <h1
+              id={slugify(children)}
+              className="markdown-body__heading markdown-body__heading--h1"
+            >
+              {children}
+            </h1>
           ),
           h2: ({ children }) => (
-            <h2 id={slugify(children)} className="markdown-body__heading markdown-body__heading--h2">{children}</h2>
+            <h2
+              id={slugify(children)}
+              className="markdown-body__heading markdown-body__heading--h2"
+            >
+              {children}
+            </h2>
           ),
           h3: ({ children }) => (
-            <h3 id={slugify(children)} className="markdown-body__heading markdown-body__heading--h3">{children}</h3>
+            <h3
+              id={slugify(children)}
+              className="markdown-body__heading markdown-body__heading--h3"
+            >
+              {children}
+            </h3>
           ),
           p: ({ children }) => <p className="markdown-body__paragraph">{children}</p>,
           hr: () => <hr className="markdown-body__rule" />,

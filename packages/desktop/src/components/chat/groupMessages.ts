@@ -117,7 +117,7 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
           : msg.id
 
       subAgentGroups.set(toolCallId, {
-        task: msg.toolInput?.task as string || msg.content,
+        task: (msg.toolInput?.task as string) || msg.content,
         actions: [],
         pendingCall: null,
       })
@@ -198,7 +198,9 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
       }
 
       if (pendingCall) {
-        const pendingBaseId = pendingCall.id.startsWith('tc_') ? pendingCall.id.slice(3) : pendingCall.id
+        const pendingBaseId = pendingCall.id.startsWith('tc_')
+          ? pendingCall.id.slice(3)
+          : pendingCall.id
 
         if (pendingBaseId === resultBaseId) {
           // Direct match with pending call
@@ -222,7 +224,12 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
       } else {
         // Orphaned result — use its own toolName if available (inherited from tool_call in store)
         currentActions.push({
-          call: { ...msg, toolName: msg.toolName || 'unknown', toolInput: msg.toolInput, content: msg.content },
+          call: {
+            ...msg,
+            toolName: msg.toolName || 'unknown',
+            toolInput: msg.toolInput,
+            content: msg.content,
+          },
           result: msg,
         })
       }

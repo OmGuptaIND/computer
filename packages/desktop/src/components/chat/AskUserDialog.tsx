@@ -69,9 +69,10 @@ export function AskUserDialog({ questions, onSubmit }: Props) {
     if (isLast) {
       const final: Record<string, string> = {}
       for (const question of questions) {
-        const a = question.question === q.question
-          ? { selectedOption: label, customText: '' }
-          : answers[question.question]
+        const a =
+          question.question === q.question
+            ? { selectedOption: label, customText: '' }
+            : answers[question.question]
         final[question.question] = a?.customText.trim() || a?.selectedOption || ''
       }
       onSubmit(final)
@@ -132,12 +133,12 @@ export function AskUserDialog({ questions, onSubmit }: Props) {
           <div className="ask-dialog__header">
             <div className="ask-dialog__header-text">
               <span className="ask-dialog__question">{q.question}</span>
-              {q.description && (
-                <span className="ask-dialog__description">{q.description}</span>
-              )}
+              {q.description && <span className="ask-dialog__description">{q.description}</span>}
             </div>
             {total > 1 && (
-              <span className="ask-dialog__step-badge">{step + 1}/{total}</span>
+              <span className="ask-dialog__step-badge">
+                {step + 1}/{total}
+              </span>
             )}
           </div>
 

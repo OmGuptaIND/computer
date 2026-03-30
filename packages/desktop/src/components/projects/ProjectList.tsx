@@ -56,7 +56,8 @@ export function ProjectList() {
           </div>
           <h2 className="projects-empty__title">Projects</h2>
           <p className="projects-empty__desc">
-            Organize your work into projects. Each project has its own sessions, agents, and context.
+            Organize your work into projects. Each project has its own sessions, agents, and
+            context.
           </p>
           <button type="button" className="projects-empty__cta" onClick={() => setShowCreate(true)}>
             <Plus size={16} strokeWidth={1.5} />

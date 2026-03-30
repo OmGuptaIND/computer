@@ -757,7 +757,7 @@ export interface AgentRunLogsMessage {
   type: 'agent_run_logs'
   projectId: string
   sessionId: string
-  runSessionId?: string  // specific run session (new arch: each run = fresh session)
+  runSessionId?: string // specific run session (new arch: each run = fresh session)
   startedAt: number
   completedAt: number
 }

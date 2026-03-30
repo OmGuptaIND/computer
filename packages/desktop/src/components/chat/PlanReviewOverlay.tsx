@@ -1,5 +1,5 @@
 import { Check, Send } from 'lucide-react'
-import { useMemo, useRef, useState, useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { connection } from '../../lib/connection.js'
 import { useStore } from '../../lib/store.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
@@ -126,11 +126,7 @@ export function PlanReviewOverlay() {
 
         {/* Footer: Approve + Feedback input */}
         <div className="plan-overlay__footer">
-          <button
-            type="button"
-            className="plan-overlay__approve"
-            onClick={handleApprove}
-          >
+          <button type="button" className="plan-overlay__approve" onClick={handleApprove}>
             <Check size={16} strokeWidth={1.5} />
             Approve and start
           </button>

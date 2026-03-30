@@ -1,6 +1,6 @@
-import { Type, type TSchema, type Static } from '@sinclair/typebox'
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core'
-import { GoogleDocsAPI, extractDocText } from './api.js'
+import { type Static, type TSchema, Type } from '@sinclair/typebox'
+import { type GoogleDocsAPI, extractDocText } from './api.js'
 
 function toolResult(output: string, isError = false) {
   return { content: [{ type: 'text' as const, text: output }], details: { raw: output, isError } }
@@ -8,7 +8,11 @@ function toolResult(output: string, isError = false) {
 
 function defineTool<T extends TSchema>(
   def: Omit<AgentTool<T>, 'execute'> & {
-    execute: (id: string, params: Static<T>, signal?: AbortSignal) => Promise<AgentToolResult<unknown>>
+    execute: (
+      id: string,
+      params: Static<T>,
+      signal?: AbortSignal,
+    ) => Promise<AgentToolResult<unknown>>
   },
 ): AgentTool {
   return def as AgentTool
@@ -16,7 +20,6 @@ function defineTool<T extends TSchema>(
 
 export function createGoogleDocsTools(api: GoogleDocsAPI): AgentTool[] {
   return [
-
     defineTool({
       name: 'gdocs_list_documents',
       label: 'List Documents',
@@ -28,7 +31,9 @@ export function createGoogleDocsTools(api: GoogleDocsAPI): AgentTool[] {
         try {
           const docs = await api.listDocuments(params.limit ?? 20)
           if (!docs.length) return toolResult('No documents found.')
-          const lines = docs.map((d) => `- [${d.name}](${d.webViewLink}) (id: ${d.id}, modified: ${d.modifiedTime})`)
+          const lines = docs.map(
+            (d) => `- [${d.name}](${d.webViewLink}) (id: ${d.id}, modified: ${d.modifiedTime})`,
+          )
           return toolResult(lines.join('\n'))
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
@@ -39,7 +44,8 @@ export function createGoogleDocsTools(api: GoogleDocsAPI): AgentTool[] {
     defineTool({
       name: 'gdocs_get_document',
       label: 'Get Document',
-      description: '[Google Docs] Get the content of a Google Doc as plain text with markdown headings.',
+      description:
+        '[Google Docs] Get the content of a Google Doc as plain text with markdown headings.',
       parameters: Type.Object({
         document_id: Type.String({ description: 'Google Doc document ID (from URL)' }),
       }),
@@ -100,17 +106,22 @@ export function createGoogleDocsTools(api: GoogleDocsAPI): AgentTool[] {
       parameters: Type.Object({
         document_id: Type.String({ description: 'Google Doc document ID' }),
         text: Type.String({ description: 'Text to insert' }),
-        index: Type.Optional(Type.Number({ description: 'Character index to insert at (default: 1, beginning of doc)' })),
+        index: Type.Optional(
+          Type.Number({
+            description: 'Character index to insert at (default: 1, beginning of doc)',
+          }),
+        ),
       }),
       async execute(_id, params) {
         try {
           await api.insertText(params.document_id, params.text, params.index ?? 1)
-          return toolResult(`Text inserted at index ${params.index ?? 1} in document ${params.document_id}.`)
+          return toolResult(
+            `Text inserted at index ${params.index ?? 1} in document ${params.document_id}.`,
+          )
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
         }
       },
     }),
-
   ]
 }

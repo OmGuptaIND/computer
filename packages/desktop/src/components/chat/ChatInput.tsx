@@ -6,8 +6,8 @@ import type { Skill } from '../../lib/skills.js'
 import type { ChatImageAttachment } from '../../lib/store.js'
 import { useIsCurrentSessionWorking } from '../../lib/store.js'
 import { AskUserDialog } from './AskUserDialog.js'
+import { ConnectorBanner, ConnectorPill } from './ConnectorToolbar.js'
 import { ModelSelector } from './ModelSelector.js'
-import { ConnectorPill, ConnectorBanner } from './ConnectorToolbar.js'
 import { SlashCommandMenu } from './SlashCommandMenu.js'
 
 interface Props {

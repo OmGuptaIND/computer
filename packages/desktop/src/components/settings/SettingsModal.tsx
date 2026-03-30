@@ -3,6 +3,7 @@ import {
   BarChart3,
   Check,
   ChevronRight,
+  Cpu,
   Eye,
   EyeOff,
   Monitor,
@@ -14,7 +15,6 @@ import {
   Sun,
   Trash2,
   X,
-  Cpu,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { connection } from '../../lib/connection.js'
@@ -79,7 +79,9 @@ function GeneralPage() {
               onClick={() => setTheme(opt.key)}
             >
               <div className="settings-appearance-card__preview">
-                <div className={`settings-appearance-card__mock settings-appearance-card__mock--${opt.key}`}>
+                <div
+                  className={`settings-appearance-card__mock settings-appearance-card__mock--${opt.key}`}
+                >
                   <div className="settings-appearance-card__mock-line settings-appearance-card__mock-line--long" />
                   <div className="settings-appearance-card__mock-line settings-appearance-card__mock-line--short" />
                   <div className="settings-appearance-card__mock-line settings-appearance-card__mock-line--medium" />
@@ -101,7 +103,8 @@ function GeneralPage() {
           <div className="settings-toggle-row__info">
             <div className="settings-toggle-row__title">Receive product updates</div>
             <div className="settings-toggle-row__desc">
-              Receive early access to feature releases and success stories to optimize your workflow.
+              Receive early access to feature releases and success stories to optimize your
+              workflow.
             </div>
           </div>
           <ToggleSwitch defaultChecked />
@@ -111,7 +114,8 @@ function GeneralPage() {
           <div className="settings-toggle-row__info">
             <div className="settings-toggle-row__title">Email me when my queued task starts</div>
             <div className="settings-toggle-row__desc">
-              When enabled, we'll send you a timely email once your task finishes queuing and begins processing.
+              When enabled, we'll send you a timely email once your task finishes queuing and begins
+              processing.
             </div>
           </div>
           <ToggleSwitch defaultChecked />
@@ -141,7 +145,15 @@ function ToggleSwitch({ defaultChecked = false }: { defaultChecked?: boolean }) 
 function ProviderIcon({ provider, size = 16 }: { provider: string; size?: number }) {
   const icon = providerIcons[provider]
   if (icon) {
-    return <img src={icon} alt={provider} width={size} height={size} className="settings-modal__provider-icon" />
+    return (
+      <img
+        src={icon}
+        alt={provider}
+        width={size}
+        height={size}
+        className="settings-modal__provider-icon"
+      />
+    )
   }
   return (
     <span className="settings-modal__provider-icon-fallback" style={{ width: size, height: size }}>
@@ -234,7 +246,9 @@ function ProviderPanel({
             <input
               type={showKey ? 'text' : 'password'}
               className="settings-modal__key-input"
-              placeholder={provider.hasApiKey ? 'Replace existing key...' : 'Paste your API key to get started'}
+              placeholder={
+                provider.hasApiKey ? 'Replace existing key...' : 'Paste your API key to get started'
+              }
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               autoComplete="off"
@@ -246,7 +260,11 @@ function ProviderPanel({
               onClick={() => setShowKey(!showKey)}
               tabIndex={-1}
             >
-              {showKey ? <EyeOff size={14} strokeWidth={1.5} /> : <Eye size={14} strokeWidth={1.5} />}
+              {showKey ? (
+                <EyeOff size={14} strokeWidth={1.5} />
+              ) : (
+                <Eye size={14} strokeWidth={1.5} />
+              )}
             </button>
           </div>
           <button
@@ -254,7 +272,13 @@ function ProviderPanel({
             disabled={!apiKey.trim()}
             className={`settings-modal__key-save ${keySaved ? 'settings-modal__key-save--saved' : ''}`}
           >
-            {keySaved ? <><Check size={14} strokeWidth={1.5} /> Saved</> : 'Save'}
+            {keySaved ? (
+              <>
+                <Check size={14} strokeWidth={1.5} /> Saved
+              </>
+            ) : (
+              'Save'
+            )}
           </button>
         </form>
       </div>
@@ -276,7 +300,9 @@ function ProviderPanel({
                 >
                   <span className="settings-modal__model-name">{formatModelName(model)}</span>
                   <code className="settings-modal__model-id">{model}</code>
-                  {isActive && <Check size={14} strokeWidth={1.5} className="settings-modal__check" />}
+                  {isActive && (
+                    <Check size={14} strokeWidth={1.5} className="settings-modal__check" />
+                  )}
                 </button>
               )
             })}
@@ -323,10 +349,17 @@ function ProviderPanel({
                     </div>
                   ))}
                   <form
-                    onSubmit={(e) => { e.preventDefault(); handleAddModel() }}
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      handleAddModel()
+                    }}
                     className="settings-modal__edit-model-add"
                   >
-                    <Plus size={14} strokeWidth={1.5} className="settings-modal__edit-model-add-icon" />
+                    <Plus
+                      size={14}
+                      strokeWidth={1.5}
+                      className="settings-modal__edit-model-add-icon"
+                    />
                     <input
                       ref={modelInputRef}
                       type="text"
@@ -340,7 +373,11 @@ function ProviderPanel({
                 </div>
                 <div className="settings-modal__edit-actions">
                   {provider.defaultModels && provider.defaultModels.length > 0 && (
-                    <button type="button" onClick={handleResetModels} className="settings-modal__edit-reset">
+                    <button
+                      type="button"
+                      onClick={handleResetModels}
+                      className="settings-modal__edit-reset"
+                    >
                       <RotateCcw size={12} strokeWidth={1.5} /> Defaults
                     </button>
                   )}
@@ -350,7 +387,13 @@ function ProviderPanel({
                       onClick={handleSaveModels}
                       className={`settings-modal__edit-save ${modelsSaved ? 'settings-modal__edit-save--saved' : ''}`}
                     >
-                      {modelsSaved ? <><Check size={14} strokeWidth={1.5} /> Saved</> : 'Save changes'}
+                      {modelsSaved ? (
+                        <>
+                          <Check size={14} strokeWidth={1.5} /> Saved
+                        </>
+                      ) : (
+                        'Save changes'
+                      )}
                     </button>
                   )}
                 </div>
@@ -391,7 +434,10 @@ function ModelsPage({ onClose }: { onClose: () => void }) {
         const hasActiveModel = currentProvider === provider.name
 
         return (
-          <div key={provider.name} className={`settings-modal__provider-group ${isExpanded ? 'settings-modal__provider-group--expanded' : ''}`}>
+          <div
+            key={provider.name}
+            className={`settings-modal__provider-group ${isExpanded ? 'settings-modal__provider-group--expanded' : ''}`}
+          >
             <button
               type="button"
               className={`settings-modal__provider-header ${hasActiveModel ? 'settings-modal__provider-header--active' : ''}`}
@@ -402,9 +448,13 @@ function ModelsPage({ onClose }: { onClose: () => void }) {
                 {provider.name.charAt(0).toUpperCase() + provider.name.slice(1)}
               </span>
               {provider.hasApiKey ? (
-                <span className="settings-modal__badge settings-modal__badge--connected">Connected</span>
+                <span className="settings-modal__badge settings-modal__badge--connected">
+                  Connected
+                </span>
               ) : (
-                <span className="settings-modal__badge settings-modal__badge--setup">Setup required</span>
+                <span className="settings-modal__badge settings-modal__badge--setup">
+                  Setup required
+                </span>
               )}
               <ChevronRight
                 size={14}
@@ -587,7 +637,12 @@ function UsagePage() {
 
 // ── Main Settings Modal ──
 
-export function SettingsModal({ open, onClose, initialPage = 'general', initialConnectorId }: Props) {
+export function SettingsModal({
+  open,
+  onClose,
+  initialPage = 'general',
+  initialConnectorId,
+}: Props) {
   const [activePage, setActivePage] = useState<SettingsPage>(initialPage)
 
   // Reset to initial page when modal opens
@@ -649,7 +704,9 @@ export function SettingsModal({ open, onClose, initialPage = 'general', initialC
               <div className="settings-modal__content-body">
                 {activePage === 'general' && <GeneralPage />}
                 {activePage === 'models' && <ModelsPage onClose={onClose} />}
-                {activePage === 'connectors' && <ConnectorsPage initialConnectorId={initialConnectorId} />}
+                {activePage === 'connectors' && (
+                  <ConnectorsPage initialConnectorId={initialConnectorId} />
+                )}
                 {activePage === 'usage' && <UsagePage />}
               </div>
             </div>

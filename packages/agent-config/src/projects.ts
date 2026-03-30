@@ -19,7 +19,13 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
-import type { AgentMetadata, AgentSession, Project, ProjectSource, ProjectType } from '@anton/protocol'
+import type {
+  AgentMetadata,
+  AgentSession,
+  Project,
+  ProjectSource,
+  ProjectType,
+} from '@anton/protocol'
 import { type SessionMeta, ensureWorkspaceRoot, getAntonDir } from './config.js'
 import type { AgentConfig } from './config.js'
 
@@ -40,7 +46,6 @@ export function getProjectDir(id: string): string {
 export function getProjectSessionsDir(id: string): string {
   return join(getProjectDir(id), 'conversations')
 }
-
 
 /** Ensure projects directory and index exist */
 function ensureProjectsDir(): void {
@@ -71,13 +76,15 @@ function saveIndex(projects: Project[]): void {
 
 /** Sanitize a project name into a filesystem-safe directory name */
 function toDirectoryName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 50) || 'project'
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 50) || 'project'
+  )
 }
 
 /** Write .anton.json link file into a workspace directory */
@@ -265,11 +272,7 @@ export function updateProjectContext(
 }
 
 /** Save a file to a project's files directory */
-export function saveProjectFile(
-  projectId: string,
-  filename: string,
-  content: Buffer,
-): string {
+export function saveProjectFile(projectId: string, filename: string, content: Buffer): string {
   const dir = getProjectDir(projectId)
   const filesDir = join(dir, 'files')
   if (!existsSync(filesDir)) {
@@ -333,11 +336,21 @@ export function listProjectFiles(
   const entries = readdirSync(filesDir, { withFileTypes: true })
 
   const mimeMap: Record<string, string> = {
-    txt: 'text/plain', md: 'text/markdown', json: 'application/json',
-    csv: 'text/csv', js: 'text/javascript', ts: 'text/typescript',
-    py: 'text/x-python', html: 'text/html', css: 'text/css',
-    pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg',
-    jpeg: 'image/jpeg', gif: 'image/gif', svg: 'image/svg+xml',
+    txt: 'text/plain',
+    md: 'text/markdown',
+    json: 'application/json',
+    csv: 'text/csv',
+    js: 'text/javascript',
+    ts: 'text/typescript',
+    py: 'text/x-python',
+    html: 'text/html',
+    css: 'text/css',
+    pdf: 'application/pdf',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    svg: 'image/svg+xml',
   }
 
   return entries
@@ -478,7 +491,11 @@ export function loadAgentMetadata(projectId: string, sessionId: string): AgentMe
 }
 
 /** Save agent metadata to a conversation directory */
-export function saveAgentMetadata(projectId: string, sessionId: string, agent: AgentMetadata): void {
+export function saveAgentMetadata(
+  projectId: string,
+  sessionId: string,
+  agent: AgentMetadata,
+): void {
   const dir = join(getProjectSessionsDir(projectId), sessionId)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'agent.json'), JSON.stringify(agent, null, 2), 'utf-8')
@@ -528,7 +545,9 @@ export function listProjectAgents(projectId: string): AgentSession[] {
           const meta: SessionMeta = JSON.parse(readFileSync(metaPath, 'utf-8'))
           title = meta.title
           lastActiveAt = meta.lastActiveAt
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
       }
 
       agents.push({

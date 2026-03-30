@@ -112,16 +112,18 @@ export class GoogleSheetsAPI {
     })
   }
 
-  async listSpreadsheets(pageSize = 20): Promise<Array<{ id: string; name: string; modifiedTime: string; webViewLink: string }>> {
+  async listSpreadsheets(
+    pageSize = 20,
+  ): Promise<Array<{ id: string; name: string; modifiedTime: string; webViewLink: string }>> {
     const params = new URLSearchParams({
       q: "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
       pageSize: String(pageSize),
       orderBy: 'modifiedTime desc',
       fields: 'files(id,name,modifiedTime,webViewLink)',
     })
-    const data = await this.request<{ files: Array<{ id: string; name: string; modifiedTime: string; webViewLink: string }> }>(
-      `${DRIVE_BASE}/files?${params}`,
-    )
+    const data = await this.request<{
+      files: Array<{ id: string; name: string; modifiedTime: string; webViewLink: string }>
+    }>(`${DRIVE_BASE}/files?${params}`)
     return data.files ?? []
   }
 }
@@ -132,11 +134,11 @@ export function valuesToMarkdownTable(values: string[][]): string {
   const [header, ...rows] = values
   const cols = header.length
   const lines = [
-    '| ' + header.join(' | ') + ' |',
-    '| ' + Array(cols).fill('---').join(' | ') + ' |',
+    `| ${header.join(' | ')} |`,
+    `| ${Array(cols).fill('---').join(' | ')} |`,
     ...rows.map((row) => {
       const padded = [...row, ...Array(Math.max(0, cols - row.length)).fill('')]
-      return '| ' + padded.join(' | ') + ' |'
+      return `| ${padded.join(' | ')} |`
     }),
   ]
   return lines.join('\n')

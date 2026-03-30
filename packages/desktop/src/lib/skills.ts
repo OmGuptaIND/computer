@@ -90,12 +90,12 @@ export const builtinSkills: Skill[] = [
   {
     id: 'setup-ssl',
     name: 'SSL Certificates',
-    description: 'Install and configure Let\'s Encrypt SSL certificates with auto-renewal',
+    description: "Install and configure Let's Encrypt SSL certificates with auto-renewal",
     icon: 'lock',
     command: '/ssl',
     category: 'DevOps',
     prompt:
-      'Install certbot and set up Let\'s Encrypt SSL certificates for domain {domain}. Configure auto-renewal via cron. Set up HTTPS redirect.',
+      "Install certbot and set up Let's Encrypt SSL certificates for domain {domain}. Configure auto-renewal via cron. Set up HTTPS redirect.",
     parameters: [
       { name: 'domain', label: 'Domain', type: 'text', placeholder: 'example.com', required: true },
     ],
@@ -110,7 +110,13 @@ export const builtinSkills: Skill[] = [
     prompt:
       'Set up a process manager for the application at {app_path}. Use {manager} to keep it running, auto-restart on crash, and start on boot.',
     parameters: [
-      { name: 'app_path', label: 'App path', type: 'text', placeholder: '/home/app', required: true },
+      {
+        name: 'app_path',
+        label: 'App path',
+        type: 'text',
+        placeholder: '/home/app',
+        required: true,
+      },
       {
         name: 'manager',
         label: 'Manager',
@@ -155,7 +161,7 @@ export const builtinSkills: Skill[] = [
     command: '/audit',
     category: 'Security',
     prompt:
-      'Run a comprehensive security audit of this system. Check for: open ports, world-writable files, users with empty passwords, outdated packages with known CVEs, running services that shouldn\'t be exposed, and weak file permissions. Provide a prioritized list of findings.',
+      "Run a comprehensive security audit of this system. Check for: open ports, world-writable files, users with empty passwords, outdated packages with known CVEs, running services that shouldn't be exposed, and weak file permissions. Provide a prioritized list of findings.",
   },
   {
     id: 'fail2ban-setup',
@@ -167,7 +173,12 @@ export const builtinSkills: Skill[] = [
     prompt:
       'Install and configure fail2ban. Set up jails for SSH, {extra_service}. Configure ban time to {ban_time} minutes. Set up email notifications if possible.',
     parameters: [
-      { name: 'extra_service', label: 'Extra service', type: 'text', placeholder: 'nginx-http-auth' },
+      {
+        name: 'extra_service',
+        label: 'Extra service',
+        type: 'text',
+        placeholder: 'nginx-http-auth',
+      },
       { name: 'ban_time', label: 'Ban time (min)', type: 'text', placeholder: '60' },
     ],
   },
@@ -203,9 +214,7 @@ export const builtinSkills: Skill[] = [
     category: 'Analysis',
     prompt:
       'Run network diagnostics: check internet connectivity, DNS resolution, list open ports and listening services, show active connections, check for any network issues. Test connectivity to {host} if specified.',
-    parameters: [
-      { name: 'host', label: 'Host to test', type: 'text', placeholder: 'google.com' },
-    ],
+    parameters: [{ name: 'host', label: 'Host to test', type: 'text', placeholder: 'google.com' }],
   },
 
   // ── Data ────────────────────────────────────────────────────────
@@ -252,7 +261,13 @@ export const builtinSkills: Skill[] = [
         options: ['PostgreSQL', 'MySQL'],
         required: true,
       },
-      { name: 'db_name', label: 'Database name', type: 'text', placeholder: 'mydb', required: true },
+      {
+        name: 'db_name',
+        label: 'Database name',
+        type: 'text',
+        placeholder: 'mydb',
+        required: true,
+      },
     ],
   },
 
@@ -281,8 +296,7 @@ export const builtinSkills: Skill[] = [
     icon: 'users',
     command: '/users',
     category: 'System',
-    prompt:
-      'Manage system users. {action}. Username: {username}.',
+    prompt: 'Manage system users. {action}. Username: {username}.',
     parameters: [
       {
         name: 'action',
@@ -319,8 +333,7 @@ export const builtinSkills: Skill[] = [
     icon: 'settings',
     command: '/services',
     category: 'System',
-    prompt:
-      'Manage systemd services. {action}. Service name: {service}.',
+    prompt: 'Manage systemd services. {action}. Service name: {service}.',
     parameters: [
       {
         name: 'action',

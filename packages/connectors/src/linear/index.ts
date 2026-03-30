@@ -22,7 +22,10 @@ export class LinearConnector implements DirectConnector {
   async testConnection(): Promise<{ success: boolean; error?: string; info?: string }> {
     try {
       const user = await this.api.getViewer()
-      return { success: true, info: `Connected as ${user.displayName || user.name} (${user.email})` }
+      return {
+        success: true,
+        info: `Connected as ${user.displayName || user.name} (${user.email})`,
+      }
     } catch (err) {
       return { success: false, error: (err as Error).message }
     }

@@ -68,14 +68,23 @@ export function MachineInfoPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="machine-info-overlay" onClick={onClose} onKeyDown={undefined}>
-      <div className="machine-info-panel" onClick={(e) => e.stopPropagation()} onKeyDown={undefined}>
+      <div
+        className="machine-info-panel"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={undefined}
+      >
         {/* Header */}
         <div className="machine-info-panel__header">
           <div className="machine-info-panel__title-row">
             <MonitorCog size={18} strokeWidth={1.5} />
             <h3 className="machine-info-panel__title">{machineName}</h3>
           </div>
-          <button type="button" onClick={onClose} className="machine-info-panel__close" aria-label="Close">
+          <button
+            type="button"
+            onClick={onClose}
+            className="machine-info-panel__close"
+            aria-label="Close"
+          >
             <X size={16} strokeWidth={1.5} />
           </button>
         </div>
@@ -128,7 +137,8 @@ export function MachineInfoPanel({ onClose }: { onClose: () => void }) {
                 <MemoryStick size={14} strokeWidth={1.5} />
                 <span className="machine-info-panel__stat-label">Memory</span>
                 <span className="machine-info-panel__stat-value">
-                  {(status.system.memUsedMB / 1024).toFixed(1)} / {(status.system.memTotalMB / 1024).toFixed(1)} GB
+                  {(status.system.memUsedMB / 1024).toFixed(1)} /{' '}
+                  {(status.system.memTotalMB / 1024).toFixed(1)} GB
                 </span>
               </div>
 

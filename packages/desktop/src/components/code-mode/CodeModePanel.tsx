@@ -1,4 +1,15 @@
-import { ChevronRight, File, FileCode, FileText, Folder, FolderOpen, Image, RefreshCw, Terminal, X } from 'lucide-react'
+import {
+  ChevronRight,
+  File,
+  FileCode,
+  FileText,
+  Folder,
+  FolderOpen,
+  Image,
+  RefreshCw,
+  Terminal,
+  X,
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '../../lib/store.js'
 
@@ -61,12 +72,31 @@ function getFileIcon(name: string) {
 function detectLanguage(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase()
   const map: Record<string, string> = {
-    ts: 'typescript', tsx: 'tsx', js: 'javascript', jsx: 'jsx',
-    py: 'python', rs: 'rust', go: 'go', java: 'java', rb: 'ruby',
-    c: 'c', cpp: 'cpp', h: 'c', swift: 'swift', kt: 'kotlin',
-    md: 'markdown', json: 'json', yaml: 'yaml', yml: 'yaml',
-    toml: 'toml', xml: 'xml', html: 'html', css: 'css',
-    sh: 'bash', zsh: 'bash', dockerfile: 'dockerfile',
+    ts: 'typescript',
+    tsx: 'tsx',
+    js: 'javascript',
+    jsx: 'jsx',
+    py: 'python',
+    rs: 'rust',
+    go: 'go',
+    java: 'java',
+    rb: 'ruby',
+    c: 'c',
+    cpp: 'cpp',
+    h: 'c',
+    swift: 'swift',
+    kt: 'kotlin',
+    md: 'markdown',
+    json: 'json',
+    yaml: 'yaml',
+    yml: 'yaml',
+    toml: 'toml',
+    xml: 'xml',
+    html: 'html',
+    css: 'css',
+    sh: 'bash',
+    zsh: 'bash',
+    dockerfile: 'dockerfile',
   }
   return map[ext || ''] || 'text'
 }
@@ -100,10 +130,15 @@ function FileTreeItem({
             strokeWidth={1.5}
             className={`code-tree__chevron ${expanded ? 'code-tree__chevron--open' : ''}`}
           />
-          {expanded
-            ? <FolderOpen size={14} strokeWidth={1.5} className="code-tree__icon code-tree__icon--dir" />
-            : <Folder size={14} strokeWidth={1.5} className="code-tree__icon code-tree__icon--dir" />
-          }
+          {expanded ? (
+            <FolderOpen
+              size={14}
+              strokeWidth={1.5}
+              className="code-tree__icon code-tree__icon--dir"
+            />
+          ) : (
+            <Folder size={14} strokeWidth={1.5} className="code-tree__icon code-tree__icon--dir" />
+          )}
           <span className="code-tree__label">{node.name}</span>
         </button>
         {expanded && node.children && (
@@ -139,14 +174,17 @@ function FileTreeItem({
 
 // ── Terminal Output ──
 
-function TerminalOutput({ outputs }: { outputs: Array<{ command: string; output: string; isError?: boolean }> }) {
+function TerminalOutput({
+  outputs,
+}: { outputs: Array<{ command: string; output: string; isError?: boolean }> }) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: outputs is a prop, changes trigger re-render
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [outputs])
+  }, [outputs.length])
 
   if (outputs.length === 0) {
     return (
@@ -166,7 +204,9 @@ function TerminalOutput({ outputs }: { outputs: Array<{ command: string; output:
             <span>{entry.command}</span>
           </div>
           {entry.output && (
-            <pre className={`code-terminal__result ${entry.isError ? 'code-terminal__result--error' : ''}`}>
+            <pre
+              className={`code-terminal__result ${entry.isError ? 'code-terminal__result--error' : ''}`}
+            >
               {entry.output}
             </pre>
           )}
@@ -191,7 +231,9 @@ function FileViewer({ filename, content }: { filename: string; content: string }
       <div className="code-viewer__body">
         <div className="code-viewer__gutter">
           {lines.map((_, i) => (
-            <span key={`line-${i + 1}`} className="code-viewer__line-number">{i + 1}</span>
+            <span key={`line-${i + 1}`} className="code-viewer__line-number">
+              {i + 1}
+            </span>
           ))}
         </div>
         <pre className="code-viewer__code">
@@ -229,9 +271,7 @@ export function CodeModePanel({ onClose }: { onClose: () => void }) {
 
   // Build file tree from artifacts
   useEffect(() => {
-    const fileArtifacts = artifacts.filter(
-      (a) => a.type === 'file' && a.filepath
-    )
+    const fileArtifacts = artifacts.filter((a) => a.type === 'file' && a.filepath)
 
     if (fileArtifacts.length === 0 && !workspacePath) {
       setFileTree([])
@@ -244,23 +284,24 @@ export function CodeModePanel({ onClose }: { onClose: () => void }) {
         path: a.filepath || a.filename || a.title || 'unknown',
         content: a.content,
       })),
-      workspacePath || ''
+      workspacePath || '',
     )
     setFileTree(tree)
   }, [artifacts, workspacePath])
 
-  const handleFileSelect = useCallback((node: FileNode) => {
-    setSelectedFile(node)
-    // Try to find content from artifacts
-    const artifact = artifacts.find(
-      (a) => a.filepath === node.path || a.filename === node.name
-    )
-    if (artifact) {
-      setFileContent(artifact.content)
-    } else {
-      setFileContent(null)
-    }
-  }, [artifacts])
+  const handleFileSelect = useCallback(
+    (node: FileNode) => {
+      setSelectedFile(node)
+      // Try to find content from artifacts
+      const artifact = artifacts.find((a) => a.filepath === node.path || a.filename === node.name)
+      if (artifact) {
+        setFileContent(artifact.content)
+      } else {
+        setFileContent(null)
+      }
+    },
+    [artifacts],
+  )
 
   const handleRefresh = useCallback(() => {
     setIsLoading(true)
@@ -358,9 +399,7 @@ export function CodeModePanel({ onClose }: { onClose: () => void }) {
             {/* File tree */}
             <div className="code-tree">
               {workspacePath && (
-                <div className="code-tree__root-label">
-                  {project?.name || 'Project'}
-                </div>
+                <div className="code-tree__root-label">{project?.name || 'Project'}</div>
               )}
               {fileTree.length === 0 ? (
                 <div className="code-tree__empty">
@@ -389,9 +428,7 @@ export function CodeModePanel({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {activeTab === 'terminal' && (
-          <TerminalOutput outputs={shellOutputs} />
-        )}
+        {activeTab === 'terminal' && <TerminalOutput outputs={shellOutputs} />}
       </div>
 
       {/* Workspace path footer */}

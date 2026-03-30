@@ -2,8 +2,8 @@
  * Slack connector tools — direct API, no MCP subprocess.
  */
 
-import { Type, type TSchema, type Static } from '@sinclair/typebox'
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core'
+import { type Static, type TSchema, Type } from '@sinclair/typebox'
 import type { SlackAPI } from './api.js'
 
 function toolResult(output: string, isError = false) {
@@ -28,7 +28,8 @@ export function createSlackTools(api: SlackAPI): AgentTool[] {
     defineTool({
       name: 'slack_list_channels',
       label: 'List Channels',
-      description: '[Slack] List channels in the workspace. Returns channel names, topics, and member counts.',
+      description:
+        '[Slack] List channels in the workspace. Returns channel names, topics, and member counts.',
       parameters: Type.Object({
         types: Type.Optional(
           Type.String({
@@ -74,9 +75,7 @@ export function createSlackTools(api: SlackAPI): AgentTool[] {
           const result = await api.postMessage(params.channel, params.text, {
             thread_ts: params.thread_ts,
           })
-          return toolResult(
-            `Message sent to ${result.channel} (ts: ${result.ts})`,
-          )
+          return toolResult(`Message sent to ${result.channel} (ts: ${result.ts})`)
         } catch (err) {
           return toolResult(`Error sending message: ${(err as Error).message}`, true)
         }

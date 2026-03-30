@@ -10,6 +10,14 @@
 
 import { Channel, type ChatImageAttachmentInput } from '@anton/protocol'
 
+/**
+ * Loose type for decoded WS payloads — all messages have a `type` discriminant.
+ * Callers narrow via switch on `msg.type` and cast to specific message shapes.
+ */
+export interface WsPayload extends Record<string, unknown> {
+  type: string
+}
+
 // We inline the codec here to avoid Uint8Array issues in browser context
 function encodeFrame(channel: number, payload: object): ArrayBuffer {
   const json = JSON.stringify(payload)
@@ -21,8 +29,7 @@ function encodeFrame(channel: number, payload: object): ArrayBuffer {
   return frame.buffer
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: payload is parsed JSON with varying shapes
-function decodeFrame(data: ArrayBuffer): { channel: number; payload: any } {
+function decodeFrame(data: ArrayBuffer): { channel: number; payload: WsPayload } {
   const bytes = new Uint8Array(data)
   const channel = bytes[0]
   const payloadBytes = bytes.slice(1)
@@ -44,8 +51,7 @@ export interface ConnectionConfig {
   useTLS: boolean // wss:// vs ws://
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: message is a polymorphic protocol payload
-export type MessageHandler = (channel: number, message: any) => void
+export type MessageHandler = (channel: number, message: WsPayload) => void
 
 export class Connection {
   private ws: WebSocket | null = null
@@ -278,7 +284,16 @@ export class Connection {
 
   // ── Agents ─────────────────────────────────────────────────────
 
-  sendAgentCreate(projectId: string, agent: { name: string; description?: string; instructions: string; schedule?: string; originConversationId?: string }) {
+  sendAgentCreate(
+    projectId: string,
+    agent: {
+      name: string
+      description?: string
+      instructions: string
+      schedule?: string
+      originConversationId?: string
+    },
+  ) {
     this.send(Channel.AI, { type: 'agent_create', projectId, agent })
   }
 
@@ -286,12 +301,29 @@ export class Connection {
     this.send(Channel.AI, { type: 'agents_list', projectId })
   }
 
-  sendAgentAction(projectId: string, sessionId: string, action: 'start' | 'stop' | 'delete' | 'pause' | 'resume') {
+  sendAgentAction(
+    projectId: string,
+    sessionId: string,
+    action: 'start' | 'stop' | 'delete' | 'pause' | 'resume',
+  ) {
     this.send(Channel.AI, { type: 'agent_action', projectId, sessionId, action })
   }
 
-  sendAgentRunLogs(projectId: string, sessionId: string, startedAt: number, completedAt: number, runSessionId?: string) {
-    this.send(Channel.AI, { type: 'agent_run_logs', projectId, sessionId, startedAt, completedAt, runSessionId })
+  sendAgentRunLogs(
+    projectId: string,
+    sessionId: string,
+    startedAt: number,
+    completedAt: number,
+    runSessionId?: string,
+  ) {
+    this.send(Channel.AI, {
+      type: 'agent_run_logs',
+      projectId,
+      sessionId,
+      startedAt,
+      completedAt,
+      runSessionId,
+    })
   }
 
   // ── Connectors ─────────────────────────────────────────────────
@@ -363,9 +395,11 @@ export class Connection {
     return this.onMessage((channel, msg) => {
       if (channel === Channel.FILESYNC && msg.type === 'fs_list_response') {
         if (msg.error) {
-          handler([], msg.error)
+          handler([], msg.error as string)
         } else {
-          handler(msg.entries || [])
+          handler(
+            (msg.entries || []) as { name: string; type: 'file' | 'dir' | 'link'; size: string }[],
+          )
         }
       }
     })
@@ -401,8 +435,8 @@ export class Connection {
 
         // Handle auth response
         if (channel === Channel.CONTROL && payload.type === 'auth_ok') {
-          this.agentId = payload.agentId
-          this.agentVersion = payload.version
+          this.agentId = payload.agentId as string
+          this.agentVersion = payload.version as string
           this.setStatus('connected', `Agent: ${this.agentId}`)
         } else if (channel === Channel.CONTROL && payload.type === 'auth_error') {
           this.setStatus('error', `Auth failed: ${payload.reason}`)

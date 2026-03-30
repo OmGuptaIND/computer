@@ -22,7 +22,10 @@ export class GoogleDocsConnector implements DirectConnector {
   async testConnection(): Promise<{ success: boolean; error?: string; info?: string }> {
     try {
       const docs = await this.api.listDocuments(1)
-      return { success: true, info: `Connected — found ${docs.length > 0 ? 'documents' : 'no documents yet'}` }
+      return {
+        success: true,
+        info: `Connected — found ${docs.length > 0 ? 'documents' : 'no documents yet'}`,
+      }
     } catch (err) {
       return { success: false, error: (err as Error).message }
     }

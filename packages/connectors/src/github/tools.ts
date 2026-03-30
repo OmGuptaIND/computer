@@ -1,5 +1,5 @@
-import { Type, type TSchema, type Static } from '@sinclair/typebox'
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core'
+import { type Static, type TSchema, Type } from '@sinclair/typebox'
 import type { GitHubAPI } from './api.js'
 
 function toolResult(output: string, isError = false) {
@@ -219,7 +219,9 @@ export function createGitHubTools(api: GitHubAPI): AgentTool[] {
       label: 'Search Code',
       description: '[GitHub] Search for code across GitHub repositories.',
       parameters: Type.Object({
-        query: Type.String({ description: 'Search query (e.g., "addClass language:js repo:owner/name")' }),
+        query: Type.String({
+          description: 'Search query (e.g., "addClass language:js repo:owner/name")',
+        }),
         per_page: Type.Optional(Type.Number({ description: 'Results per page (default: 20)' })),
       }),
       async execute(_id, params) {
@@ -244,7 +246,9 @@ export function createGitHubTools(api: GitHubAPI): AgentTool[] {
       label: 'Search Issues',
       description: '[GitHub] Search issues and pull requests across GitHub.',
       parameters: Type.Object({
-        query: Type.String({ description: 'Search query (e.g., "bug label:bug state:open repo:owner/name")' }),
+        query: Type.String({
+          description: 'Search query (e.g., "bug label:bug state:open repo:owner/name")',
+        }),
         per_page: Type.Optional(Type.Number({ description: 'Results per page (default: 20)' })),
       }),
       async execute(_id, params) {
@@ -270,7 +274,8 @@ export function createGitHubTools(api: GitHubAPI): AgentTool[] {
     defineTool({
       name: 'github_get_branch',
       label: 'Get Branch',
-      description: '[GitHub] Get branch info including latest commit SHA. Useful before creating a new branch.',
+      description:
+        '[GitHub] Get branch info including latest commit SHA. Useful before creating a new branch.',
       parameters: Type.Object({
         owner: Type.String({ description: 'Repository owner' }),
         repo: Type.String({ description: 'Repository name' }),
@@ -279,11 +284,17 @@ export function createGitHubTools(api: GitHubAPI): AgentTool[] {
       async execute(_id, params) {
         try {
           const branch = await api.getBranch(params.owner, params.repo, params.branch)
-          return toolResult(JSON.stringify({
-            name: branch.name,
-            sha: branch.commit.sha,
-            protected: branch.protected,
-          }, null, 2))
+          return toolResult(
+            JSON.stringify(
+              {
+                name: branch.name,
+                sha: branch.commit.sha,
+                protected: branch.protected,
+              },
+              null,
+              2,
+            ),
+          )
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
         }
@@ -293,7 +304,8 @@ export function createGitHubTools(api: GitHubAPI): AgentTool[] {
     defineTool({
       name: 'github_create_branch',
       label: 'Create Branch',
-      description: '[GitHub] Create a new branch from a specific commit SHA. Get the SHA from github_get_branch first.',
+      description:
+        '[GitHub] Create a new branch from a specific commit SHA. Get the SHA from github_get_branch first.',
       parameters: Type.Object({
         owner: Type.String({ description: 'Repository owner' }),
         repo: Type.String({ description: 'Repository name' }),
@@ -302,7 +314,12 @@ export function createGitHubTools(api: GitHubAPI): AgentTool[] {
       }),
       async execute(_id, params) {
         try {
-          const ref = await api.createBranch(params.owner, params.repo, params.branch, params.from_sha)
+          const ref = await api.createBranch(
+            params.owner,
+            params.repo,
+            params.branch,
+            params.from_sha,
+          )
           return toolResult(`Created branch "${params.branch}" at ${ref.object.sha}`)
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
@@ -315,15 +332,20 @@ export function createGitHubTools(api: GitHubAPI): AgentTool[] {
     defineTool({
       name: 'github_create_or_update_file',
       label: 'Create or Update File',
-      description: '[GitHub] Create or update a file in a repository via the API (commits directly). Content must be provided as plain text and will be base64-encoded automatically. To update an existing file, provide its current SHA (from github_get_file_content).',
+      description:
+        '[GitHub] Create or update a file in a repository via the API (commits directly). Content must be provided as plain text and will be base64-encoded automatically. To update an existing file, provide its current SHA (from github_get_file_content).',
       parameters: Type.Object({
         owner: Type.String({ description: 'Repository owner' }),
         repo: Type.String({ description: 'Repository name' }),
         path: Type.String({ description: 'File path in the repository' }),
         content: Type.String({ description: 'File content (plain text, will be base64-encoded)' }),
         message: Type.String({ description: 'Commit message' }),
-        branch: Type.Optional(Type.String({ description: 'Branch to commit to (default: repo default branch)' })),
-        sha: Type.Optional(Type.String({ description: 'SHA of the file being replaced (required for updates)' })),
+        branch: Type.Optional(
+          Type.String({ description: 'Branch to commit to (default: repo default branch)' }),
+        ),
+        sha: Type.Optional(
+          Type.String({ description: 'SHA of the file being replaced (required for updates)' }),
+        ),
       }),
       async execute(_id, params) {
         try {
@@ -336,7 +358,9 @@ export function createGitHubTools(api: GitHubAPI): AgentTool[] {
             encoded,
             { branch: params.branch, sha: params.sha },
           )
-          return toolResult(`File ${params.sha ? 'updated' : 'created'}: ${result.content.html_url}\nCommit: ${result.commit.html_url}`)
+          return toolResult(
+            `File ${params.sha ? 'updated' : 'created'}: ${result.content.html_url}\nCommit: ${result.commit.html_url}`,
+          )
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
         }
@@ -346,7 +370,8 @@ export function createGitHubTools(api: GitHubAPI): AgentTool[] {
     defineTool({
       name: 'github_delete_file',
       label: 'Delete File',
-      description: '[GitHub] Delete a file from a repository. Requires the file SHA (from github_get_file_content).',
+      description:
+        '[GitHub] Delete a file from a repository. Requires the file SHA (from github_get_file_content).',
       parameters: Type.Object({
         owner: Type.String({ description: 'Repository owner' }),
         repo: Type.String({ description: 'Repository name' }),
@@ -412,21 +437,19 @@ export function createGitHubTools(api: GitHubAPI): AgentTool[] {
         owner: Type.String({ description: 'Repository owner' }),
         repo: Type.String({ description: 'Repository name' }),
         pr_number: Type.Number({ description: 'PR number' }),
-        merge_method: Type.Optional(Type.Union([
-          Type.Literal('merge'),
-          Type.Literal('squash'),
-          Type.Literal('rebase'),
-        ], { description: 'Merge method (default: merge)' })),
+        merge_method: Type.Optional(
+          Type.Union([Type.Literal('merge'), Type.Literal('squash'), Type.Literal('rebase')], {
+            description: 'Merge method (default: merge)',
+          }),
+        ),
         commit_title: Type.Optional(Type.String({ description: 'Custom merge commit title' })),
       }),
       async execute(_id, params) {
         try {
-          const result = await api.mergePullRequest(
-            params.owner,
-            params.repo,
-            params.pr_number,
-            { merge_method: params.merge_method, commit_title: params.commit_title },
-          )
+          const result = await api.mergePullRequest(params.owner, params.repo, params.pr_number, {
+            merge_method: params.merge_method,
+            commit_title: params.commit_title,
+          })
           if (result.merged) {
             return toolResult(`PR #${params.pr_number} merged successfully (${result.sha})`)
           }

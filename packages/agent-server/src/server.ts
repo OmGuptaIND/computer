@@ -16,6 +16,7 @@ import { createServer as createHttpsServer } from 'node:https'
 import { join } from 'node:path'
 import type { AgentConfig } from '@anton/agent-config'
 import {
+  appendMessageToSession,
   appendSessionHistory,
   buildProjectContext,
   cleanExpiredSessions,
@@ -24,10 +25,12 @@ import {
   deleteProject,
   deleteProjectFile,
   getAntonDir,
+  getProjectSessionsDir,
   getProvidersList,
   listProjectFiles,
   listProjectSessions,
   listSessionMetas,
+  loadAgentMetadata,
   loadProject,
   loadProjects,
   saveConfig,
@@ -38,9 +41,6 @@ import {
   updateProject,
   updateProjectContext,
   updateProjectStats,
-  appendMessageToSession,
-  getProjectSessionsDir,
-  loadAgentMetadata,
 } from '@anton/agent-config'
 import { GIT_HASH, VERSION } from '@anton/agent-config'
 import {
@@ -61,13 +61,13 @@ import {
   executePublish,
   resumeSession,
 } from '@anton/agent-core'
+import { CONNECTOR_FACTORIES, ConnectorManager } from '@anton/connectors'
 import { Channel, decodeFrame, encodeFrame, parseJsonPayload } from '@anton/protocol'
 import type { AiMessage, ChannelId, ControlMessage, TerminalMessage } from '@anton/protocol'
 import { WebSocket, WebSocketServer } from 'ws'
-import { ConnectorManager, CONNECTOR_FACTORIES } from '@anton/connectors'
 import { OAuthFlow, TokenStore, oauthCallbackHandler } from './oauth/index.js'
-import { TelegramBotHandler } from './telegram-bot.js'
 import type { Scheduler } from './scheduler.js'
+import { TelegramBotHandler } from './telegram-bot.js'
 import { Updater } from './updater.js'
 
 const DEFAULT_SESSION_ID = 'default'
@@ -99,9 +99,8 @@ export class AgentServer {
     // Initialize OAuth infrastructure
     this.tokenStore = new TokenStore(getAntonDir(), config.token)
     this.oauthFlow = new OAuthFlow(config, this.tokenStore)
-    this.connectorManager = new ConnectorManager(
-      CONNECTOR_FACTORIES,
-      (provider) => this.oauthFlow.getToken(provider),
+    this.connectorManager = new ConnectorManager(CONNECTOR_FACTORIES, (provider) =>
+      this.oauthFlow.getToken(provider),
     )
 
     // Clean expired sessions on startup
@@ -120,60 +119,64 @@ export class AgentServer {
     this.agentManager = agentManager
 
     // Wire sendMessage — each agent run creates a fresh ephemeral session
-    agentManager.setSendMessageHandler(async (agentSessionId, content, agentInstructions, agentMemory) => {
-      // Generate a unique session ID for this run
-      const runSessionId = `agent-run--${agentSessionId}--${Date.now().toString(36)}`
+    agentManager.setSendMessageHandler(
+      async (agentSessionId, content, agentInstructions, agentMemory) => {
+        // Generate a unique session ID for this run
+        const runSessionId = `agent-run--${agentSessionId}--${Date.now().toString(36)}`
 
-      // Extract projectId from agent session ID
-      const projectId = this.extractProjectId(agentSessionId)
+        // Extract projectId from agent session ID
+        const projectId = this.extractProjectId(agentSessionId)
 
-      // Create a fresh session — agent runs are autonomous, no onJobAction needed
-      const session = createSession(runSessionId, this.config, {
-        ...this.buildSessionOptions(runSessionId, projectId, {
-          agentInstructions,
-          agentMemory: agentMemory ?? undefined,
-        }),
-        onJobAction: undefined, // agent runs don't manage other agents
-      })
+        // Create a fresh session — agent runs are autonomous, no onJobAction needed
+        const session = createSession(runSessionId, this.config, {
+          ...this.buildSessionOptions(runSessionId, projectId, {
+            agentInstructions,
+            agentMemory: agentMemory ?? undefined,
+          }),
+          onJobAction: undefined, // agent runs don't manage other agents
+        })
 
-      // Agent sessions are autonomous — auto-approve everything
-      this.wireAgentAutoHandlers(session)
-      this.sessions.set(runSessionId, session)
+        // Agent sessions are autonomous — auto-approve everything
+        this.wireAgentAutoHandlers(session)
+        this.sessions.set(runSessionId, session)
 
-      console.log(`[AgentRun] Created fresh session ${runSessionId} for agent ${agentSessionId}`)
+        console.log(`[AgentRun] Created fresh session ${runSessionId} for agent ${agentSessionId}`)
 
-      let eventCount = 0
-      let summary = ''
+        let eventCount = 0
+        let summary = ''
 
-      try {
-        // Run the conversation
-        eventCount = await this.handleChatMessage({ content, sessionId: runSessionId })
-
-        console.log(`[AgentRun] ${runSessionId}: ${eventCount} events produced`)
-
-        // Extract summary from the last assistant text
         try {
-          const history = session.getHistory()
-          console.log(`[AgentRun] ${runSessionId}: ${history.length} history entries, roles: ${history.map(h => h.role).join(',')}`)
-          for (let i = history.length - 1; i >= 0; i--) {
-            if (history[i].role === 'assistant' && history[i].content) {
-              summary = String(history[i].content).slice(0, 2000)
-              break
-            }
-          }
-        } catch (extractErr) {
-          console.warn(`[AgentRun] Summary extraction failed:`, extractErr)
-        }
-      } catch (err) {
-        console.error(`[AgentRun] Failed for ${agentSessionId}:`, err)
-        throw err
-      } finally {
-        // Always clean up cached session (persisted to disk by the session itself)
-        this.sessions.delete(runSessionId)
-      }
+          // Run the conversation
+          eventCount = await this.handleChatMessage({ content, sessionId: runSessionId })
 
-      return { eventCount, summary, runSessionId }
-    })
+          console.log(`[AgentRun] ${runSessionId}: ${eventCount} events produced`)
+
+          // Extract summary from the last assistant text
+          try {
+            const history = session.getHistory()
+            console.log(
+              `[AgentRun] ${runSessionId}: ${history.length} history entries, roles: ${history.map((h) => h.role).join(',')}`,
+            )
+            for (let i = history.length - 1; i >= 0; i--) {
+              if (history[i].role === 'assistant' && history[i].content) {
+                summary = String(history[i].content).slice(0, 2000)
+                break
+              }
+            }
+          } catch (extractErr) {
+            console.warn('[AgentRun] Summary extraction failed:', extractErr)
+          }
+        } catch (err) {
+          console.error(`[AgentRun] Failed for ${agentSessionId}:`, err)
+          throw err
+        } finally {
+          // Always clean up cached session (persisted to disk by the session itself)
+          this.sessions.delete(runSessionId)
+        }
+
+        return { eventCount, summary, runSessionId }
+      },
+    )
   }
 
   async start(): Promise<void> {
@@ -364,7 +367,11 @@ export class AgentServer {
           // Cancel interactive turns but keep background work (sub-agents, agent jobs) alive
           for (const sessionId of this.activeTurns) {
             // Sub-agent sessions (sub_*) and agent sessions continue in background
-            if (sessionId.startsWith('sub_') || sessionId.startsWith('agent-job-') || sessionId.startsWith('agent--')) {
+            if (
+              sessionId.startsWith('sub_') ||
+              sessionId.startsWith('agent-job-') ||
+              sessionId.startsWith('agent--')
+            ) {
               console.log(`Keeping background turn alive: ${sessionId}`)
               continue
             }
@@ -376,7 +383,11 @@ export class AgentServer {
           }
           // Only clear non-background turns
           for (const sessionId of this.activeTurns) {
-            if (!sessionId.startsWith('sub_') && !sessionId.startsWith('agent-job-') && !sessionId.startsWith('agent--')) {
+            if (
+              !sessionId.startsWith('sub_') &&
+              !sessionId.startsWith('agent-job-') &&
+              !sessionId.startsWith('agent--')
+            ) {
               this.activeTurns.delete(sessionId)
             }
           }
@@ -829,7 +840,7 @@ export class AgentServer {
           console.log(`[${steerSessionId}] Steering: "${msg.content.slice(0, 60)}"`)
         } else {
           // Session not active — treat as a regular message
-          await this.handleChatMessage(msg as any)
+          await this.handleChatMessage({ content: msg.content, sessionId: msg.sessionId })
         }
         break
       }
@@ -933,12 +944,16 @@ export class AgentServer {
     projectId?: string
   }) {
     try {
-      const session = createSession(msg.id, this.config, this.buildSessionOptions(msg.id, msg.projectId, {
-        provider: msg.provider,
-        model: msg.model,
-        apiKey: msg.apiKey,
-        domain: process.env.DOMAIN,
-      }))
+      const session = createSession(
+        msg.id,
+        this.config,
+        this.buildSessionOptions(msg.id, msg.projectId, {
+          provider: msg.provider,
+          model: msg.model,
+          apiKey: msg.apiKey,
+          domain: process.env.DOMAIN,
+        }),
+      )
 
       this.wireSessionConfirmHandler(session)
       this.wirePlanConfirmHandler(session)
@@ -1233,11 +1248,14 @@ export class AgentServer {
         const projectId = this.extractProjectId(msg.id)
 
         // Try loading from disk (project dir first, then global fallback)
-        session = resumeSession(msg.id, this.config, this.buildSessionOptions(msg.id, projectId)) ?? undefined
+        session =
+          resumeSession(msg.id, this.config, this.buildSessionOptions(msg.id, projectId)) ??
+          undefined
 
         // Fallback to global sessions dir if project-scoped lookup failed
         if (!session && projectId) {
-          session = resumeSession(msg.id, this.config, this.buildSessionOptions(msg.id)) ?? undefined
+          session =
+            resumeSession(msg.id, this.config, this.buildSessionOptions(msg.id)) ?? undefined
         }
 
         if (!session) {
@@ -1444,7 +1462,13 @@ export class AgentServer {
       return
     }
     try {
-      const spec = msg.agent as { name: string; description?: string; instructions: string; schedule?: string; originConversationId?: string }
+      const spec = msg.agent as {
+        name: string
+        description?: string
+        instructions: string
+        schedule?: string
+        originConversationId?: string
+      }
       const agent = this.agentManager.createAgent(msg.projectId, spec)
       this.sendToClient(Channel.AI, { type: 'agent_created', agent })
     } catch (err: unknown) {
@@ -1454,11 +1478,19 @@ export class AgentServer {
 
   private handleAgentsList(msg: { projectId: string }) {
     if (!this.agentManager) {
-      this.sendToClient(Channel.AI, { type: 'agents_list_response', projectId: msg.projectId, agents: [] })
+      this.sendToClient(Channel.AI, {
+        type: 'agents_list_response',
+        projectId: msg.projectId,
+        agents: [],
+      })
       return
     }
     const agents = this.agentManager.listAgents(msg.projectId)
-    this.sendToClient(Channel.AI, { type: 'agents_list_response', projectId: msg.projectId, agents })
+    this.sendToClient(Channel.AI, {
+      type: 'agents_list_response',
+      projectId: msg.projectId,
+      agents,
+    })
   }
 
   private handleAgentAction(msg: { projectId: string; sessionId: string; action: string }) {
@@ -1488,9 +1520,16 @@ export class AgentServer {
       }
       case 'delete':
         if (this.agentManager.deleteAgent(msg.sessionId)) {
-          this.sendToClient(Channel.AI, { type: 'agent_deleted', projectId: msg.projectId, sessionId: msg.sessionId })
+          this.sendToClient(Channel.AI, {
+            type: 'agent_deleted',
+            projectId: msg.projectId,
+            sessionId: msg.sessionId,
+          })
         } else {
-          this.sendToClient(Channel.AI, { type: 'error', message: `Agent not found: ${msg.sessionId}` })
+          this.sendToClient(Channel.AI, {
+            type: 'error',
+            message: `Agent not found: ${msg.sessionId}`,
+          })
         }
         break
       default:
@@ -1498,7 +1537,13 @@ export class AgentServer {
     }
   }
 
-  private handleAgentRunLogs(msg: { projectId: string; sessionId: string; runSessionId?: string; startedAt: number; completedAt: number }) {
+  private handleAgentRunLogs(msg: {
+    projectId: string
+    sessionId: string
+    runSessionId?: string
+    startedAt: number
+    completedAt: number
+  }) {
     try {
       // Use the run's own session ID if available (new architecture: each run = fresh session)
       const targetSessionId = msg.runSessionId || msg.sessionId
@@ -1507,30 +1552,46 @@ export class AgentServer {
       if (!session) {
         const projectId = this.extractProjectId(targetSessionId) || msg.projectId
 
-        session = resumeSession(targetSessionId, this.config, this.buildSessionOptions(targetSessionId, projectId)) ?? undefined
+        session =
+          resumeSession(
+            targetSessionId,
+            this.config,
+            this.buildSessionOptions(targetSessionId, projectId),
+          ) ?? undefined
 
         if (!session) {
-          this.sendToClient(Channel.AI, { type: 'agent_run_logs_response', sessionId: msg.sessionId, logs: [] })
+          this.sendToClient(Channel.AI, {
+            type: 'agent_run_logs_response',
+            sessionId: msg.sessionId,
+            logs: [],
+          })
           return
         }
       }
 
       // Get full history — for run-specific sessions, return everything (no time filtering needed)
       const fullHistory = session.getHistory()
-      const logs = fullHistory
-        .map((entry) => ({
-          ts: entry.ts,
-          role: entry.role as 'user' | 'assistant' | 'tool_call' | 'tool_result',
-          content: typeof entry.content === 'string' ? entry.content.slice(0, 2000) : '',
-          toolName: entry.toolName,
-          toolInput: entry.toolInput ? JSON.stringify(entry.toolInput).slice(0, 500) : undefined,
-          isError: entry.isError,
-        }))
+      const logs = fullHistory.map((entry) => ({
+        ts: entry.ts,
+        role: entry.role as 'user' | 'assistant' | 'tool_call' | 'tool_result',
+        content: typeof entry.content === 'string' ? entry.content.slice(0, 2000) : '',
+        toolName: entry.toolName,
+        toolInput: entry.toolInput ? JSON.stringify(entry.toolInput).slice(0, 500) : undefined,
+        isError: entry.isError,
+      }))
 
-      this.sendToClient(Channel.AI, { type: 'agent_run_logs_response', sessionId: msg.sessionId, logs })
+      this.sendToClient(Channel.AI, {
+        type: 'agent_run_logs_response',
+        sessionId: msg.sessionId,
+        logs,
+      })
     } catch (err) {
-      console.error(`Failed to get agent run logs:`, err)
-      this.sendToClient(Channel.AI, { type: 'agent_run_logs_response', sessionId: msg.sessionId, logs: [] })
+      console.error('Failed to get agent run logs:', err)
+      this.sendToClient(Channel.AI, {
+        type: 'agent_run_logs_response',
+        sessionId: msg.sessionId,
+        logs: [],
+      })
     }
   }
 
@@ -1611,16 +1672,17 @@ export class AgentServer {
       projectWorkspacePath: project?.workspacePath,
       projectType: project?.type,
       onJobAction: projectId ? this.buildAgentActionHandler(sessionId) : undefined,
-      onDeliverResult: (isAgent && projectId)
-        ? this.buildDeliverResultHandler(sessionId, projectId)
-        : undefined,
+      onDeliverResult:
+        isAgent && projectId ? this.buildDeliverResultHandler(sessionId, projectId) : undefined,
       agentInstructions,
       agentMemory: extra?.agentMemory,
     }
   }
 
   /** Build the agent action callback for the agent tool (used by the LLM) */
-  private buildAgentActionHandler(originSessionId?: string): import('@anton/agent-core').JobActionHandler | undefined {
+  private buildAgentActionHandler(
+    originSessionId?: string,
+  ): import('@anton/agent-core').JobActionHandler | undefined {
     if (!this.agentManager) return undefined
     const am = this.agentManager
 
@@ -1645,7 +1707,10 @@ export class AgentServer {
           const agents = am.listAgents(projectId)
           if (agents.length === 0) return 'No agents in this project.'
           return agents
-            .map((a) => `- ${a.agent.name} (session: ${a.sessionId}, status: ${a.agent.status}${a.agent.schedule?.cron ? `, schedule: ${a.agent.schedule.cron}` : ''})`)
+            .map(
+              (a) =>
+                `- ${a.agent.name} (session: ${a.sessionId}, status: ${a.agent.status}${a.agent.schedule?.cron ? `, schedule: ${a.agent.schedule.cron}` : ''})`,
+            )
             .join('\n')
         }
         case 'start': {
@@ -1664,7 +1729,11 @@ export class AgentServer {
           if (!input.jobId) return 'Error: job_id (session ID) is required for delete'
           const success = am.deleteAgent(input.jobId)
           if (!success) return `Error: Agent not found: ${input.jobId}`
-          this.sendToClient(Channel.AI, { type: 'agent_deleted', projectId, sessionId: input.jobId })
+          this.sendToClient(Channel.AI, {
+            type: 'agent_deleted',
+            projectId,
+            sessionId: input.jobId,
+          })
           return 'Agent deleted.'
         }
         case 'status': {
@@ -1676,7 +1745,9 @@ export class AgentServer {
             `Status: ${agent.agent.status}`,
             `Runs: ${agent.agent.runCount}`,
             agent.agent.schedule ? `Schedule: ${agent.agent.schedule.cron}` : 'Schedule: manual',
-            agent.agent.lastRunAt ? `Last run: ${new Date(agent.agent.lastRunAt).toISOString()}` : 'Last run: never',
+            agent.agent.lastRunAt
+              ? `Last run: ${new Date(agent.agent.lastRunAt).toISOString()}`
+              : 'Last run: never',
           ].join('\n')
         }
         default:
@@ -1686,7 +1757,10 @@ export class AgentServer {
   }
 
   /** Build the deliver_result callback for an agent session */
-  private buildDeliverResultHandler(agentSessionId: string, projectId: string): import('@anton/agent-core').DeliverResultHandler {
+  private buildDeliverResultHandler(
+    agentSessionId: string,
+    projectId: string,
+  ): import('@anton/agent-core').DeliverResultHandler {
     return async (result) => {
       // Find the agent to get its originConversationId and name
       const agent = this.agentManager?.getAgent(agentSessionId)
@@ -1913,9 +1987,13 @@ export class AgentServer {
     let session = this.sessions.get(sessionId)
     if (!session) {
       if (sessionId === DEFAULT_SESSION_ID) {
-        session = createSession(DEFAULT_SESSION_ID, this.config, this.buildSessionOptions(DEFAULT_SESSION_ID, undefined, {
-          domain: process.env.DOMAIN,
-        }))
+        session = createSession(
+          DEFAULT_SESSION_ID,
+          this.config,
+          this.buildSessionOptions(DEFAULT_SESSION_ID, undefined, {
+            domain: process.env.DOMAIN,
+          }),
+        )
         this.wireSessionConfirmHandler(session)
         this.wirePlanConfirmHandler(session)
         this.wireAskUserHandler(session)
@@ -1930,7 +2008,8 @@ export class AgentServer {
 
         // Also try global sessions as fallback
         if (!session && projectId) {
-          session = resumeSession(sessionId, this.config, this.buildSessionOptions(sessionId)) ?? undefined
+          session =
+            resumeSession(sessionId, this.config, this.buildSessionOptions(sessionId)) ?? undefined
         }
 
         // For agent sessions that have never run: create a fresh session
@@ -2022,7 +2101,8 @@ export class AgentServer {
               const parsed = JSON.parse(tr.output)
               // Validate shape — sessionSummary must be a string, projectSummary optional string
               if (parsed && typeof parsed.sessionSummary === 'string') {
-                const newProjectSummary = typeof parsed.projectSummary === 'string' ? parsed.projectSummary : undefined
+                const newProjectSummary =
+                  typeof parsed.projectSummary === 'string' ? parsed.projectSummary : undefined
                 // Keep previous projectSummary if new call omits it
                 projectContextUpdate = {
                   sessionSummary: parsed.sessionSummary,
@@ -2364,11 +2444,15 @@ export class AgentServer {
     } else if (process.env.OAUTH_CALLBACK_BASE_URL) {
       try {
         publicUrl = new URL(process.env.OAUTH_CALLBACK_BASE_URL).origin
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     } else if (this.config.oauth?.callbackBaseUrl) {
       try {
         publicUrl = new URL(this.config.oauth.callbackBaseUrl).origin
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
 
     if (!publicUrl) {
@@ -2401,7 +2485,10 @@ export class AgentServer {
 
     for (const c of apiConnectors) {
       // Prefer stored apiKey from config, fall back to env var
-      const token = c.apiKey ?? process.env[`${c.id.toUpperCase()}_BOT_TOKEN`] ?? process.env[`${c.id.toUpperCase()}_API_KEY`]
+      const token =
+        c.apiKey ??
+        process.env[`${c.id.toUpperCase()}_BOT_TOKEN`] ??
+        process.env[`${c.id.toUpperCase()}_API_KEY`]
       if (token) {
         this.connectorManager.activateWithToken(c.id, token)
         this.applyConnectorMetadata(c.id, c.metadata)
@@ -2460,7 +2547,11 @@ export class AgentServer {
       }
 
       // Activate direct API connectors immediately using the provided token
-      if (msg.connector.type === 'api' && msg.connector.apiKey && this.connectorManager.hasFactory(msg.connector.id)) {
+      if (
+        msg.connector.type === 'api' &&
+        msg.connector.apiKey &&
+        this.connectorManager.hasFactory(msg.connector.id)
+      ) {
         this.connectorManager.activateWithToken(msg.connector.id, msg.connector.apiKey)
         this.applyConnectorMetadata(msg.connector.id, msg.connector.metadata)
         this.refreshAllSessionTools()
@@ -2606,7 +2697,8 @@ export class AgentServer {
         type: 'connector_oauth_complete',
         provider: msg.provider,
         success: false,
-        error: 'OAuth proxy URL or callback base URL not configured. Set OAUTH_PROXY_URL and OAUTH_CALLBACK_BASE_URL environment variables.',
+        error:
+          'OAuth proxy URL or callback base URL not configured. Set OAUTH_PROXY_URL and OAUTH_CALLBACK_BASE_URL environment variables.',
       })
       return
     }
@@ -2631,7 +2723,11 @@ export class AgentServer {
     console.log(`OAuth connector disconnected: ${msg.provider}`)
   }
 
-  private async handleOAuthComplete(result: { provider: string; success: boolean; error?: string }): Promise<void> {
+  private async handleOAuthComplete(result: {
+    provider: string
+    success: boolean
+    error?: string
+  }): Promise<void> {
     if (result.success) {
       // Auto-create a connector config for the OAuth provider
       const existingConnector = getConnectors(this.config).find((c) => c.id === result.provider)
@@ -2697,8 +2793,8 @@ export class AgentServer {
     if (!connector) return
     if (id === 'telegram' && metadata.OWNER_CHAT_ID) {
       const chatId = Number(metadata.OWNER_CHAT_ID)
-      if (!isNaN(chatId) && 'setOwnerChatId' in connector) {
-        (connector as { setOwnerChatId: (id: number) => void }).setOwnerChatId(chatId)
+      if (!Number.isNaN(chatId) && 'setOwnerChatId' in connector) {
+        ;(connector as { setOwnerChatId: (id: number) => void }).setOwnerChatId(chatId)
         console.log(`  Telegram owner chat ID set: ${chatId}`)
       }
     }
@@ -2722,10 +2818,12 @@ export class AgentServer {
       for (const m of metas.slice(0, 20)) {
         const ago = Math.round((Date.now() - m.lastActiveAt) / 60_000)
         const agoStr =
-          ago < 60 ? `${ago}m ago` : ago < 1440 ? `${Math.round(ago / 60)}h ago` : `${Math.round(ago / 1440)}d ago`
-        console.log(
-          `  - ${m.id}: "${m.title}" (${m.messageCount} msgs, last active ${agoStr})`,
-        )
+          ago < 60
+            ? `${ago}m ago`
+            : ago < 1440
+              ? `${Math.round(ago / 60)}h ago`
+              : `${Math.round(ago / 1440)}d ago`
+        console.log(`  - ${m.id}: "${m.title}" (${m.messageCount} msgs, last active ${agoStr})`)
       }
       if (metas.length > 20) console.log(`  ... and ${metas.length - 20} more`)
     } catch (err: unknown) {

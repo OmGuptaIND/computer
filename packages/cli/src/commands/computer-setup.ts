@@ -8,31 +8,31 @@
  * Interactive by default; pass --yes for non-interactive (cloud-init).
  */
 
+import { execSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { chmodSync, createWriteStream, existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { execSync } from 'node:child_process'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { theme } from '../lib/theme.js'
-import { UPDATE_MANIFEST_URL, CLI_VERSION } from '../lib/version.js'
+import { CLI_VERSION, UPDATE_MANIFEST_URL } from '../lib/version.js'
 import {
+  AGENT_BIN,
+  AGENT_SERVICE_PATH,
+  ANTON_DIR,
+  ANTON_USER,
   DEFAULT_PORT,
   DEFAULT_SIDECAR_PORT,
-  ANTON_USER,
-  ANTON_DIR,
-  AGENT_BIN,
-  SIDECAR_BIN,
   ENV_FILE,
-  AGENT_SERVICE_PATH,
+  SIDECAR_BIN,
   SIDECAR_SERVICE_PATH,
-  promptInput,
-  maskToken,
-  step,
   done,
-  fail,
   exec,
   execSilent,
+  fail,
+  maskToken,
+  promptInput,
   requireLinuxRoot,
+  step,
 } from './computer-common.js'
 
 // ── Types ───────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
-import { Type, type TSchema, type Static } from '@sinclair/typebox'
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core'
-import { GoogleSheetsAPI, valuesToMarkdownTable } from './api.js'
+import { type Static, type TSchema, Type } from '@sinclair/typebox'
+import { type GoogleSheetsAPI, valuesToMarkdownTable } from './api.js'
 
 function toolResult(output: string, isError = false) {
   return { content: [{ type: 'text' as const, text: output }], details: { raw: output, isError } }
@@ -8,7 +8,11 @@ function toolResult(output: string, isError = false) {
 
 function defineTool<T extends TSchema>(
   def: Omit<AgentTool<T>, 'execute'> & {
-    execute: (id: string, params: Static<T>, signal?: AbortSignal) => Promise<AgentToolResult<unknown>>
+    execute: (
+      id: string,
+      params: Static<T>,
+      signal?: AbortSignal,
+    ) => Promise<AgentToolResult<unknown>>
   },
 ): AgentTool {
   return def as AgentTool
@@ -16,19 +20,22 @@ function defineTool<T extends TSchema>(
 
 export function createGoogleSheetsTools(api: GoogleSheetsAPI): AgentTool[] {
   return [
-
     defineTool({
       name: 'gsheets_list_spreadsheets',
       label: 'List Spreadsheets',
       description: '[Google Sheets] List recent Google Sheets spreadsheets.',
       parameters: Type.Object({
-        limit: Type.Optional(Type.Number({ description: 'Max spreadsheets to return (default: 20)' })),
+        limit: Type.Optional(
+          Type.Number({ description: 'Max spreadsheets to return (default: 20)' }),
+        ),
       }),
       async execute(_id, params) {
         try {
           const sheets = await api.listSpreadsheets(params.limit ?? 20)
           if (!sheets.length) return toolResult('No spreadsheets found.')
-          const lines = sheets.map((s) => `- [${s.name}](${s.webViewLink}) (id: ${s.id}, modified: ${s.modifiedTime})`)
+          const lines = sheets.map(
+            (s) => `- [${s.name}](${s.webViewLink}) (id: ${s.id}, modified: ${s.modifiedTime})`,
+          )
           return toolResult(lines.join('\n'))
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
@@ -46,8 +53,13 @@ export function createGoogleSheetsTools(api: GoogleSheetsAPI): AgentTool[] {
       async execute(_id, params) {
         try {
           const info = await api.getSpreadsheet(params.spreadsheet_id)
-          const sheets = info.sheets.map((s) => `  - "${s.properties.title}" (id: ${s.properties.sheetId}, rows: ${s.properties.gridProperties?.rowCount ?? '?'}, cols: ${s.properties.gridProperties?.columnCount ?? '?'})`)
-          return toolResult(`Spreadsheet: "${info.properties.title}"\nURL: ${info.spreadsheetUrl}\nSheets:\n${sheets.join('\n')}`)
+          const sheets = info.sheets.map(
+            (s) =>
+              `  - "${s.properties.title}" (id: ${s.properties.sheetId}, rows: ${s.properties.gridProperties?.rowCount ?? '?'}, cols: ${s.properties.gridProperties?.columnCount ?? '?'})`,
+          )
+          return toolResult(
+            `Spreadsheet: "${info.properties.title}"\nURL: ${info.spreadsheetUrl}\nSheets:\n${sheets.join('\n')}`,
+          )
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
         }
@@ -57,10 +69,13 @@ export function createGoogleSheetsTools(api: GoogleSheetsAPI): AgentTool[] {
     defineTool({
       name: 'gsheets_read_range',
       label: 'Read Range',
-      description: '[Google Sheets] Read cell values from a range (e.g. "Sheet1!A1:D10"). Returns a markdown table.',
+      description:
+        '[Google Sheets] Read cell values from a range (e.g. "Sheet1!A1:D10"). Returns a markdown table.',
       parameters: Type.Object({
         spreadsheet_id: Type.String({ description: 'Spreadsheet ID' }),
-        range: Type.String({ description: 'A1 notation range, e.g. "Sheet1!A1:E20" or just "A1:E20" for first sheet' }),
+        range: Type.String({
+          description: 'A1 notation range, e.g. "Sheet1!A1:E20" or just "A1:E20" for first sheet',
+        }),
       }),
       async execute(_id, params) {
         try {
@@ -80,8 +95,15 @@ export function createGoogleSheetsTools(api: GoogleSheetsAPI): AgentTool[] {
       parameters: Type.Object({
         spreadsheet_id: Type.String({ description: 'Spreadsheet ID' }),
         range: Type.String({ description: 'A1 notation range, e.g. "Sheet1!A1"' }),
-        values: Type.Array(Type.Array(Type.String(), { description: 'A row of cell values' }), { description: 'Array of rows, each row is an array of cell values' }),
-        value_input_option: Type.Optional(Type.Union([Type.Literal('RAW'), Type.Literal('USER_ENTERED')], { description: 'RAW stores values as-is; USER_ENTERED parses them like a user typing (default: USER_ENTERED)' })),
+        values: Type.Array(Type.Array(Type.String(), { description: 'A row of cell values' }), {
+          description: 'Array of rows, each row is an array of cell values',
+        }),
+        value_input_option: Type.Optional(
+          Type.Union([Type.Literal('RAW'), Type.Literal('USER_ENTERED')], {
+            description:
+              'RAW stores values as-is; USER_ENTERED parses them like a user typing (default: USER_ENTERED)',
+          }),
+        ),
       }),
       async execute(_id, params) {
         try {
@@ -91,7 +113,9 @@ export function createGoogleSheetsTools(api: GoogleSheetsAPI): AgentTool[] {
             params.values,
             (params.value_input_option as 'RAW' | 'USER_ENTERED' | undefined) ?? 'USER_ENTERED',
           )
-          return toolResult(`Written: ${result.updatedRows} row(s), ${result.updatedColumns} column(s), ${result.updatedCells} cell(s).`)
+          return toolResult(
+            `Written: ${result.updatedRows} row(s), ${result.updatedColumns} column(s), ${result.updatedCells} cell(s).`,
+          )
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
         }
@@ -145,7 +169,9 @@ export function createGoogleSheetsTools(api: GoogleSheetsAPI): AgentTool[] {
       async execute(_id, params) {
         try {
           const info = await api.createSpreadsheet(params.title)
-          return toolResult(`Spreadsheet created: "${info.properties.title}" (id: ${info.spreadsheetId})\n${info.spreadsheetUrl}`)
+          return toolResult(
+            `Spreadsheet created: "${info.properties.title}" (id: ${info.spreadsheetId})\n${info.spreadsheetUrl}`,
+          )
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
         }
@@ -163,12 +189,13 @@ export function createGoogleSheetsTools(api: GoogleSheetsAPI): AgentTool[] {
       async execute(_id, params) {
         try {
           await api.addSheet(params.spreadsheet_id, params.title)
-          return toolResult(`Sheet "${params.title}" added to spreadsheet ${params.spreadsheet_id}.`)
+          return toolResult(
+            `Sheet "${params.title}" added to spreadsheet ${params.spreadsheet_id}.`,
+          )
         } catch (err) {
           return toolResult(`Error: ${(err as Error).message}`, true)
         }
       },
     }),
-
   ]
 }

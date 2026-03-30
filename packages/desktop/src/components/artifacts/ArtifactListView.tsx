@@ -32,8 +32,7 @@ export function ArtifactListView() {
       const q = searchQuery.toLowerCase()
       result = result.filter(
         (a) =>
-          (a.title || '').toLowerCase().includes(q) ||
-          (a.filename || '').toLowerCase().includes(q),
+          (a.title || '').toLowerCase().includes(q) || (a.filename || '').toLowerCase().includes(q),
       )
     }
     // Most recent first
@@ -77,9 +76,7 @@ export function ArtifactListView() {
       <div className="artifact-list__items">
         {filtered.length === 0 ? (
           <div className="artifact-list__no-results">
-            {searchQuery || filterType !== 'all'
-              ? 'No matching artifacts'
-              : 'No artifacts yet'}
+            {searchQuery || filterType !== 'all' ? 'No matching artifacts' : 'No artifacts yet'}
           </div>
         ) : (
           filtered.map((artifact) => (

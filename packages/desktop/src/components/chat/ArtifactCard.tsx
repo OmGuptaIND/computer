@@ -1,5 +1,14 @@
 import { motion } from 'framer-motion'
-import { Braces, ChevronDown, ChevronUp, FileCode, Network, Sparkles, SquareCode, X } from 'lucide-react'
+import {
+  Braces,
+  ChevronDown,
+  ChevronUp,
+  FileCode,
+  Network,
+  Sparkles,
+  SquareCode,
+  X,
+} from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
 import type { Artifact } from '../../lib/artifacts.js'
@@ -73,7 +82,11 @@ export function ArtifactCard({ artifact }: Props) {
               onClick={() => setExpanded(!expanded)}
               aria-label={expanded ? 'Collapse' : 'Expand'}
             >
-              {expanded ? <ChevronUp size={14} strokeWidth={1.5} /> : <ChevronDown size={14} strokeWidth={1.5} />}
+              {expanded ? (
+                <ChevronUp size={14} strokeWidth={1.5} />
+              ) : (
+                <ChevronDown size={14} strokeWidth={1.5} />
+              )}
             </button>
           )}
           <button

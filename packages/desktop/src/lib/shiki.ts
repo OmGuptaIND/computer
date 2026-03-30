@@ -1,10 +1,9 @@
-import { type HighlighterCore, createHighlighterCore } from 'shiki/core'
+import { type HighlighterCore, type LanguageInput, createHighlighterCore } from 'shiki/core'
 import { createOnigurumaEngine } from 'shiki/engine/oniguruma'
 
 let highlighterPromise: Promise<HighlighterCore> | null = null
 
-// biome-ignore lint/suspicious/noExplicitAny: shiki dynamic imports return varying module types
-const langImports: Record<string, () => Promise<any>> = {
+const langImports: Record<string, () => LanguageInput> = {
   bash: () => import('shiki/langs/bash.mjs'),
   shell: () => import('shiki/langs/shellscript.mjs'),
   typescript: () => import('shiki/langs/typescript.mjs'),
@@ -37,8 +36,7 @@ export async function highlightCode(code: string, lang: string): Promise<string>
   try {
     const h = await getHighlighter()
     const loadedLangs = h.getLoadedLanguages()
-    // biome-ignore lint/suspicious/noExplicitAny: shiki's getLoadedLanguages returns a union type incompatible with string
-    const actualLang = loadedLangs.includes(lang as any) ? lang : 'text'
+    const actualLang = (loadedLangs as string[]).includes(lang) ? lang : 'text'
 
     if (actualLang === 'text') {
       const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

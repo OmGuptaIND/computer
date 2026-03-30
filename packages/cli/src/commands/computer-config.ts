@@ -15,7 +15,6 @@ import { theme } from '../lib/theme.js'
 import {
   ENV_FILE,
   done,
-  exec,
   execSilent,
   fail,
   maskToken,
@@ -125,7 +124,9 @@ export async function computerConfigCommand(args: string[]): Promise<void> {
 
 function showUsage(): void {
   console.log(`\n  ${theme.bold('Usage:')}`)
-  console.log(`    ${theme.brand('anton computer config')}                        Show current config`)
+  console.log(
+    `    ${theme.brand('anton computer config')}                        Show current config`,
+  )
   console.log(
     `    ${theme.brand('anton computer config set')} ${theme.dim('<KEY> <VALUE>')}    Set an environment variable`,
   )
@@ -186,8 +187,10 @@ function handleShow(): void {
 
 function handleSet(key?: string, value?: string): void {
   if (!key || !value) {
-    console.log(`\n  Usage: ${theme.brand('anton computer config set')} ${theme.dim('<KEY> <VALUE>')}`)
-    console.log(`\n  Example:`)
+    console.log(
+      `\n  Usage: ${theme.brand('anton computer config set')} ${theme.dim('<KEY> <VALUE>')}`,
+    )
+    console.log('\n  Example:')
     console.log(`    ${theme.brand('anton computer config set ANTHROPIC_API_KEY sk-ant-...')}`)
     console.log(`    ${theme.brand('anton computer config set OAUTH_PROXY_URL https://...')}`)
     console.log()
@@ -243,7 +246,9 @@ async function handleOAuth(): Promise<void> {
   // Callback Base URL — the agent's public URL
   const currentCallback = vars.OAUTH_CALLBACK_BASE_URL || ''
   console.log()
-  console.log(`  ${theme.dim("  This is your agent's public URL (e.g. https://yourname.antoncomputer.in)")}`)
+  console.log(
+    `  ${theme.dim("  This is your agent's public URL (e.g. https://yourname.antoncomputer.in)")}`,
+  )
   const callbackUrl = await promptInput(
     `  Agent Public URL ${currentCallback ? theme.dim(`(${currentCallback})`) : ''}: `,
   )
@@ -261,7 +266,9 @@ async function handleOAuth(): Promise<void> {
 
   console.log()
   console.log(`  ${theme.success('✓')} OAuth connectors configured.`)
-  console.log(`  ${theme.dim('Users can now click "Connect" in the desktop app for Slack, GitHub, etc.')}`)
+  console.log(
+    `  ${theme.dim('Users can now click "Connect" in the desktop app for Slack, GitHub, etc.')}`,
+  )
   console.log()
 }
 
