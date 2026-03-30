@@ -10,6 +10,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
+## [1.0.27] - 2026-03-30
+
+### Features
+- implement agent memory persistence and refactor cron execution to use ephemeral sessions per run
+- implement OAuth connector framework with provider support and session history pagination
+
+### Other
+- refactor: improve OAuth flow for shared providers, add environment management utilities, and update UI styling and connector toolbar logic.
+- refactor: replace title attributes with data-tooltip, implement system theme switching, and add Google Sheets connector and plan review overlay.
+- docs: fix stale README
+---
+
 ## [1.0.26] - 2026-03-29
 
 ### Features
@@ -179,7 +191,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
-[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.26...HEAD
+[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.27...HEAD
+[1.0.27]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.27
 [1.0.26]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.26
 [1.0.26]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.26
 [1.0.26]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.26
