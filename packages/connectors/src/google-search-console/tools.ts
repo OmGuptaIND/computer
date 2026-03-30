@@ -209,65 +209,6 @@ export function createGoogleSearchConsoleTools(api: GoogleSearchConsoleAPI): Age
     }),
 
     defineTool({
-      name: 'gsc_inspect_url',
-      label: 'Inspect URL',
-      description:
-        '[Search Console] Inspect a URL to see its indexing status, crawl info, and mobile usability.',
-      parameters: Type.Object({
-        site_url: Type.String({
-          description: 'Site URL in Search Console (must contain the inspection URL)',
-        }),
-        inspection_url: Type.String({
-          description: 'The specific URL to inspect (must be within site_url)',
-        }),
-      }),
-      async execute(_id, params) {
-        try {
-          const result = await api.inspectUrl(params.site_url, params.inspection_url)
-          const r = result.inspectionResult
-          if (!r) return toolResult('No inspection result returned.')
-
-          const idx = r.indexStatusResult
-          const lines: string[] = [`**URL:** ${params.inspection_url}`]
-
-          if (idx) {
-            lines.push(`**Verdict:** ${idx.verdict ?? 'unknown'}`)
-            lines.push(`**Coverage:** ${idx.coverageState ?? 'unknown'}`)
-            lines.push(`**Indexing state:** ${idx.indexingState ?? 'unknown'}`)
-            lines.push(`**Robots.txt:** ${idx.robotsTxtState ?? 'unknown'}`)
-            lines.push(`**Page fetch:** ${idx.pageFetchState ?? 'unknown'}`)
-            if (idx.lastCrawlTime) lines.push(`**Last crawled:** ${idx.lastCrawlTime}`)
-            if (idx.crawledAs) lines.push(`**Crawled as:** ${idx.crawledAs}`)
-            if (idx.googleCanonical) lines.push(`**Google canonical:** ${idx.googleCanonical}`)
-            if (idx.userCanonical) lines.push(`**User canonical:** ${idx.userCanonical}`)
-          }
-
-          if (r.mobileUsabilityResult) {
-            lines.push(`\n**Mobile usability:** ${r.mobileUsabilityResult.verdict ?? 'unknown'}`)
-            if (r.mobileUsabilityResult.issues?.length) {
-              for (const i of r.mobileUsabilityResult.issues) {
-                lines.push(`  - ${i.message ?? i.issueType}`)
-              }
-            }
-          }
-
-          if (r.richResultsResult) {
-            lines.push(`\n**Rich results:** ${r.richResultsResult.verdict ?? 'unknown'}`)
-            if (r.richResultsResult.detectedItems?.length) {
-              for (const i of r.richResultsResult.detectedItems) {
-                lines.push(`  - ${i.richResultType}`)
-              }
-            }
-          }
-
-          return toolResult(lines.join('\n'))
-        } catch (err) {
-          return toolResult(`Error: ${(err as Error).message}`, true)
-        }
-      },
-    }),
-
-    defineTool({
       name: 'gsc_list_sitemaps',
       label: 'List Sitemaps',
       description: '[Search Console] List all sitemaps submitted for a site.',

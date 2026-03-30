@@ -39,9 +39,14 @@ export class GitHubAPI {
   // ── User ──
 
   async getAuthenticatedUser(): Promise<{ login: string; name: string; email: string }> {
-    // GitHub App installation tokens — identity is the app itself
-    const app = await this.request<{ slug: string; name: string }>('GET', '/app')
-    return { login: app.slug ?? app.name, name: app.name, email: '' }
+    // Try OAuth user token first (most common), fall back to GitHub App token
+    try {
+      return await this.request<{ login: string; name: string; email: string }>('GET', '/user')
+    } catch {
+      // Fall back to GitHub App installation token endpoint
+      const app = await this.request<{ slug: string; name: string }>('GET', '/app')
+      return { login: app.slug ?? app.name, name: app.name, email: '' }
+    }
   }
 
   // ── Repos ──

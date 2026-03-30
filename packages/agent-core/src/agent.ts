@@ -1189,5 +1189,25 @@ export function buildTools(
     }
   }
 
-  return tools
+  // ── Deduplicate tools by name (API requires unique tool names) ────
+  const seen = new Set<string>()
+  const deduped: typeof tools = []
+  const duplicates: string[] = []
+  for (const tool of tools) {
+    if (seen.has(tool.name)) {
+      duplicates.push(tool.name)
+      continue
+    }
+    seen.add(tool.name)
+    deduped.push(tool)
+  }
+  if (duplicates.length > 0) {
+    console.warn(
+      `[buildTools] removed ${duplicates.length} duplicate tool(s): ${duplicates.join(', ')}. ` +
+        `Final count: ${deduped.length}`,
+    )
+  }
+  console.log(`[buildTools] ${deduped.length} tools registered`)
+
+  return deduped
 }

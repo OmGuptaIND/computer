@@ -208,7 +208,7 @@ function AppSetup({
 
   const handleOAuthConnect = () => {
     setOauthWaiting(true)
-    connection.sendConnectorOAuthStart(entry.oauthProvider || entry.id)
+    connection.sendConnectorOAuthStart(entry.id)
 
     const unsub = connection.onMessage((_channel, msg) => {
       if (msg.type === 'connector_oauth_url') {
@@ -299,7 +299,7 @@ function AppSetup({
 
   const handleDisconnect = () => {
     if (isOAuth) {
-      connection.sendConnectorOAuthDisconnect(entry.oauthProvider || entry.id)
+      connection.sendConnectorOAuthDisconnect(entry.id)
     } else {
       connection.sendConnectorRemove(entry.id)
     }

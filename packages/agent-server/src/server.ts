@@ -2605,7 +2605,12 @@ export class AgentServer {
 
   private async handleConnectorRemove(msg: { id: string }): Promise<void> {
     try {
-      await this.mcpManager.removeConnector(msg.id)
+      // Try MCP removal (ignores if not an MCP connector)
+      try {
+        await this.mcpManager.removeConnector(msg.id)
+      } catch {
+        /* not an MCP connector — that's fine */
+      }
       this.connectorManager.deactivate(msg.id)
       removeConnectorConfig(this.config, msg.id)
       this.refreshAllSessionTools()
@@ -2622,15 +2627,42 @@ export class AgentServer {
   private async handleConnectorToggle(msg: { id: string; enabled: boolean }): Promise<void> {
     try {
       toggleConnectorConfig(this.config, msg.id, msg.enabled)
-      await this.mcpManager.toggleConnector(msg.id, msg.enabled)
+      
+      const isMcpConnector = this.mcpManager.getStatus().some((s) => s.id === msg.id)
+      const isDirectConnector = this.connectorManager.isActive(msg.id) || this.connectorManager.hasFactory(msg.id)
 
-      const connector = getConnectors(this.config).find((c) => c.id === msg.id)
-      if (connector) {
+      if (isMcpConnector) {
+        await this.mcpManager.toggleConnector(msg.id, msg.enabled)
         this.sendToClient(Channel.AI, {
           type: 'connector_status',
           id: msg.id,
           connected: this.mcpManager.isConnected(msg.id),
           toolCount: this.mcpManager.getStatus().find((s) => s.id === msg.id)?.toolCount ?? 0,
+        })
+      } else if (isDirectConnector) {
+        if (msg.enabled) {
+          await this.connectorManager.activate(msg.id)
+        } else {
+          this.connectorManager.deactivate(msg.id)
+        }
+        // Refresh tools on active sessions
+        for (const session of this.sessions.values()) {
+          session.refreshConnectorTools()
+        }
+        const status = this.connectorManager.getStatus().find((s) => s.id === msg.id)
+        this.sendToClient(Channel.AI, {
+          type: 'connector_status',
+          id: msg.id,
+          connected: msg.enabled && (status?.connected ?? false),
+          toolCount: status?.toolCount ?? 0,
+        })
+      } else {
+        // Not found in either manager — just update config
+        this.sendToClient(Channel.AI, {
+          type: 'connector_status',
+          id: msg.id,
+          connected: false,
+          toolCount: 0,
         })
       }
     } catch (err) {
@@ -2657,6 +2689,32 @@ export class AgentServer {
           tools,
           error: result.error,
         })
+        return
+      }
+
+      // Inactive direct connector (has factory but not activated) — try to activate first
+      if (this.connectorManager.hasFactory(msg.id)) {
+        try {
+          await this.connectorManager.activate(msg.id)
+          const result = await this.connectorManager.testConnection(msg.id)
+          const tools =
+            this.connectorManager.getStatus().find((s) => s.id === msg.id)?.tools ?? []
+          this.sendToClient(Channel.AI, {
+            type: 'connector_test_response',
+            id: msg.id,
+            success: result.success,
+            tools,
+            error: result.error,
+          })
+        } catch (activateErr) {
+          this.sendToClient(Channel.AI, {
+            type: 'connector_test_response',
+            id: msg.id,
+            success: false,
+            tools: [],
+            error: `Failed to activate connector: ${(activateErr as Error).message}`,
+          })
+        }
         return
       }
 

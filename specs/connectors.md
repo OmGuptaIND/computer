@@ -223,3 +223,59 @@ The CLI auto-detects the path by reading the systemd service's `EnvironmentFile`
 | `packages/protocol/src/messages.ts` | OAuth message types |
 | `packages/desktop/src/components/connectors/ConnectorsPage.tsx` | OAuth UI flow |
 | `packages/cli/src/commands/computer-config.ts` | `anton computer config oauth` |
+
+## Invariants & Rules
+
+These are hard rules that MUST hold. Violations cause API failures or broken UI.
+
+### Tool Name Uniqueness
+
+**Rule:** All tool names sent to the LLM API MUST be unique. Duplicate names cause `400 invalid_request_error`.
+
+- `buildTools()` in `agent-core/src/agent.ts` deduplicates by name (first definition wins)
+- Connector tool names MUST use the `{service}_{action}` prefix convention
+- Each connector MUST NOT define the same tool name twice (e.g. two `gsc_inspect_url`)
+- MCP tools are namespaced as `mcp_{serverId}_{toolName}` — safe by design
+
+### Connector Type Handling
+
+**Rule:** Server handlers (toggle, test, remove) MUST handle ALL connector types, not just MCP.
+
+Three managers exist for different connector types:
+
+| Manager | Connector Types | Methods |
+|---------|----------------|---------|
+| `mcpManager` | `mcp` | toggleConnector, testConnector, removeConnector |
+| `connectorManager` | `oauth`, `api` | activate, deactivate, testConnection |
+| `oauthFlow` | `oauth` (tokens) | hasToken, startFlow, disconnect |
+
+Server handlers MUST check connector type before routing to the correct manager. Pattern:
+
+```ts
+if (mcpManager knows about it) → use mcpManager
+else if (connectorManager knows about it) → use connectorManager
+else → handle gracefully (don't throw)
+```
+
+### Error Surfacing
+
+**Rule:** LLM API errors MUST be surfaced to the user, never swallowed silently.
+
+- The pi SDK catches API errors and sets `stopReason: 'error'` + `errorMessage` on the assistant message
+- `translateEvent` in `session.ts` checks `turn_end` for `stopReason === 'error'` and emits an error event
+- `agent_end` checks ALL messages (not just `[0]`) for `errorMessage`
+- Server logs the error with `[session X] LLM ERROR: ...`
+
+### Token Storage
+
+**Rule:** OAuth tokens are stored under `connectorId` (e.g. `google-calendar`), NOT the shared `oauthProvider` (e.g. `google`).
+
+Multiple connectors share one OAuth provider (Google Calendar, Google Drive, Google Docs all use `google`). Tokens MUST be stored per-connector so they can be managed independently.
+
+### Tool Call / Result Distinction (Desktop UI)
+
+**Rule:** Tool calls use `tc_` ID prefix, tool results use `tr_` prefix. Use the prefix to distinguish them.
+
+- Results inherit `toolName` from their matching call (for display purposes)
+- `groupMessages.ts` and `ToolCallBlock.tsx` MUST use ID prefix, not `toolName` presence, to tell calls from results
+- Pattern: `msg.id.startsWith('tc_')` = call, `msg.id.startsWith('tr_')` = result

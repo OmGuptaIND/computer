@@ -511,6 +511,16 @@ export class Session {
 
     const unsub = this.piAgent.subscribe((event: PiAgentEvent) => {
       console.log(`[session ${this.id}] pi event: ${event.type}`)
+      // Log detailed info for error diagnosis
+      if (event.type === 'turn_end' || event.type === 'agent_end') {
+        const msg = (event as unknown as { message?: { stopReason?: string; errorMessage?: string } })
+          .message
+        if (msg?.stopReason === 'error') {
+          console.error(
+            `[session ${this.id}] LLM ERROR in ${event.type}: ${msg.errorMessage || 'unknown'}`,
+          )
+        }
+      }
       const translated = this.translateEvent(event)
       for (const ev of translated) {
         eventCount++
@@ -1156,7 +1166,10 @@ export class Session {
       }
 
       case 'turn_end': {
-        const msg = piEvent.message as unknown as Record<string, Record<string, number>>
+        const msg = piEvent.message as unknown as Record<string, Record<string, number>> & {
+          stopReason?: string
+          errorMessage?: string
+        }
         if (msg?.usage) {
           const u = msg.usage
           this.lastTurnUsage = {
@@ -1172,10 +1185,23 @@ export class Session {
           this.cumulativeUsage.cacheReadTokens += this.lastTurnUsage.cacheReadTokens
           this.cumulativeUsage.cacheWriteTokens += this.lastTurnUsage.cacheWriteTokens
         }
+        // Surface LLM errors (e.g. invalid API key, rate limits) that the pi SDK captures
+        if (msg?.stopReason === 'error' && msg?.errorMessage) {
+          console.error(
+            `[session ${this.id}] LLM error: ${msg.errorMessage}`,
+          )
+        }
         // Emit streaming token update so the client can show live counters
         const events: SessionEvent[] = [
           { type: 'token_update' as const, usage: this.getCumulativeUsage() },
         ]
+        // If the LLM call failed, emit an error event so the client shows the real reason
+        if (msg?.stopReason === 'error') {
+          events.push({
+            type: 'error',
+            message: msg.errorMessage || 'The LLM call failed with an unknown error.',
+          })
+        }
 
         // Track turns for limit enforcement
         this._turnCount++
@@ -1215,11 +1241,17 @@ export class Session {
       }
 
       case 'agent_end': {
-        const endMessages = (piEvent as unknown as { messages?: Array<{ errorMessage?: string }> })
-          .messages
-        const errorMessage = endMessages?.[0]?.errorMessage
-        if (errorMessage) {
-          return [{ type: 'error', message: errorMessage }]
+        const endMessages = (
+          piEvent as unknown as { messages?: Array<{ errorMessage?: string; stopReason?: string }> }
+        ).messages
+        // Check ALL messages for errors — the error is typically on the assistant response,
+        // not the first message (which is the user prompt)
+        if (endMessages) {
+          for (const m of endMessages) {
+            if (m.errorMessage) {
+              return [{ type: 'error', message: m.errorMessage }]
+            }
+          }
         }
         return []
       }

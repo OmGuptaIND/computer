@@ -69,7 +69,7 @@ function getToolParam(toolName: string, toolInput: Record<string, unknown>): str
 
 export function ToolCallBlock({ message }: Props) {
   const [expanded, setExpanded] = useState(false)
-  const isResult = !message.toolName
+  const isResult = message.id.startsWith('tr_')
   const isError = message.isError
 
   if (isResult) {

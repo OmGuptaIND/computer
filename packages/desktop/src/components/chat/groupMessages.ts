@@ -178,7 +178,10 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
     }
 
     // Regular top-level tool message
-    if (msg.toolName) {
+    // Distinguish calls from results by ID prefix: tc_ = call, tr_ = result.
+    // Cannot rely on toolName alone since results inherit toolName from their call.
+    const isToolCall = msg.id.startsWith('tc_') || (msg.toolName && !msg.id.startsWith('tr_'))
+    if (isToolCall) {
       if (pendingCall) {
         // Push previous pending call as unmatched (parallel calls scenario)
         const idx = currentActions.length
