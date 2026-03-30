@@ -13,7 +13,8 @@ import { TokenStore, type StoredToken } from './token-store.js'
 
 interface PendingFlow {
   nonce: string
-  provider: string
+  connectorId: string   // the registry ID (e.g. 'google-calendar')
+  oauthProvider: string // the proxy provider (e.g. 'google')
   createdAt: number
 }
 
@@ -30,16 +31,24 @@ export class OAuthFlow {
   /**
    * Start an OAuth flow. Returns the URL to open in the browser.
    * Returns null if the proxy URL is not configured.
+   *
+   * @param connectorId  - The registry connector ID (e.g. 'google-calendar')
+   * @param scopes       - OAuth scopes to request
+   * @param oauthProvider - The OAuth proxy provider key (e.g. 'google'). Defaults to connectorId.
    */
-  startFlow(provider: string, scopes?: string[]): string | null {
+  startFlow(connectorId: string, scopes?: string[], oauthProvider?: string): string | null {
     const proxyUrl = this.getProxyUrl()
     if (!proxyUrl) return null
 
     const callbackBaseUrl = this.getCallbackBaseUrl()
     if (!callbackBaseUrl) return null
 
+    // Use the explicit oauthProvider for the proxy URL (e.g. 'google' for all Google services),
+    // but track connectorId internally so the callback activates the right connector.
+    const effectiveProvider = oauthProvider ?? connectorId
+
     const nonce = randomBytes(32).toString('hex')
-    this.pending.set(nonce, { nonce, provider, createdAt: Date.now() })
+    this.pending.set(nonce, { nonce, connectorId, oauthProvider: effectiveProvider, createdAt: Date.now() })
 
     // Auto-expire after 10 minutes
     setTimeout(() => this.pending.delete(nonce), 10 * 60 * 1000)
@@ -55,12 +64,13 @@ export class OAuthFlow {
       params.set('scope', scopes.join(' '))
     }
 
-    return `${proxyUrl}/oauth/${provider}/authorize?${params.toString()}`
+    return `${proxyUrl}/oauth/${effectiveProvider}/authorize?${params.toString()}`
   }
 
   /**
    * Handle the callback from the OAuth proxy.
    * Validates the nonce, stores the token, returns result.
+   * Returns connectorId (not the raw OAuth provider) so the server activates the right connector.
    */
   handleCallback(body: {
     provider: string
@@ -76,7 +86,9 @@ export class OAuthFlow {
       return { provider: body.provider, success: false, error: 'Invalid or expired nonce' }
     }
 
-    if (pending.provider !== body.provider) {
+    // The proxy sends back its own provider name (e.g. 'google'), but multiple connectors
+    // can share one OAuth provider. Verify the OAuth provider matches, then use connectorId.
+    if (pending.oauthProvider !== body.provider) {
       return { provider: body.provider, success: false, error: 'Provider mismatch' }
     }
 
@@ -84,7 +96,7 @@ export class OAuthFlow {
     this.pending.delete(body.nonce)
 
     const token: StoredToken = {
-      provider: body.provider,
+      provider: pending.connectorId,
       accessToken: body.access_token,
       refreshToken: body.refresh_token,
       expiresAt: body.expires_in
@@ -93,8 +105,9 @@ export class OAuthFlow {
       metadata: body.metadata,
     }
 
-    this.tokenStore.save(body.provider, token)
-    return { provider: body.provider, success: true }
+    // Store under connectorId (e.g. 'google-calendar'), not raw provider ('google')
+    this.tokenStore.save(pending.connectorId, token)
+    return { provider: pending.connectorId, success: true }
   }
 
   /**

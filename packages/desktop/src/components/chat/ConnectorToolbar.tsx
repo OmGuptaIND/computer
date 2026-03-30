@@ -67,8 +67,9 @@ export function ConnectorPill() {
 
   const enabledOnes = connectors.filter((c) => c.enabled)
   const connectedIds = new Set(connectors.map((c) => c.id))
-  const unconnectedRegistry = registry.filter((r) => !connectedIds.has(r.id)).slice(0, 8)
-  const totalAvailable = registry.filter((r) => !connectedIds.has(r.id)).length
+  const allUnconnected = registry.filter((r) => !connectedIds.has(r.id))
+  const unconnectedRegistry = allUnconnected.slice(0, 5)
+  const totalAvailable = allUnconnected.length
 
   const handleToggle = (connector: ConnectorStatusInfo) => {
     const newEnabled = !connector.enabled
@@ -148,8 +149,8 @@ export function ConnectorPill() {
         <button type="button" className="connector-dropdown__footer-btn" onClick={openSettings}>
           <Plus size={16} strokeWidth={1.5} />
           <span>Add connectors</span>
-          {totalAvailable > 0 && (
-            <span className="connector-dropdown__footer-count">+{totalAvailable}</span>
+          {totalAvailable - unconnectedRegistry.length > 0 && (
+            <span className="connector-dropdown__footer-count">+{totalAvailable - unconnectedRegistry.length}</span>
           )}
         </button>
         <button type="button" className="connector-dropdown__footer-btn" onClick={openSettings}>

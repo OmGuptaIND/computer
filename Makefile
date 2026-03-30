@@ -129,6 +129,15 @@ sync: _check-ansible
 		echo "  → Ensuring Caddy routes..."; \
 		ssh $$SSH_OPTS "$$USER@$$IP" "sudo python3 $$REMOTE_DIR/scripts/ensure_caddy.py"; \
 		echo "  → Restarting services on $$host..."; \
+		echo "  → Ensuring env vars in agent.env..."; \
+		ssh $$SSH_OPTS "$$USER@$$IP" "\
+			ENV_PATH=\$$(grep EnvironmentFile /etc/systemd/system/anton-agent.service 2>/dev/null | cut -d= -f2 || echo '/home/anton/.anton/agent.env'); \
+			CADDY_DOMAIN=\$$(awk 'NR==1{print \$$1}' /etc/caddy/Caddyfile 2>/dev/null | sed 's/{//g' || echo ''); \
+			if [ -n \"\$$CADDY_DOMAIN\" ]; then \
+				grep -q '^DOMAIN=' \$$ENV_PATH 2>/dev/null || echo \"DOMAIN=\$$CADDY_DOMAIN\" | sudo tee -a \$$ENV_PATH > /dev/null; \
+				grep -q '^OAUTH_CALLBACK_BASE_URL=' \$$ENV_PATH 2>/dev/null || echo \"OAUTH_CALLBACK_BASE_URL=https://\$$CADDY_DOMAIN\" | sudo tee -a \$$ENV_PATH > /dev/null; \
+				echo \"    Domain: \$$CADDY_DOMAIN\"; \
+			fi"; \
 		ssh $$SSH_OPTS "$$USER@$$IP" "sudo systemctl restart anton-agent 2>/dev/null || true; sudo systemctl restart anton-sidecar 2>/dev/null || true"; \
 		echo "  → $$host done ✓"; \
 		echo ""; \
@@ -258,6 +267,40 @@ restart: _check-ansible
 ## stop: Stop the agent on all hosts
 stop: _check-ansible
 	ansible all -i $(INVENTORY) $(LIMIT) -m systemd -a "name=anton-agent state=stopped" --become
+
+## env: Show agent.env contents on all hosts (redacts token values)
+env: _check-ansible
+	@echo ""
+	@ansible all -i $(INVENTORY) $(LIMIT) --list-hosts 2>/dev/null | tail -n +2 | sed 's/^ *//' | while read host; do \
+		IP=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_host','$$host'))" 2>/dev/null || echo "$$host"); \
+		USER=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_user','anton'))" 2>/dev/null || echo "anton"); \
+		KEY=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_ssh_private_key_file',''))" 2>/dev/null || echo ""); \
+		SSH_OPTS="-o StrictHostKeyChecking=no"; \
+		if [ -n "$$KEY" ]; then SSH_OPTS="$$SSH_OPTS -i $$KEY"; fi; \
+		echo "  ── $$host ($$IP) ──────────────────────────────────────────"; \
+		ssh $$SSH_OPTS "$$USER@$$IP" "\
+			ENV_PATH=\$$(grep EnvironmentFile /etc/systemd/system/anton-agent.service 2>/dev/null | cut -d= -f2 || echo '/home/anton/.anton/agent.env'); \
+			echo \"  File: \$$ENV_PATH\"; \
+			echo ''; \
+			if sudo test -f \$$ENV_PATH; then \
+				sudo cat \$$ENV_PATH | while IFS= read -r line; do \
+					key=\$$(echo \"\$$line\" | cut -d= -f1); \
+					val=\$$(echo \"\$$line\" | cut -d= -f2-); \
+					case \"\$$key\" in \
+						ANTON_TOKEN|ANTHROPIC_API_KEY|OPENAI_API_KEY|*SECRET*|*PASSWORD*) \
+							len=\$$(echo -n \"\$$val\" | wc -c); \
+							printf '  %-35s %s\n' \"\$$key\" \"[set, \$${len} chars]\"; \
+							;; \
+						*) \
+							printf '  %-35s %s\n' \"\$$key\" \"\$$val\"; \
+							;; \
+					esac; \
+				done; \
+			else \
+				echo '  (file not found)'; \
+			fi" 2>/dev/null; \
+		echo ""; \
+	done
 
 ## ping: Test SSH connectivity to all hosts
 ping: _check-ansible

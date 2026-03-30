@@ -2202,7 +2202,7 @@ button {
 /* ── Status icons ── */
 
 .tool-tree__status--done {
-  color: #22c55e;
+  color: var(--success);
 }
 
 .tool-tree__status--error {
@@ -6992,7 +6992,7 @@ button {
   border: none;
   cursor: pointer;
   background: var(--accent);
-  color: #000;
+  color: var(--text-on-accent);
   transition: filter 0.12s;
   flex-shrink: 0;
   white-space: nowrap;
@@ -8384,7 +8384,7 @@ button {
   font-family: inherit;
   cursor: pointer;
   background: var(--accent);
-  color: #000;
+  color: var(--text-on-accent);
   transition: opacity 0.15s;
 }
 
@@ -10068,7 +10068,7 @@ button {
   padding: 2px 6px;
   border-radius: 10px;
   background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
+  color: var(--success);
 }
 
 .connector-card__desc {
@@ -10202,7 +10202,7 @@ button {
 
 .app-detail__status--connected {
   background: rgba(34, 197, 94, 0.1);
-  color: #22c55e;
+  color: var(--success);
 }
 
 .app-detail__status--error {
@@ -10423,7 +10423,7 @@ button {
 
 .app-detail__test-result--success {
   background: rgba(34, 197, 94, 0.1);
-  color: #22c55e;
+  color: var(--success);
 }
 
 .app-detail__test-result--error {

@@ -2357,8 +2357,21 @@ export class AgentServer {
     const token = this.getTelegramToken()
     if (!token) return
 
-    const domain = process.env.DOMAIN
-    if (!domain) {
+    // Accept DOMAIN, or derive from OAUTH_CALLBACK_BASE_URL (same host)
+    let publicUrl: string | null = null
+    if (process.env.DOMAIN) {
+      publicUrl = `https://${process.env.DOMAIN}`
+    } else if (process.env.OAUTH_CALLBACK_BASE_URL) {
+      try {
+        publicUrl = new URL(process.env.OAUTH_CALLBACK_BASE_URL).origin
+      } catch { /* ignore */ }
+    } else if (this.config.oauth?.callbackBaseUrl) {
+      try {
+        publicUrl = new URL(this.config.oauth.callbackBaseUrl).origin
+      } catch { /* ignore */ }
+    }
+
+    if (!publicUrl) {
       console.log('  Telegram bot token found but DOMAIN not set — skipping webhook registration')
       return
     }
@@ -2370,7 +2383,6 @@ export class AgentServer {
       connectorManager: this.connectorManager,
     })
 
-    const publicUrl = `https://${domain}`
     await this.telegramBot.registerWebhook(publicUrl)
   }
 
@@ -2587,7 +2599,8 @@ export class AgentServer {
   private handleConnectorOAuthStart(msg: { provider: string }): void {
     const entry = CONNECTOR_REGISTRY.find((e) => e.id === msg.provider)
     const scopes = entry?.oauthScopes
-    const url = this.oauthFlow.startFlow(msg.provider, scopes)
+    // Pass oauthProvider so shared OAuth apps (e.g. 'google') use the correct redirect_uri
+    const url = this.oauthFlow.startFlow(msg.provider, scopes, entry?.oauthProvider)
     if (!url) {
       this.sendToClient(Channel.AI, {
         type: 'connector_oauth_complete',
