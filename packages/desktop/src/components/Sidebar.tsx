@@ -70,7 +70,7 @@ export function Sidebar({ onViewChange, onOpenSettings, onOpenMachineInfo }: Pro
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [showOlder, chatConversations.length])
+  }, [showOlder])
 
   // Group conversations by date
   const groupConversationsByDate = () => {

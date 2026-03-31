@@ -21,6 +21,11 @@ export function ContextPanelContent() {
   const activeStreamingSessions = useStore((s) => s._activeStreamingSessions)
   const connectionStatus = useStore((s) => s.connectionStatus)
   const agentStatus = useStore((s) => s.agentStatus)
+  const activeConversationId = useStore((s) => s.activeConversationId)
+  const currentSessionId = useStore((s) => s.currentSessionId)
+  const currentAssistantMsgId = useStore((s) => s._currentAssistantMsgId)
+  const workingSessionId = useStore((s) => s.workingSessionId)
+  const sessionAssistantMsgIds = useStore((s) => s._sessionAssistantMsgIds)
 
   const contextInfo = activeConv?.contextInfo
   const sessionId = activeConv?.sessionId
@@ -155,6 +160,23 @@ export function ContextPanelContent() {
           </div>
         </Section>
       )}
+
+      {/* IDs & Debug */}
+      <Section icon={Activity} title="IDs & Routing">
+        <div className="context-panel__kv">
+          <KVRow label="Conv ID" value={activeConversationId ?? 'null'} />
+          <KVRow label="Conv sessionId" value={sessionId ?? 'null'} />
+          <KVRow label="currentSessionId" value={currentSessionId ?? 'null'} />
+          <KVRow label="workingSessionId" value={workingSessionId ?? 'null'} />
+          <KVRow label="_currentAssistantMsgId" value={currentAssistantMsgId ?? 'null'} />
+          <KVRow
+            label="_sessionAssistantMsgId"
+            value={sessionId ? (sessionAssistantMsgIds.get(sessionId) ?? 'null') : 'n/a'}
+          />
+          <KVRow label="Last msg role" value={activeConv?.messages[activeConv.messages.length - 1]?.role ?? 'none'} />
+          <KVRow label="Last msg id" value={activeConv?.messages[activeConv.messages.length - 1]?.id ?? 'none'} />
+        </div>
+      </Section>
 
       {/* Sync & Debug */}
       <Section icon={Activity} title="Sync Status">

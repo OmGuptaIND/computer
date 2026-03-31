@@ -373,7 +373,7 @@ interface AppState {
 
   // Plan review
   pendingPlan: { id: string; title: string; content: string; sessionId?: string } | null
-  sidePanelView: 'artifacts' | 'plan' | 'context' | 'browser'
+  sidePanelView: 'artifacts' | 'plan' | 'context' | 'browser' | 'devmode'
 
   // Ask-user questionnaire
   pendingAskUser: { id: string; questions: AskUserQuestion[]; sessionId?: string } | null
@@ -538,7 +538,7 @@ interface AppState {
   setPendingPlan: (
     plan: { id: string; title: string; content: string; sessionId?: string } | null,
   ) => void
-  setSidePanelView: (view: 'artifacts' | 'plan' | 'context' | 'browser') => void
+  setSidePanelView: (view: 'artifacts' | 'plan' | 'context' | 'browser' | 'devmode') => void
   openContextPanel: () => void
 
   // Ask-user actions
@@ -1059,7 +1059,10 @@ export const useStore = create<AppState>((set, get) => {
     appendAssistantText: (content) => {
       set((state) => {
         const activeId = state.activeConversationId
-        if (!activeId) return state
+        if (!activeId) {
+          console.warn('[appendAssistantText] No activeConversationId — dropping text')
+          return state
+        }
 
         let newMsgId: string | null = null
 
@@ -1108,7 +1111,10 @@ export const useStore = create<AppState>((set, get) => {
     appendAssistantTextToSession: (sessionId, content) => {
       set((state) => {
         const conv = state.conversations.find((c) => c.sessionId === sessionId)
-        if (!conv) return state
+        if (!conv) {
+          console.warn(`[appendAssistantTextToSession] No conversation found for sessionId=${sessionId} — dropping text`)
+          return state
+        }
 
         let newMsgId: string | null = null
 
@@ -1592,7 +1598,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
       const m = msg as unknown as WsUpdateProgress
       store.setUpdateProgress(m.stage, m.message)
     } else if (msg.type === 'config_query_response') {
-      const m = msg as { key: string; value: unknown }
+      const m = msg as unknown as { key: string; value: unknown }
       if (m.key === 'system_prompt' && typeof m.value === 'string') {
         store.setDevModeData({ systemPrompt: m.value })
       } else if (m.key === 'memories' && Array.isArray(m.value)) {
@@ -1729,6 +1735,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
       const textContent = m.content ?? ''
       if (!textContent) break
       console.log(`[WS] AI text chunk: "${textContent.slice(0, 80)}..."`)
+      console.log(`[WS DEBUG] isForActiveSession=${isForActiveSession}, msgSessionId=${msgSessionId}, activeConv?.sessionId=${activeConv?.sessionId}, activeConvId=${activeConv?.id}, storeActiveId=${store.activeConversationId}`)
       // Track that this session is actively streaming
       const textSessionId = msgSessionId || activeConv?.sessionId
       if (textSessionId && !store._activeStreamingSessions.has(textSessionId)) {
@@ -1737,6 +1744,13 @@ function handleWsMessage(channel: number, msg: WsPayload) {
         useStore.setState({ _activeStreamingSessions: streaming })
       }
       appendText(textContent)
+      // Debug: verify the message was actually added
+      {
+        const afterStore = useStore.getState()
+        const afterConv = afterStore.getActiveConversation()
+        const lastMsg = afterConv?.messages[afterConv.messages.length - 1]
+        console.log(`[WS DEBUG] After appendText: conv messages=${afterConv?.messages.length}, lastMsg.role=${lastMsg?.role}, lastMsg.content.len=${lastMsg?.content?.length}`)
+      }
       break
     }
 

@@ -1,4 +1,3 @@
-import type React from 'react'
 import {
   ArrowRight,
   Bot,
@@ -8,9 +7,7 @@ import {
   GraduationCap,
   Link2,
   Megaphone,
-  Plug,
   Rocket,
-  Sparkles,
   User,
   Zap,
 } from 'lucide-react'
