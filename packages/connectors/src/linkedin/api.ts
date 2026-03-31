@@ -131,6 +131,19 @@ export class UnipileLinkedInAPI {
     return this.accountId
   }
 
+  /** Ensure we have an account ID, auto-detecting if needed. */
+  private async ensureAccountId(): Promise<string> {
+    if (this.accountId) return this.accountId
+    const accounts = await this.listAccounts()
+    const linkedin = (accounts.items ?? []).filter(
+      (a) => a.type?.toUpperCase() === 'LINKEDIN',
+    )
+    if (linkedin[0]) {
+      this.accountId = linkedin[0].id
+    }
+    return this.accountId
+  }
+
   private async request<T>(
     path: string,
     opts: {
@@ -177,23 +190,26 @@ export class UnipileLinkedInAPI {
   // ── Profile ──
 
   async getMyProfile(): Promise<UnipileProfile> {
+    const accountId = await this.ensureAccountId()
     return this.request('/profiles/me', {
-      params: { account_id: this.accountId },
+      params: { account_id: accountId },
     })
   }
 
   async getProfile(profileId: string): Promise<UnipileProfile> {
+    const accountId = await this.ensureAccountId()
     return this.request(`/profiles/${encodeURIComponent(profileId)}`, {
-      params: { account_id: this.accountId },
+      params: { account_id: accountId },
     })
   }
 
   // ── Messaging ──
 
   async listChats(opts: { limit?: number; cursor?: string; account_id?: string } = {}): Promise<UnipileChatList> {
+    const accountId = opts.account_id ?? await this.ensureAccountId()
     return this.request('/chats', {
       params: {
-        account_id: opts.account_id ?? this.accountId,
+        account_id: accountId,
         ...(opts.limit ? { limit: String(opts.limit) } : {}),
         ...(opts.cursor ? { cursor: opts.cursor } : {}),
       },
@@ -223,9 +239,10 @@ export class UnipileLinkedInAPI {
   }
 
   async startChat(attendeeId: string, text: string): Promise<UnipileChat> {
+    const accountId = await this.ensureAccountId()
     return this.request('/chats', {
       body: {
-        account_id: this.accountId,
+        account_id: accountId,
         text,
         attendees_ids: [attendeeId],
       },
@@ -238,10 +255,11 @@ export class UnipileLinkedInAPI {
     query: string,
     opts: { limit?: number; cursor?: string } = {},
   ): Promise<UnipileSearchResult> {
+    const accountId = await this.ensureAccountId()
     return this.request('/linkedin/search', {
       method: 'POST',
       body: {
-        account_id: this.accountId,
+        account_id: accountId,
         api: 'classic',
         category: 'people',
         keyword: query,
@@ -254,22 +272,25 @@ export class UnipileLinkedInAPI {
   // ── Invitations ──
 
   async listSentInvitations(): Promise<{ items: UnipileInvitation[] }> {
+    const accountId = await this.ensureAccountId()
     return this.request('/profiles', {
-      params: { account_id: this.accountId },
+      params: { account_id: accountId },
     })
   }
 
   async listReceivedInvitations(): Promise<{ items: UnipileInvitation[] }> {
+    const accountId = await this.ensureAccountId()
     return this.request('/profiles/received', {
-      params: { account_id: this.accountId },
+      params: { account_id: accountId },
     })
   }
 
   async sendInvitation(profileId: string, message?: string): Promise<unknown> {
+    const accountId = await this.ensureAccountId()
     return this.request(`/linkedin/profiles/${encodeURIComponent(profileId)}/action`, {
       method: 'POST',
       body: {
-        account_id: this.accountId,
+        account_id: accountId,
         action: 'INVITE',
         ...(message ? { message } : {}),
       },
@@ -279,9 +300,10 @@ export class UnipileLinkedInAPI {
   // ── Posts ──
 
   async createPost(text: string): Promise<UnipilePost> {
+    const accountId = await this.ensureAccountId()
     return this.request('/posts', {
       body: {
-        account_id: this.accountId,
+        account_id: accountId,
         text,
       },
     })
@@ -317,8 +339,9 @@ export class UnipileLinkedInAPI {
   // ── InMail ──
 
   async getInMailBalance(): Promise<{ balance?: number }> {
+    const accountId = await this.ensureAccountId()
     return this.request('/linkedin/inmail-balance', {
-      params: { account_id: this.accountId },
+      params: { account_id: accountId },
     })
   }
 }
