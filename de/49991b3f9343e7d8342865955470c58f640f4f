@@ -1,0 +1,23 @@
+packages/agent-core/src/tools/browser.ts
+  5bac39ad2f6a2461 2,143-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "de49991b3f9343e7d8342865955470c58f640f4f",
+  "prompts": {
+    "5bac39ad2f6a2461": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f8db636-25d4-4410-948e-79d2295fab1e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}
