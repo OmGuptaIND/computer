@@ -1541,7 +1541,7 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     category: 'social',
     type: 'oauth',
     oauthProvider: 'reddit',
-    oauthScopes: ['identity', 'read', 'submit', 'vote', 'mysubreddits', 'subscribe'],
+    oauthScopes: ['identity', 'read', 'submit', 'vote', 'mysubreddits'],
     requiredEnv: [],
     featured: true,
     setupGuide: {

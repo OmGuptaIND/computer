@@ -23,6 +23,8 @@ function defineTool<T extends TSchema>(
   return def as AgentTool
 }
 
+const SELFTEXT_PREVIEW_LIMIT = 500
+
 function formatTimestamp(utc: number): string {
   return new Date(utc * 1000).toISOString()
 }
@@ -75,6 +77,9 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
             description: 'Time filter for "top" sort: hour, day, week, month, year, all (default: day)',
           }),
         ),
+        after: Type.Optional(
+          Type.String({ description: 'Pagination cursor from a previous response to fetch the next page' }),
+        ),
       }),
       async execute(_id, params) {
         try {
@@ -82,6 +87,7 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
             sort: params.sort,
             limit: params.limit,
             t: params.time,
+            after: params.after,
           })
           const posts = result.data.children.map((c) => ({
             id: c.data.id,
@@ -95,13 +101,13 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
             url: c.data.is_self ? `https://reddit.com${c.data.permalink}` : c.data.url,
             permalink: `https://reddit.com${c.data.permalink}`,
             is_self: c.data.is_self,
-            selftext: c.data.selftext ? c.data.selftext.slice(0, 500) : undefined,
+            selftext: c.data.selftext ? c.data.selftext.slice(0, SELFTEXT_PREVIEW_LIMIT) : undefined,
             flair: c.data.link_flair_text,
             created: formatTimestamp(c.data.created_utc),
             nsfw: c.data.over_18,
             stickied: c.data.stickied,
           }))
-          return toolResult(JSON.stringify(posts, null, 2))
+          return toolResult(JSON.stringify({ posts, after: result.data.after }, null, 2))
         } catch (err) {
           return toolResult(`Error browsing subreddit: ${(err as Error).message}`, true)
         }
@@ -114,7 +120,7 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
       description:
         '[Reddit] Get a specific post with its comments. Returns the post content and top-level comments.',
       parameters: Type.Object({
-        subreddit: Type.String({ description: 'Subreddit name without r/ prefix' }),
+        subreddit: Type.Optional(Type.String({ description: 'Subreddit name without r/ prefix (optional, improves performance)' })),
         post_id: Type.String({ description: 'Post ID (e.g. "1abc2de")' }),
         sort: Type.Optional(
           Type.String({ description: 'Comment sort: best, top, new, controversial (default: best)' }),
@@ -187,6 +193,9 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
         limit: Type.Optional(
           Type.Number({ description: 'Max results (default: 25, max: 100)' }),
         ),
+        after: Type.Optional(
+          Type.String({ description: 'Pagination cursor from a previous response to fetch the next page' }),
+        ),
       }),
       async execute(_id, params) {
         try {
@@ -195,6 +204,7 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
             sort: params.sort,
             t: params.time,
             limit: params.limit,
+            after: params.after,
           })
           const posts = result.data.children.map((c) => ({
             id: c.data.id,
@@ -207,10 +217,10 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
             url: c.data.is_self ? `https://reddit.com${c.data.permalink}` : c.data.url,
             permalink: `https://reddit.com${c.data.permalink}`,
             is_self: c.data.is_self,
-            selftext: c.data.selftext ? c.data.selftext.slice(0, 300) : undefined,
+            selftext: c.data.selftext ? c.data.selftext.slice(0, SELFTEXT_PREVIEW_LIMIT) : undefined,
             created: formatTimestamp(c.data.created_utc),
           }))
-          return toolResult(JSON.stringify(posts, null, 2))
+          return toolResult(JSON.stringify({ posts, after: result.data.after }, null, 2))
         } catch (err) {
           return toolResult(`Error searching: ${(err as Error).message}`, true)
         }
@@ -323,10 +333,13 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
         limit: Type.Optional(
           Type.Number({ description: 'Max subreddits to return (default: 25, max: 100)' }),
         ),
+        after: Type.Optional(
+          Type.String({ description: 'Pagination cursor from a previous response to fetch the next page' }),
+        ),
       }),
       async execute(_id, params) {
         try {
-          const result = await api.getSubscriptions({ limit: params.limit })
+          const result = await api.getSubscriptions({ limit: params.limit, after: params.after })
           const subs = result.data.children.map((c) => ({
             name: c.data.display_name,
             title: c.data.title,
@@ -337,7 +350,7 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
             url: `https://reddit.com${c.data.url}`,
             nsfw: c.data.over18,
           }))
-          return toolResult(JSON.stringify(subs, null, 2))
+          return toolResult(JSON.stringify({ subreddits: subs, after: result.data.after }, null, 2))
         } catch (err) {
           return toolResult(`Error getting subscriptions: ${(err as Error).message}`, true)
         }
@@ -361,6 +374,9 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
             description: 'Time filter for "top" sort: hour, day, week, month, year, all',
           }),
         ),
+        after: Type.Optional(
+          Type.String({ description: 'Pagination cursor from a previous response to fetch the next page' }),
+        ),
       }),
       async execute(_id, params) {
         try {
@@ -368,6 +384,7 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
             sort: params.sort,
             limit: params.limit,
             t: params.time,
+            after: params.after,
           })
           const posts = result.data.children.map((c) => ({
             id: c.data.id,
@@ -379,10 +396,10 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
             url: c.data.is_self ? `https://reddit.com${c.data.permalink}` : c.data.url,
             permalink: `https://reddit.com${c.data.permalink}`,
             is_self: c.data.is_self,
-            selftext: c.data.selftext ? c.data.selftext.slice(0, 300) : undefined,
+            selftext: c.data.selftext ? c.data.selftext.slice(0, SELFTEXT_PREVIEW_LIMIT) : undefined,
             created: formatTimestamp(c.data.created_utc),
           }))
-          return toolResult(JSON.stringify(posts, null, 2))
+          return toolResult(JSON.stringify({ posts, after: result.data.after }, null, 2))
         } catch (err) {
           return toolResult(`Error getting user posts: ${(err as Error).message}`, true)
         }

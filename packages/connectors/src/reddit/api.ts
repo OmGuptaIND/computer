@@ -118,7 +118,7 @@ export class RedditAPI {
   // ── Post + comments ──
 
   async getPost(
-    subreddit: string,
+    subreddit: string | undefined,
     postId: string,
     opts: { sort?: string; limit?: number } = {},
   ): Promise<
@@ -163,9 +163,10 @@ export class RedditAPI {
       sort: opts.sort || 'best',
       limit: opts.limit || 25,
     })
+    const prefix = subreddit ? `/r/${encodeURIComponent(subreddit)}` : ''
     return this.call(
       'GET',
-      `/r/${encodeURIComponent(subreddit)}/comments/${encodeURIComponent(postId)}.json${query}`,
+      `${prefix}/comments/${encodeURIComponent(postId)}.json${query}`,
     )
   }
 
