@@ -1,7 +1,7 @@
 {
   "name": "anton.computer",
   "private": true,
-  "version": "1.0.29",
+  "version": "1.0.30",
   "description": "Your personal cloud computer. Open source. AI-native. Self-hosted.",
   "scripts": {
     "agent:dev": "pnpm --filter @anton/agent-server dev",
