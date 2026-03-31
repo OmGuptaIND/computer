@@ -1,0 +1,62 @@
+packages/desktop/src/components/Sidebar.tsx
+  8de7cd953751f0ba 19,53-74,258-262
+packages/desktop/src/components/WelcomeModal.tsx
+  8de7cd953751f0ba 1-401
+packages/desktop/vite.config.ts
+  30dde2223b85202d 3,6-7,10-12
+packages/desktop/src/components/UpdateBanner.tsx
+  30dde2223b85202d 4,6,26-31
+packages/desktop/src/lib/semver.ts
+  30dde2223b85202d 1-14
+packages/desktop/src/lib/store.ts
+  8de7cd953751f0ba 422-427,674-685,2448-2452
+packages/agent-config/src/config.ts
+  8de7cd953751f0ba 154-158
+packages/desktop/src/App.tsx
+  30dde2223b85202d 15,215-216,358-359
+  8de7cd953751f0ba 18,46-48,51,145-146,148-154,349-357
+packages/desktop/src/lib/version.ts
+  30dde2223b85202d 1-5
+packages/agent-server/src/server.ts
+  8de7cd953751f0ba 570-573,1411
+packages/desktop/src/lib/ws-messages.ts
+  8de7cd953751f0ba 300
+packages/desktop/src/index.css
+  30dde2223b85202d 3529-3544
+  8de7cd953751f0ba 11967-12506
+packages/desktop/src/components/ForceUpdateGate.tsx
+  30dde2223b85202d 1-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "b233fd8d3c1c61ecf383b52501e0ea0cef7cddbd",
+  "prompts": {
+    "30dde2223b85202d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "df6ead43-7e93-4ffb-a783-ac2a5ed34543",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 192,
+      "total_deletions": 2,
+      "accepted_lines": 192,
+      "overriden_lines": 0
+    },
+    "8de7cd953751f0ba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90f3e5ad-fd0e-4ed5-931e-6a3c708ec7c5",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta <omgupta0720@gmail.com>",
+      "messages": [],
+      "total_additions": 1898,
+      "total_deletions": 877,
+      "accepted_lines": 1027,
+      "overriden_lines": 0
+    }
+  }
+}
