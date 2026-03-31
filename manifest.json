@@ -1,16 +1,16 @@
 {
-  "version": "1.0.28",
-  "gitHash": "04639d9",
+  "version": "1.0.29",
+  "gitHash": "",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
-  "changelog": "Fixes:\n- tool calling issues",
-  "publishedAt": "2026-03-30T18:42:06.334Z",
+  "changelog": "Added:\n- onboarding flow\n- LinkedIn connector and then more changes",
+  "publishedAt": "2026-03-31T11:24:08.604Z",
   "binaries": {
-    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.28/anton-agent-linux-x64",
-    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.28/anton-agent-linux-arm64"
+    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.29/anton-agent-linux-x64",
+    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.29/anton-agent-linux-arm64"
   },
   "sidecar_binaries": {
-    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.28/anton-sidecar-linux-amd64",
-    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.28/anton-sidecar-linux-arm64"
+    "linux-x64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.29/anton-sidecar-linux-amd64",
+    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.29/anton-sidecar-linux-arm64"
   },
-  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.28/anton-cli.mjs"
+  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.29/anton-cli.mjs"
 }
