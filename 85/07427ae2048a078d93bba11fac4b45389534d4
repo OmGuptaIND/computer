@@ -1,0 +1,158 @@
+deploy/ansible/inventory.ini
+  3a78b33affbdfb65 6
+deploy/ansible/Makefile
+  3a78b33affbdfb65 45,48-49,51-78,81,84-92,94-95,231
+packages/protocol/src/messages.ts
+  b81379cb086eae1d 86
+.claude/plans/text-buffer.md
+  e6bf983fca0ed765 1-79
+packages/agent-config/src/version.ts
+  b81379cb086eae1d 52-53,58
+packages/desktop/src/components/UpdateBanner.tsx
+  b81379cb086eae1d 5,101
+packages/desktop/src/components/ForceUpdateGate.tsx
+  b81379cb086eae1d 5,79
+deploy/ansible/roles/anton-agent/defaults/main.yml
+  3a78b33affbdfb65 4,10-11,13-14,16-17,19-20,25
+packages/agent-server/src/updater.ts
+  b81379cb086eae1d 6,8,22-23,91,99,110-115,118,123-125,127-128,136-149,179,181,200,233,243-244,264
+  b3e3828a99dbe9d9 151-152,154-169,175,203
+deploy/ansible/roles/anton-agent/tasks/main.yml
+  3a78b33affbdfb65 3,11-15,22,24,26,30-31,34-36,38,43-45,47,49-53,55-57,59-62,66-68,70-72,74,76-78,80,82-91,95,97-101,104-107,109-115,117-121,125-131,133,136,141,144,149-150,152,155-200,203-205,209-212,216,218-220
+specs/UPDATES.md
+  b81379cb086eae1d 1,3,7,9,11-13,15,17,19,21-23,25,27,29,31,34,39-43,45-52,56-60,62,66,68-69,72-75,79,88,91,94,100,103,106,108,110,112,114-116,118,120,122,124,126,134,136-137,139,145,147-150,152,154,156-159,161,163-168,173-174,177,179-183,185,188-198,204-211,213-220
+packages/agent-server/src/server.ts
+  b3e3828a99dbe9d9 658
+  e6bf983fca0ed765 78-120,2202-2207,2216,2221-2237,2239-2242,2329-2331,2369-2370,2382-2384
+specs/ui-redesign.md
+  218fd1e3677a1efe 1-374
+packages/desktop/src/components/projects/CreateProjectModal.tsx
+  e6bf983fca0ed765 77,79-80,83,85,88
+specs/text-stream-buffer.md
+  e6bf983fca0ed765 1-172
+packages/desktop/src/components/projects/ProjectLanding.tsx
+  e6bf983fca0ed765 29-59,349-351
+Makefile
+  b81379cb086eae1d 26,60,63-64,66-104,111-115,117-119,121-122,125-129,134,342-343
+  ccd7a4e140cb8449 138-142,144-145,147-148,154-155,157-163,166,344
+packages/desktop/src/lib/store.ts
+  b81379cb086eae1d 199-212
+deploy/ansible/roles/anton-agent/templates/Caddyfile.j2
+  3a78b33affbdfb65 1-24
+deploy/ansible/roles/anton-agent/handlers/main.yml
+  3a78b33affbdfb65 11-15
+packages/desktop/src/index.css
+  e6bf983fca0ed765 8134-8151,8154-8180
+  1c586e6885bfea3f 8152-8153,9389-9390
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.3",
+  "base_commit_sha": "8507427ae2048a078d93bba11fac4b45389534d4",
+  "prompts": {
+    "1c586e6885bfea3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "23a7a693-e91f-4dd8-a8ac-0ec4b2608f5a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 0,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    },
+    "218fd1e3677a1efe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2127fff5-b01b-4616-ad65-c954f743de1a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 374,
+      "total_deletions": 0,
+      "accepted_lines": 374,
+      "overriden_lines": 0
+    },
+    "2e752259d36e0c80": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "32b7b645-a51a-4526-a858-58a4b091d205",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 1,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "3a78b33affbdfb65": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c47ce9d7-f6fa-4b83-8231-3a7062282c3f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 326,
+      "total_deletions": 383,
+      "accepted_lines": 253,
+      "overriden_lines": 1
+    },
+    "b3e3828a99dbe9d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed132e2-d5b5-4bd7-b448-8e785758049b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 28,
+      "total_deletions": 3,
+      "accepted_lines": 23,
+      "overriden_lines": 0
+    },
+    "b81379cb086eae1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fafcb972-d177-4671-a0b0-2a5148943967",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 340,
+      "total_deletions": 941,
+      "accepted_lines": 244,
+      "overriden_lines": 0
+    },
+    "ccd7a4e140cb8449": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "df88d2ac-cb62-4797-85af-93008d2f2bae",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 66,
+      "total_deletions": 34,
+      "accepted_lines": 33,
+      "overriden_lines": 0
+    },
+    "e6bf983fca0ed765": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae1a7991-539a-4f3d-b0a3-350782600ca2",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 422,
+      "total_deletions": 21,
+      "accepted_lines": 417,
+      "overriden_lines": 0
+    }
+  }
+}
