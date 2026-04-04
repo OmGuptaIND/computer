@@ -1,24 +1,23 @@
 import { motion } from 'framer-motion'
 import { FolderOpen, MessageSquare, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { connection } from '../../lib/connection.js'
-import { useStore } from '../../lib/store.js'
+import { projectStore } from '../../lib/store/projectStore.js'
+import { uiStore } from '../../lib/store/uiStore.js'
 
 export function ProjectList() {
-  const projects = useStore((s) => s.projects)
-  const setActiveProject = useStore((s) => s.setActiveProject)
-  const setActiveView = useStore((s) => s.setActiveView)
+  const projects = projectStore((s) => s.projects)
+  const setActiveProject = projectStore((s) => s.setActiveProject)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
   const handleOpenProject = (id: string) => {
     setActiveProject(id)
-    connection.sendProjectSessionsList(id)
-    setActiveView('home')
+    projectStore.getState().listProjectSessions(id)
+    uiStore.getState().setActiveView('home')
   }
 
   const handleDeleteProject = () => {
     if (!deleteTarget) return
-    connection.sendProjectDelete(deleteTarget)
+    projectStore.getState().deleteProject(deleteTarget)
     setDeleteTarget(null)
   }
 

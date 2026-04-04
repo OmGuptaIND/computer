@@ -6,6 +6,7 @@ import { connection } from '../../lib/connection.js'
 import type { Skill } from '../../lib/skills.js'
 import type { ChatImageAttachment } from '../../lib/store.js'
 import { useStore } from '../../lib/store.js'
+import { projectStore } from '../../lib/store/projectStore.js'
 import { ChatInput } from '../chat/ChatInput.js'
 
 type DisplayStatus = 'running' | 'completed' | 'error' | 'idle' | 'scheduled'
@@ -102,7 +103,7 @@ interface Props {
 }
 
 export function AgentListView({ mode, selectedId, onSelect }: Props) {
-  const allAgents = useStore((s) => s.allAgents)
+  const allAgents = projectStore((s) => s.allAgents)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -127,14 +128,14 @@ export function AgentListView({ mode, selectedId, onSelect }: Props) {
   }, [allAgents, searchQuery])
 
   const handleDelete = (agent: AgentSession) => {
-    connection.sendAgentAction(agent.projectId, agent.sessionId, 'delete')
+    projectStore.getState().agentAction(agent.projectId, agent.sessionId, 'delete')
   }
 
   const handleNewAgent = (text: string, _attachments?: ChatImageAttachment[]) => {
     // Create a new conversation that will guide agent creation
     const store = useStore.getState()
     const sessionId = `sess_${Date.now().toString(36)}`
-    const projectId = store.activeProjectId ?? undefined
+    const projectId = projectStore.getState().activeProjectId ?? undefined
     newConversation(undefined, sessionId, projectId)
     connection.sendSessionCreate(sessionId, {
       provider: store.currentProvider,

@@ -117,6 +117,24 @@ const MODEL_CONTEXT_SIZES: Record<string, number> = {
   'llama-3.3-70b-versatile': 128_000,
   // Mistral
   'mistral-large-latest': 128_000,
+  // Anton (GRU) — models not already covered above
+  'gpt-5.4': 1_000_000,
+  'gpt-5.4-pro': 1_000_000,
+  'gpt-4.1': 1_000_000,
+  'gpt-4.1-mini': 1_000_000,
+  'gpt-4.1-nano': 1_000_000,
+  'gemini-3.1-pro': 1_000_000,
+  'gemini-3.1-flash-lite': 1_000_000,
+  'grok-4.1-fast': 128_000,
+  'grok-3-mini': 128_000,
+  'deepseek-v3.2': 128_000,
+  'deepseek-r1': 128_000,
+  'qwen3-235b': 128_000,
+  'minimax-m2.5': 1_000_000,
+  'minimax-m2.7': 1_000_000,
+  'kimi-k2.5': 128_000,
+  'llama-4-maverick': 1_000_000,
+  codestral: 256_000,
 }
 
 export function getModelContextSize(modelId: string): number {

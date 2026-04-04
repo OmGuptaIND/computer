@@ -24,6 +24,10 @@ import { ProjectList } from './components/projects/ProjectList.js'
 import { CreateProjectModal } from './components/projects/CreateProjectModal.js'
 import { connection } from './lib/connection.js'
 import { useConnectionStatus, useStore } from './lib/store.js'
+import { artifactStore } from './lib/store/artifactStore.js'
+import { projectStore } from './lib/store/projectStore.js'
+import { uiStore } from './lib/store/uiStore.js'
+import { updateStore } from './lib/store/updateStore.js'
 
 export function App() {
   const [connected, setConnected] = useState(false)
@@ -35,28 +39,28 @@ export function App() {
   const [settingsConnectorId, setSettingsConnectorId] = useState<string | undefined>()
   const [showCreateProject, setShowCreateProject] = useState(false)
   const status = useConnectionStatus()
-  const activeView = useStore((s) => s.activeView)
-  const activeMode = useStore((s) => s.activeMode)
-  const setActiveView = useStore((s) => s.setActiveView)
+  const activeView = uiStore((s) => s.activeView)
+  const activeMode = uiStore((s) => s.activeMode)
+  const setActiveView = uiStore((s) => s.setActiveView)
   const sessionUsage = useStore((s) => s.sessionUsage)
   const activeConv = useStore((s) => s.getActiveConversation())
   const hasMessages = (activeConv?.messages?.length || 0) > 0
-  const artifactPanelOpen = useStore((s) => s.artifactPanelOpen)
-  const sidebarCollapsed = useStore((s) => s.sidebarCollapsed)
-  const toggleSidebar = useStore((s) => s.toggleSidebar)
-  const updateStage = useStore((s) => s.updateStage)
+  const artifactPanelOpen = artifactStore((s) => s.artifactPanelOpen)
+  const sidebarCollapsed = uiStore((s) => s.sidebarCollapsed)
+  const toggleSidebar = uiStore((s) => s.toggleSidebar)
+  const updateStage = updateStore((s) => s.updateStage)
   const sidePanelOpen = artifactPanelOpen
-  const activeProjectId = useStore((s) => s.activeProjectId)
-  const projects = useStore((s) => s.projects)
-  const theme = useStore((s) => s.theme)
-  const devMode = useStore((s) => s.devMode)
-  const onboardingLoaded = useStore((s) => s.onboardingLoaded)
-  const onboardingCompleted = useStore((s) => s.onboardingCompleted)
-  const setOnboardingCompleted = useStore((s) => s.setOnboardingCompleted)
-  const setArtifactPanelOpen = useStore((s) => s.setArtifactPanelOpen)
-  const setSidePanelView = useStore((s) => s.setSidePanelView)
-  const tasksHidden = useStore((s) => s.tasksHidden)
-  const toggleTasksHidden = useStore((s) => s.toggleTasksHidden)
+  const activeProjectId = projectStore((s) => s.activeProjectId)
+  const projects = projectStore((s) => s.projects)
+  const theme = uiStore((s) => s.theme)
+  const devMode = uiStore((s) => s.devMode)
+  const onboardingLoaded = uiStore((s) => s.onboardingLoaded)
+  const onboardingCompleted = uiStore((s) => s.onboardingCompleted)
+  const setOnboardingCompleted = uiStore((s) => s.setOnboardingCompleted)
+  const setArtifactPanelOpen = artifactStore((s) => s.setArtifactPanelOpen)
+  const setSidePanelView = uiStore((s) => s.setSidePanelView)
+  const tasksHidden = uiStore((s) => s.tasksHidden)
+  const toggleTasksHidden = uiStore((s) => s.toggleTasksHidden)
   const currentTasks = useStore((s) => s.currentTasks)
   const showWelcome = onboardingLoaded && !onboardingCompleted
 
@@ -74,7 +78,7 @@ export function App() {
       const mq = window.matchMedia('(prefers-color-scheme: dark)')
       const handler = (e: MediaQueryListEvent) => {
         document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light')
-        useStore.setState({ resolvedTheme: e.matches ? 'dark' : 'light' })
+        uiStore.setState({ resolvedTheme: e.matches ? 'dark' : 'light' })
       }
       mq.addEventListener('change', handler)
       return () => mq.removeEventListener('change', handler)
@@ -119,15 +123,15 @@ export function App() {
     if (status === 'connected') {
       connection.sendProvidersList()
       connection.sendSessionsList()
-      connection.sendProjectsList()
+      projectStore.getState().listProjects()
       connection.sendConnectorsList()
       connection.sendConnectorRegistryList()
 
       // Fetch agents for home view
-      const store = useStore.getState()
-      if (store.activeProjectId) {
-        useStore.setState({ projectSessionsLoading: true })
-        connection.sendProjectSessionsList(store.activeProjectId)
+      const pStore = projectStore.getState()
+      if (pStore.activeProjectId) {
+        projectStore.setState({ projectSessionsLoading: true })
+        projectStore.getState().listProjectSessions(pStore.activeProjectId)
       }
     }
   }, [status])
@@ -135,7 +139,7 @@ export function App() {
   // Fetch all agents once projects are loaded
   useEffect(() => {
     if (status === 'connected' && projects.length > 0) {
-      useStore.getState().fetchAllAgents()
+      projectStore.getState().fetchAllAgents()
     }
   }, [status, projects.length])
 
@@ -165,13 +169,14 @@ export function App() {
 
         // In computer mode (home view), don't auto-navigate to a conversation
         const currentStore = useStore.getState()
-        if (currentStore.activeMode === 'computer' && currentStore.activeView === 'home') {
+        const currentUI = uiStore.getState()
+        if (currentUI.activeMode === 'computer' && currentUI.activeView === 'home') {
           // Stay on home view — don't force into a chat conversation
           return
         }
 
         // In chat mode, land on a fresh empty conversation
-        const defaultProject = currentStore.projects.find((p) => p.isDefault)
+        const defaultProject = projectStore.getState().projects.find((p) => p.isDefault)
         const chatConvs = currentStore.conversations.filter(
           (c) => !c.projectId || c.projectId === defaultProject?.id,
         )

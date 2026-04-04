@@ -1,4 +1,4 @@
-import { useStore } from '../../lib/store.js'
+import { artifactStore } from '../../lib/store/artifactStore.js'
 import { ArtifactDetailView } from './ArtifactDetailView.js'
 import { ArtifactEmptyState } from './ArtifactEmptyState.js'
 import { ArtifactListView } from './ArtifactListView.js'
@@ -6,8 +6,8 @@ import { ArtifactListView } from './ArtifactListView.js'
 // ── Artifact panel content (used inside SidePanel) ────────────────
 
 export function ArtifactPanelContent() {
-  const artifacts = useStore((s) => s.artifacts)
-  const viewMode = useStore((s) => s.artifactViewMode)
+  const artifacts = artifactStore((s) => s.artifacts)
+  const viewMode = artifactStore((s) => s.artifactViewMode)
 
   if (artifacts.length === 0) {
     return <ArtifactEmptyState />

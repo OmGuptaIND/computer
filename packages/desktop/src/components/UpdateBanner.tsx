@@ -2,7 +2,9 @@ import { Check, Download, Loader2, X } from 'lucide-react'
 import { useEffect } from 'react'
 import { connection } from '../lib/connection.js'
 import { semverGt } from '../lib/semver.js'
-import { updateStageLabel, useConnectionStatus, useStore } from '../lib/store.js'
+import { updateStageLabel } from '../lib/store/types.js'
+import { updateStore } from '../lib/store/updateStore.js'
+import { useConnectionStatus } from '../lib/store.js'
 import { FRONTEND_VERSION } from '../lib/version.js'
 import { AntonLogo } from './AntonLogo.js'
 
@@ -16,12 +18,12 @@ import { AntonLogo } from './AntonLogo.js'
  */
 export function UpdateBanner() {
   const status = useConnectionStatus()
-  const updateInfo = useStore((s) => s.updateInfo)
-  const updateStage = useStore((s) => s.updateStage)
-  const updateMessage = useStore((s) => s.updateMessage)
-  const updateDismissed = useStore((s) => s.updateDismissed)
-  const dismissUpdate = useStore((s) => s.dismissUpdate)
-  const agentVersion = useStore((s) => s.agentVersion)
+  const updateInfo = updateStore((s) => s.updateInfo)
+  const updateStage = updateStore((s) => s.updateStage)
+  const updateMessage = updateStore((s) => s.updateMessage)
+  const updateDismissed = updateStore((s) => s.updateDismissed)
+  const dismissUpdate = updateStore((s) => s.dismissUpdate)
+  const agentVersion = updateStore((s) => s.agentVersion)
 
   // When a forced update is active, the ForceUpdateGate handles the UI
   const isForceUpdate =
@@ -35,7 +37,7 @@ export function UpdateBanner() {
     if (updateStage !== 'done') return
     const timer = setTimeout(() => {
       dismissUpdate()
-      useStore.getState().setUpdateProgress(null, null)
+      updateStore.getState().setUpdateProgress(null, null)
     }, 4000)
     return () => clearTimeout(timer)
   }, [updateStage, dismissUpdate])
@@ -135,7 +137,7 @@ export function UpdateBanner() {
               type="button"
               className="update-banner__action"
               onClick={() => {
-                useStore.getState().setUpdateProgress(null, null)
+                updateStore.getState().setUpdateProgress(null, null)
                 connection.sendUpdateStart()
               }}
             >
@@ -145,7 +147,7 @@ export function UpdateBanner() {
               type="button"
               className="update-banner__dismiss"
               onClick={() => {
-                useStore.getState().setUpdateProgress(null, null)
+                updateStore.getState().setUpdateProgress(null, null)
                 dismissUpdate()
               }}
               aria-label="Dismiss"

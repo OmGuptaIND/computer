@@ -1,8 +1,7 @@
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import type { WorkflowRegistryEntry } from '@anton/protocol'
-import { useStore } from '../../lib/store.js'
-import { connection } from '../../lib/connection.js'
+import { projectStore } from '../../lib/store/projectStore.js'
 
 const WORKFLOW_ICONS: Record<string, string> = {
   'lead-qualification': '\u{1F3AF}',
@@ -50,12 +49,12 @@ function InstallModal({
 }) {
   const [installing, setInstalling] = useState(false)
   const [pendingProjectName, setPendingProjectName] = useState<string | null>(null)
-  const connectorCheck = useStore((s) => s.workflowConnectorCheck)
-  const projects = useStore((s) => s.projects)
+  const connectorCheck = projectStore((s) => s.workflowConnectorCheck)
+  const projects = projectStore((s) => s.projects)
 
   // Request connector check on mount
   useEffect(() => {
-    connection.sendWorkflowCheckConnectors(workflow.id)
+    projectStore.getState().checkWorkflowConnectors(workflow.id)
   }, [workflow.id])
 
   // When the new project appears, install the workflow into it
@@ -64,13 +63,13 @@ function InstallModal({
     const newProject = projects.find((p) => p.name === pendingProjectName)
     if (newProject) {
       setPendingProjectName(null)
-      connection.sendWorkflowInstall(newProject.id, workflow.id, {})
+      projectStore.getState().installWorkflow(newProject.id, workflow.id, {})
     }
   }, [projects, pendingProjectName, installing, workflow.id])
 
   const handleConfirm = useCallback(() => {
     setInstalling(true)
-    connection.sendProjectCreate({
+    projectStore.getState().createProject({
       name: workflow.name,
       description: workflow.description,
       icon: WORKFLOW_ICONS[workflow.id] || '\u{26A1}',

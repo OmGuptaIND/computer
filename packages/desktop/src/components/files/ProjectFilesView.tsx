@@ -11,8 +11,7 @@ import {
   FolderOpen,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { connection } from '../../lib/connection.js'
-import { useStore } from '../../lib/store.js'
+import { projectStore } from '../../lib/store/projectStore.js'
 
 type FileTypeFilter = 'all' | 'code' | 'data' | 'text' | 'image' | 'other'
 
@@ -78,10 +77,10 @@ const FILTER_LABELS: Record<FileTypeFilter, string> = {
 }
 
 export function ProjectFilesView() {
-  const activeProjectId = useStore((s) => s.activeProjectId)
-  const projects = useStore((s) => s.projects)
-  const projectFiles = useStore((s) => s.projectFiles)
-  const projectFilesLoading = useStore((s) => s.projectFilesLoading)
+  const activeProjectId = projectStore((s) => s.activeProjectId)
+  const projects = projectStore((s) => s.projects)
+  const projectFiles = projectStore((s) => s.projectFiles)
+  const projectFilesLoading = projectStore((s) => s.projectFilesLoading)
   const activeProject = projects.find((p) => p.id === activeProjectId)
 
   const [filter, setFilter] = useState<FileTypeFilter>('all')
@@ -93,7 +92,7 @@ export function ProjectFilesView() {
   // Fetch files on mount and project change
   useEffect(() => {
     if (activeProjectId) {
-      connection.sendProjectFilesList(activeProjectId)
+      projectStore.getState().listProjectFiles(activeProjectId)
     }
   }, [activeProjectId])
 
@@ -110,7 +109,7 @@ export function ProjectFilesView() {
       const reader = new FileReader()
       reader.onload = () => {
         const base64 = (reader.result as string).split(',')[1] || ''
-        connection.sendProjectFileUpload(
+        projectStore.getState().uploadProjectFile(
           activeProjectId,
           file.name,
           base64,
@@ -119,7 +118,7 @@ export function ProjectFilesView() {
         )
         // Refresh file list after a short delay
         setTimeout(() => {
-          connection.sendProjectFilesList(activeProjectId)
+          projectStore.getState().listProjectFiles(activeProjectId)
         }, 500)
       }
       reader.readAsDataURL(file)
@@ -128,10 +127,10 @@ export function ProjectFilesView() {
 
   const handleDelete = useCallback((filename: string) => {
     if (!activeProjectId) return
-    connection.sendProjectFileDelete(activeProjectId, filename)
+    projectStore.getState().deleteProjectFile(activeProjectId, filename)
     setDeleteTarget(null)
     setTimeout(() => {
-      connection.sendProjectFilesList(activeProjectId)
+      projectStore.getState().listProjectFiles(activeProjectId)
     }, 300)
   }, [activeProjectId])
 

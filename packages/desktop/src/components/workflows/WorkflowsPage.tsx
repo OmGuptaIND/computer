@@ -1,8 +1,7 @@
 import { Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { WorkflowRegistryEntry } from '@anton/protocol'
-import { useStore } from '../../lib/store.js'
-import { connection } from '../../lib/connection.js'
+import { projectStore } from '../../lib/store/projectStore.js'
 import { WorkflowCard } from './WorkflowCard.js'
 import { WorkflowDetailPage } from './WorkflowDetailPage.js'
 
@@ -41,11 +40,11 @@ const PLACEHOLDER_WORKFLOWS: WorkflowRegistryEntry[] = [
 
 export function WorkflowsPage() {
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowRegistryEntry | null>(null)
-  const workflowRegistry = useStore((s) => s.workflowRegistry)
-  const projectWorkflows = useStore((s) => s.projectWorkflows)
+  const workflowRegistry = projectStore((s) => s.workflowRegistry)
+  const projectWorkflows = projectStore((s) => s.projectWorkflows)
 
   useEffect(() => {
-    connection.sendWorkflowRegistryList()
+    projectStore.getState().listWorkflowRegistry()
   }, [])
 
   const realIds = new Set(workflowRegistry.map((w) => w.id))

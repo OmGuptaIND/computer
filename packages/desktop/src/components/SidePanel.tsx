@@ -2,6 +2,8 @@ import { motion } from 'framer-motion'
 import { Brain, Code, Globe, Layers, ListChecks, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '../lib/store.js'
+import { artifactStore } from '../lib/store/artifactStore.js'
+import { uiStore } from '../lib/store/uiStore.js'
 import { PlanPanel } from './PlanPanel.js'
 import { ArtifactPanelContent } from './artifacts/ArtifactPanel.js'
 import { BrowserViewerContent } from './browser/BrowserViewerContent.js'
@@ -22,12 +24,12 @@ const MAX_WIDTH = 1100
 const DEFAULT_WIDTH = 440
 
 export function SidePanel() {
-  const artifacts = useStore((s) => s.artifacts)
+  const artifacts = artifactStore((s) => s.artifacts)
   const _pendingPlan = useStore((s) => s.pendingPlan)
-  const browserState = useStore((s) => s.browserState)
-  const sidePanelView = useStore((s) => s.sidePanelView)
-  const setSidePanelView = useStore((s) => s.setSidePanelView)
-  const setArtifactPanelOpen = useStore((s) => s.setArtifactPanelOpen)
+  const browserState = artifactStore((s) => s.browserState)
+  const sidePanelView = uiStore((s) => s.sidePanelView)
+  const setSidePanelView = uiStore((s) => s.setSidePanelView)
+  const setArtifactPanelOpen = artifactStore((s) => s.setArtifactPanelOpen)
 
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH)
   const isDragging = useRef(false)
@@ -70,7 +72,7 @@ export function SidePanel() {
     }
   }, [])
 
-  const devMode = useStore((s) => s.devMode)
+  const devMode = uiStore((s) => s.devMode)
 
   const views: ViewTab[] = [
     { id: 'browser', label: 'Browser', icon: Globe, available: browserState !== null },

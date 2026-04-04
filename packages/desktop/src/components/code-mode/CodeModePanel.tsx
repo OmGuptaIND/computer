@@ -11,7 +11,8 @@ import {
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useStore } from '../../lib/store.js'
+import { artifactStore } from '../../lib/store/artifactStore.js'
+import { projectStore } from '../../lib/store/projectStore.js'
 
 // ── Types ──
 
@@ -254,13 +255,13 @@ export function CodeModePanel({ onClose }: { onClose: () => void }) {
   const [isLoading, setIsLoading] = useState(false)
 
   // Get workspace path from the active project
-  const projects = useStore((s) => s.projects)
-  const activeProjectId = useStore((s) => s.activeProjectId)
+  const projects = projectStore((s) => s.projects)
+  const activeProjectId = projectStore((s) => s.activeProjectId)
   const project = projects.find((p) => p.id === activeProjectId)
   const workspacePath = project?.workspacePath
 
   // Get shell outputs from artifacts (tool_call results for shell commands)
-  const artifacts = useStore((s) => s.artifacts)
+  const artifacts = artifactStore((s) => s.artifacts)
   const shellOutputs = artifacts
     .filter((a) => a.type === 'output' && a.title?.startsWith('$'))
     .map((a) => ({

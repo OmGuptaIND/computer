@@ -28,6 +28,7 @@ import { connection } from '../../lib/connection.js'
 import type { Skill } from '../../lib/skills.js'
 import type { ChatImageAttachment } from '../../lib/store.js'
 import { useStore } from '../../lib/store.js'
+import { projectStore } from '../../lib/store/projectStore.js'
 import { ChatInput } from '../chat/ChatInput.js'
 
 // ── Run Logs Modal ─────────────────────────────────────────────────
@@ -152,9 +153,9 @@ interface Props {
 }
 
 export function AgentDetailView({ agentId, onBack, onViewRun }: Props) {
-  const allAgents = useStore((s) => s.allAgents)
-  const agentRunLogs = useStore((s) => s.agentRunLogs)
-  const agentRunLogsLoading = useStore((s) => s.agentRunLogsLoading)
+  const allAgents = projectStore((s) => s.allAgents)
+  const agentRunLogs = projectStore((s) => s.agentRunLogs)
+  const agentRunLogsLoading = projectStore((s) => s.agentRunLogsLoading)
   const addMessage = useStore((s) => s.addMessage)
 
   const [showInstructions, setShowInstructions] = useState(false)
@@ -170,9 +171,9 @@ export function AgentDetailView({ agentId, onBack, onViewRun }: Props) {
         onViewRun(run)
         return
       }
-      useStore.setState({ agentRunLogs: null, agentRunLogsLoading: true })
+      projectStore.setState({ agentRunLogs: null, agentRunLogsLoading: true })
       setShowLogsModal(true)
-      connection.sendAgentRunLogs(
+      projectStore.getState().getAgentRunLogs(
         agent.projectId,
         agent.sessionId,
         run.startedAt,
@@ -186,9 +187,9 @@ export function AgentDetailView({ agentId, onBack, onViewRun }: Props) {
   const handleRunStop = useCallback(() => {
     if (!agent) return
     if (agent.agent.status === 'running') {
-      connection.sendAgentAction(agent.projectId, agent.sessionId, 'stop')
+      projectStore.getState().agentAction(agent.projectId, agent.sessionId, 'stop')
     } else {
-      connection.sendAgentAction(agent.projectId, agent.sessionId, 'start')
+      projectStore.getState().agentAction(agent.projectId, agent.sessionId, 'start')
     }
   }, [agent])
 

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { connection } from '../lib/connection.js'
-import { useStore } from '../lib/store.js'
+import { projectStore } from '../lib/store/projectStore.js'
 
 interface FileEntry {
   name: string
@@ -29,8 +29,8 @@ interface DirState {
 const FALLBACK_DIR = '/root'
 
 export function FileBrowser() {
-  const activeProjectId = useStore((s) => s.activeProjectId)
-  const projects = useStore((s) => s.projects)
+  const activeProjectId = projectStore((s) => s.activeProjectId)
+  const projects = projectStore((s) => s.projects)
   const activeProject = projects.find((p) => p.id === activeProjectId)
   const startDir = activeProject?.workspacePath || FALLBACK_DIR
 

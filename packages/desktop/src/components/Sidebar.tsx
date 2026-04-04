@@ -27,6 +27,9 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { connection } from '../lib/connection.js'
 import { useConnectionStatus, useStore } from '../lib/store.js'
+import { projectStore } from '../lib/store/projectStore.js'
+import { uiStore } from '../lib/store/uiStore.js'
+import { Skeleton } from './Skeleton.js'
 
 interface Props {
   onDisconnect: () => void
@@ -38,26 +41,27 @@ interface Props {
 
 export function Sidebar({ onViewChange, onOpenSettings, onOpenMachineInfo }: Props) {
   useConnectionStatus()
-  const devMode = useStore((s) => s.devMode)
+  const devMode = uiStore((s) => s.devMode)
   const conversations = useStore((s) => s.conversations)
   const activeId = useStore((s) => s.activeConversationId)
   const switchConversation = useStore((s) => s.switchConversation)
   const newConversation = useStore((s) => s.newConversation)
   const deleteConversation = useStore((s) => s.deleteConversation)
-  const sidebarCollapsed = useStore((s) => s.sidebarCollapsed)
-  const toggleSidebar = useStore((s) => s.toggleSidebar)
-  const currentView = useStore((s) => s.activeView)
-  const activeMode = useStore((s) => s.activeMode)
-  const setActiveMode = useStore((s) => s.setActiveMode)
-  const setActiveView = useStore((s) => s.setActiveView)
+  const sidebarCollapsed = uiStore((s) => s.sidebarCollapsed)
+  const toggleSidebar = uiStore((s) => s.toggleSidebar)
+  const currentView = uiStore((s) => s.activeView)
+  const activeMode = uiStore((s) => s.activeMode)
+  const setActiveMode = uiStore((s) => s.setActiveMode)
+  const setActiveView = uiStore((s) => s.setActiveView)
   const sessionStatuses = useStore((s) => s.sessionStatuses)
   const pendingConfirm = useStore((s) => s.pendingConfirm)
   const pendingAskUser = useStore((s) => s.pendingAskUser)
   const pendingPlan = useStore((s) => s.pendingPlan)
+  const sessionsLoaded = useStore((s) => s.sessionsLoaded)
 
-  const projects = useStore((s) => s.projects)
-  const activeProjectId = useStore((s) => s.activeProjectId)
-  const setActiveProject = useStore((s) => s.setActiveProject)
+  const projects = projectStore((s) => s.projects)
+  const activeProjectId = projectStore((s) => s.activeProjectId)
+  const setActiveProject = projectStore((s) => s.setActiveProject)
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false)
 
   const defaultProjectId = projects.find((p) => p.isDefault)?.id
@@ -141,7 +145,7 @@ export function Sidebar({ onViewChange, onOpenSettings, onOpenMachineInfo }: Pro
     }
     onViewChange('agent')
     if (currentView !== 'chat') {
-      store.setActiveView('chat')
+      uiStore.getState().setActiveView('chat')
     }
   }
 
@@ -227,7 +231,7 @@ export function Sidebar({ onViewChange, onOpenSettings, onOpenMachineInfo }: Pro
                       className={`sidebar-project-selector__item${activeProjectId === project.id ? ' sidebar-project-selector__item--active' : ''}`}
                       onClick={() => {
                         setActiveProject(project.id)
-                        connection.sendProjectSessionsList(project.id)
+                        projectStore.getState().listProjectSessions(project.id)
                         setProjectDropdownOpen(false)
                       }}
                     >
@@ -338,7 +342,17 @@ export function Sidebar({ onViewChange, onOpenSettings, onOpenMachineInfo }: Pro
               <span>New chat</span>
             </button>
             <div className="sidebar-panel__inner">
-              {chatConversations.length > 0 ? (
+              {!sessionsLoaded ? (
+                <div className="sidebar-recent__list">
+                  {Array.from({ length: 5 }, (_, i) => (
+                    <div key={`skel-${i}`} className="sidebar-conv-item sidebar-conv-item--skeleton">
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Skeleton width={`${50 + (i % 3) * 20}%`} height={13} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : chatConversations.length > 0 ? (
                 <div className="sidebar-recent__list">
                   {grouped.today.length > 0 && (
                     <>
@@ -356,7 +370,7 @@ export function Sidebar({ onViewChange, onOpenSettings, onOpenMachineInfo }: Pro
                             }
                             onViewChange('agent')
                             if (currentView !== 'chat') {
-                              useStore.getState().setActiveView('chat')
+                              uiStore.getState().setActiveView('chat')
                             }
                           }}
                           onDelete={(e) => handleDelete(e, conv.id, conv.sessionId)}
@@ -380,7 +394,7 @@ export function Sidebar({ onViewChange, onOpenSettings, onOpenMachineInfo }: Pro
                             }
                             onViewChange('agent')
                             if (currentView !== 'chat') {
-                              useStore.getState().setActiveView('chat')
+                              uiStore.getState().setActiveView('chat')
                             }
                           }}
                           onDelete={(e) => handleDelete(e, conv.id, conv.sessionId)}
@@ -407,7 +421,7 @@ export function Sidebar({ onViewChange, onOpenSettings, onOpenMachineInfo }: Pro
                             }
                             onViewChange('agent')
                             if (currentView !== 'chat') {
-                              useStore.getState().setActiveView('chat')
+                              uiStore.getState().setActiveView('chat')
                             }
                           }}
                           onDelete={(e) => handleDelete(e, conv.id, conv.sessionId)}

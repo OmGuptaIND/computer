@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { connection } from '../../lib/connection.js'
 import { useConnectionStatus, useStore } from '../../lib/store.js'
+import { uiStore } from '../../lib/store/uiStore.js'
 
 type DevTab = 'overview' | 'events' | 'prompt' | 'memories'
 
@@ -202,7 +203,7 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
 }
 
 function EventLogTab() {
-  const eventLog = useStore((s) => s.eventLog)
+  const eventLog = uiStore((s) => s.eventLog)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   return (
@@ -230,7 +231,7 @@ function EventLogTab() {
 // ── System Prompt Tab ──
 
 function PromptTab() {
-  const { systemPrompt, lastFetched } = useStore((s) => s.devModeData)
+  const { systemPrompt, lastFetched } = uiStore((s) => s.devModeData)
   const activeConv = useStore((s) => s.getActiveConversation())
   const sessionId = activeConv?.id
 
@@ -266,7 +267,7 @@ function PromptTab() {
 // ── Memories Tab ──
 
 function MemoriesTab() {
-  const { memories, lastFetched } = useStore((s) => s.devModeData)
+  const { memories, lastFetched } = uiStore((s) => s.devModeData)
   const activeConv = useStore((s) => s.getActiveConversation())
   const sessionId = activeConv?.id
   const [expanded, setExpanded] = useState<Set<string>>(new Set())

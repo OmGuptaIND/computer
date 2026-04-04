@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useStore } from '../../lib/store.js'
+import { artifactStore } from '../../lib/store/artifactStore.js'
 import { ToolTreeItem } from './ActionsGroup.js'
 import { ArtifactCard } from './ArtifactCard.js'
 import type { ToolAction } from './groupMessages.js'
@@ -15,7 +15,7 @@ interface Props {
 
 export function TaskSection({ title, actions, defaultExpanded = false }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded)
-  const artifacts = useStore((s) => s.artifacts)
+  const artifacts = artifactStore((s) => s.artifacts)
 
   const actionCallIds = useMemo(() => new Set(actions.map((a) => a.call.id)), [actions])
   const groupArtifacts = useMemo(

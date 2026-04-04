@@ -4,7 +4,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { useEffect, useRef } from 'react'
 import { connection } from '../lib/connection.js'
-import { useStore } from '../lib/store.js'
+import { projectStore } from '../lib/store/projectStore.js'
 import '@xterm/xterm/css/xterm.css'
 
 const TERMINAL_ID = 't1'
@@ -13,8 +13,8 @@ export function Terminal() {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<XTerm | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
-  const activeProjectId = useStore((s) => s.activeProjectId)
-  const projects = useStore((s) => s.projects)
+  const activeProjectId = projectStore((s) => s.activeProjectId)
+  const projects = projectStore((s) => s.projects)
   const activeProject = projects.find((p) => p.id === activeProjectId)
 
   useEffect(() => {

@@ -23,8 +23,7 @@ import {
   formatDuration,
   formatRelativeTime,
 } from '../../lib/agent-utils.js'
-import { connection } from '../../lib/connection.js'
-import { useStore } from '../../lib/store.js'
+import { projectStore } from '../../lib/store/projectStore.js'
 
 interface Props {
   agent: AgentSession
@@ -137,17 +136,17 @@ export function AgentEmptyState({ agent }: Props) {
   const [showInstructions, setShowInstructions] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showLogsModal, setShowLogsModal] = useState(false)
-  const agentRunLogs = useStore((s) => s.agentRunLogs)
-  const agentRunLogsLoading = useStore((s) => s.agentRunLogsLoading)
+  const agentRunLogs = projectStore((s) => s.agentRunLogs)
+  const agentRunLogsLoading = projectStore((s) => s.agentRunLogsLoading)
   const meta = agent.agent
   const isRunning = meta.status === 'running'
   const isError = meta.status === 'error'
 
   const handleViewRunLogs = (run: AgentRunRecord) => {
     if (!run.completedAt) return
-    useStore.setState({ agentRunLogs: null, agentRunLogsLoading: true })
+    projectStore.setState({ agentRunLogs: null, agentRunLogsLoading: true })
     setShowLogsModal(true)
-    connection.sendAgentRunLogs(
+    projectStore.getState().getAgentRunLogs(
       agent.projectId,
       agent.sessionId,
       run.startedAt,
@@ -158,9 +157,9 @@ export function AgentEmptyState({ agent }: Props) {
 
   const handleRunStop = () => {
     if (isRunning) {
-      connection.sendAgentAction(agent.projectId, agent.sessionId, 'stop')
+      projectStore.getState().agentAction(agent.projectId, agent.sessionId, 'stop')
     } else {
-      connection.sendAgentAction(agent.projectId, agent.sessionId, 'start')
+      projectStore.getState().agentAction(agent.projectId, agent.sessionId, 'start')
     }
   }
 

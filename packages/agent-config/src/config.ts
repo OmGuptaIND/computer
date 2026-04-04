@@ -250,6 +250,52 @@ const DEFAULT_PROVIDERS: ProvidersMap = {
     apiKey: process.env.MISTRAL_API_KEY || '',
     models: ['mistral-large-latest', 'mistral-medium-latest'],
   },
+  anton: {
+    apiKey: process.env.ANTON_API_KEY || '',
+    baseUrl: 'https://gru.huddle01.io/v1',
+    models: [
+      // OpenAI
+      'gpt-5.4',
+      'gpt-5.4-pro',
+      'gpt-4.1',
+      'gpt-4.1-mini',
+      'gpt-4.1-nano',
+      'o3',
+      'o4-mini',
+      'gpt-4o-mini',
+      // Anthropic
+      'claude-opus-4.6',
+      'claude-sonnet-4.6',
+      'claude-sonnet-4.5',
+      'claude-haiku-4.5',
+      'claude-sonnet-4',
+      // Google
+      'gemini-3.1-pro',
+      'gemini-3.1-flash-lite',
+      'gemini-2.5-pro',
+      'gemini-2.5-flash',
+      // DeepSeek
+      'deepseek-v3.2',
+      'deepseek-r1',
+      // xAI / Grok
+      'grok-4.1-fast',
+      'grok-3-mini',
+      // Qwen
+      'qwen3-235b',
+      'qwen-2.5-coder-32b',
+      // MiniMax
+      'minimax-m2.5',
+      'minimax-m2.7',
+      // Kimi
+      'kimi-k2.5',
+      // Meta / Llama
+      'llama-4-maverick',
+      'llama-3.3-70b',
+      // Mistral
+      'mistral-large',
+      'codestral',
+    ],
+  },
 }
 
 // ── Load / Save / Migrate ───────────────────────────────────────────
@@ -431,6 +477,7 @@ const ENV_KEY_MAP: Record<string, string> = {
   together: 'TOGETHER_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
   mistral: 'MISTRAL_API_KEY',
+  anton: 'ANTON_API_KEY',
 }
 
 /** Check if a provider has a usable API key (config file OR environment variable). */

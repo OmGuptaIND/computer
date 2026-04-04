@@ -9654,6 +9654,59 @@ button {
   }
 }
 
+/* Skeleton rows for task table */
+.task-table__row--skeleton {
+  pointer-events: none;
+}
+
+.task-table__row--skeleton .task-table__col {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Skeleton rows for compact task list */
+.task-row--skeleton {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.task-row--skeleton .task-row__clickable {
+  cursor: default;
+}
+
+/* Skeleton items for sidebar conversation list */
+.sidebar-conv-item--skeleton {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  pointer-events: none;
+}
+
+/* Skeleton messages for task detail loading */
+.conv-panel__skeleton-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+  max-width: 700px;
+  width: 100%;
+}
+
+.conv-panel__skeleton-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conv-panel__skeleton-msg--user {
+  align-items: flex-end;
+}
+
+.conv-panel__skeleton-msg--assistant {
+  align-items: flex-start;
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    CONFIG SECTION INLINE (ProjectJobs / ProjectNotifications)
    ═══════════════════════════════════════════════════════════════════ */

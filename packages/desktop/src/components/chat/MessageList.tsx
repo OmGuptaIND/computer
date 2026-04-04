@@ -2,6 +2,7 @@ import { AnimatePresence } from 'framer-motion'
 import { ArrowDown, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type ChatMessage, useAgentStatus, useStore } from '../../lib/store.js'
+import { uiStore } from '../../lib/store/uiStore.js'
 import { ActionsGroup } from './ActionsGroup.js'
 import { MessageBubble } from './MessageBubble.js'
 import { SubAgentGroup } from './SubAgentGroup.js'
@@ -49,7 +50,7 @@ function TurnStats() {
 
 function TaskChecklistInline() {
   const currentTasks = useStore((s) => s.currentTasks)
-  const tasksHidden = useStore((s) => s.tasksHidden)
+  const tasksHidden = uiStore((s) => s.tasksHidden)
   if (currentTasks.length === 0 || tasksHidden) return null
   return <TaskChecklist tasks={currentTasks} />
 }

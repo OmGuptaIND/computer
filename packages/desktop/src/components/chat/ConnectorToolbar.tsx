@@ -1,8 +1,9 @@
 import { Plus, Settings2, Unplug, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { connection } from '../../lib/connection.js'
-import { type ConnectorStatusInfo, useStore } from '../../lib/store.js'
+import type { ConnectorStatusInfo } from '../../lib/store/types.js'
+import { connectorStore } from '../../lib/store/connectorStore.js'
+import { useStore } from '../../lib/store.js'
 import { ConnectorIcon } from '../connectors/ConnectorIcons.js'
 
 /**
@@ -11,8 +12,8 @@ import { ConnectorIcon } from '../connectors/ConnectorIcons.js'
  * that auto-positions above or below the trigger to avoid clipping.
  */
 export function ConnectorPill() {
-  const connectors = useStore((s) => s.connectors)
-  const registry = useStore((s) => s.connectorRegistry)
+  const connectors = connectorStore((s) => s.connectors)
+  const registry = connectorStore((s) => s.connectorRegistry)
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -25,8 +26,8 @@ export function ConnectorPill() {
   const connectionStatus = useStore((s) => s.connectionStatus)
   useEffect(() => {
     if (connectionStatus === 'connected') {
-      connection.sendConnectorsList()
-      connection.sendConnectorRegistryList()
+      connectorStore.getState().listConnectors()
+      connectorStore.getState().listConnectorRegistry()
     }
   }, [connectionStatus])
 
@@ -77,8 +78,8 @@ export function ConnectorPill() {
 
   const handleToggle = (connector: ConnectorStatusInfo) => {
     const newEnabled = !connector.enabled
-    useStore.getState().updateConnectorStatus(connector.id, { enabled: newEnabled })
-    connection.sendConnectorToggle(connector.id, newEnabled)
+    connectorStore.getState().updateConnectorStatus(connector.id, { enabled: newEnabled })
+    connectorStore.getState().toggleConnectorRemote(connector.id, newEnabled)
   }
 
   const openSettings = () => {
@@ -206,8 +207,8 @@ export function ConnectorPill() {
  * Shows "Connect your tools" with registry icons when no connectors are connected.
  */
 export function ConnectorBanner() {
-  const connectors = useStore((s) => s.connectors)
-  const registry = useStore((s) => s.connectorRegistry)
+  const connectors = connectorStore((s) => s.connectors)
+  const registry = connectorStore((s) => s.connectorRegistry)
   const [dismissed, setDismissed] = useState(
     () => localStorage.getItem('connector-banner-dismissed') === '1',
   )

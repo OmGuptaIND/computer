@@ -14,7 +14,9 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { connection } from '../../lib/connection.js'
-import { type ConnectorRegistryInfo, type ConnectorStatusInfo, useStore } from '../../lib/store.js'
+import type { ConnectorRegistryInfo, ConnectorStatusInfo } from '../../lib/store/types.js'
+import { connectorStore } from '../../lib/store/connectorStore.js'
+import { useStore } from '../../lib/store.js'
 import { ConnectorIcon } from './ConnectorIcons.js'
 
 const CATEGORY_ORDER: { key: string; label: string }[] = [
@@ -30,14 +32,14 @@ type Tab = 'apps' | 'custom-api' | 'custom-mcp'
 export function ConnectorsPage({ initialConnectorId }: { initialConnectorId?: string } = {}) {
   const [tab, setTab] = useState<Tab>('apps')
   const [search, setSearch] = useState('')
-  const connectors = useStore((s) => s.connectors)
-  const registry = useStore((s) => s.connectorRegistry)
+  const connectors = connectorStore((s) => s.connectors)
+  const registry = connectorStore((s) => s.connectorRegistry)
 
   const connectionStatus = useStore((s) => s.connectionStatus)
   useEffect(() => {
     if (connectionStatus === 'connected') {
-      connection.sendConnectorsList()
-      connection.sendConnectorRegistryList()
+      connectorStore.getState().listConnectors()
+      connectorStore.getState().listConnectorRegistry()
     }
   }, [connectionStatus])
 

@@ -18,7 +18,10 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { connection } from '../../lib/connection.js'
-import { type ProviderInfo, useStore } from '../../lib/store.js'
+import type { ProviderInfo } from '../../lib/store/types.js'
+import { uiStore } from '../../lib/store/uiStore.js'
+import { usageStore } from '../../lib/store/usageStore.js'
+import { useStore } from '../../lib/store.js'
 import { formatModelName, providerIcons } from '../chat/model-utils.js'
 import { ConnectorsPage } from '../connectors/ConnectorsPage.js'
 
@@ -43,10 +46,10 @@ type AppearanceMode = 'light' | 'dark' | 'system'
 // ── General Settings Page ──
 
 function GeneralPage() {
-  const theme = useStore((s) => s.theme)
-  const setTheme = useStore((s) => s.setTheme)
-  const devMode = useStore((s) => s.devMode)
-  const setDevMode = useStore((s) => s.setDevMode)
+  const theme = uiStore((s) => s.theme)
+  const setTheme = uiStore((s) => s.setTheme)
+  const devMode = uiStore((s) => s.devMode)
+  const setDevMode = uiStore((s) => s.setDevMode)
 
   const appearanceOptions: { key: AppearanceMode; label: string; icon: React.ReactNode }[] = [
     { key: 'light', label: 'Light', icon: <Sun size={16} strokeWidth={1.5} /> },
@@ -527,9 +530,9 @@ function formatTokens(n: number): string {
 }
 
 function UsagePage() {
-  const usageStats = useStore((s) => s.usageStats)
-  const usageStatsLoading = useStore((s) => s.usageStatsLoading)
-  const requestUsageStats = useStore((s) => s.requestUsageStats)
+  const usageStats = usageStore((s) => s.usageStats)
+  const usageStatsLoading = usageStore((s) => s.usageStatsLoading)
+  const requestUsageStats = usageStore((s) => s.requestUsageStats)
 
   useEffect(() => {
     requestUsageStats()

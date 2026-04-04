@@ -1,13 +1,15 @@
-import { ArrowLeft, BarChart3, Files, ListChecks, Loader2, Lock, MoreHorizontal } from 'lucide-react'
+import { ArrowLeft, BarChart3, Files, ListChecks, Lock, MoreHorizontal } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { connection } from '../../lib/connection.js'
 import type { Skill } from '../../lib/skills.js'
 import type { ChatImageAttachment } from '../../lib/store.js'
 import { useStore } from '../../lib/store.js'
+import { artifactStore } from '../../lib/store/artifactStore.js'
 import { ChatInput } from '../chat/ChatInput.js'
 import { ConfirmDialog } from '../chat/ConfirmDialog.js'
 import { MessageList } from '../chat/MessageList.js'
 import { PlanReviewOverlay } from '../chat/PlanReviewOverlay.js'
+import { Skeleton } from '../Skeleton.js'
 
 export function TaskDetailView() {
   const activeConv = useStore((s) => s.getActiveConversation())
@@ -37,7 +39,7 @@ export function TaskDetailView() {
     return sid ? s._syncingSessionIds.has(sid) : false
   })
 
-  const artifacts = useStore((s) => s.artifacts)
+  const artifacts = artifactStore((s) => s.artifacts)
 
   const handleSend = useCallback(
     async (text: string, attachments: ChatImageAttachment[] = []) => {
@@ -196,7 +198,18 @@ export function TaskDetailView() {
       <div className="conv-panel__messages">
         {isSyncing && messages.length === 0 ? (
           <div className="conv-panel__loading">
-            <Loader2 size={20} strokeWidth={1.5} className="conv-panel__spinner" />
+            <div className="conv-panel__skeleton-messages">
+              {/* User message skeleton */}
+              <div className="conv-panel__skeleton-msg conv-panel__skeleton-msg--user">
+                <Skeleton width="60%" height={14} />
+              </div>
+              {/* Assistant message skeleton */}
+              <div className="conv-panel__skeleton-msg conv-panel__skeleton-msg--assistant">
+                <Skeleton width="80%" height={14} />
+                <Skeleton width="95%" height={14} />
+                <Skeleton width="45%" height={14} />
+              </div>
+            </div>
           </div>
         ) : (
           <MessageList messages={messages} />

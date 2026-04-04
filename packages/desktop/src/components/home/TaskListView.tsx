@@ -4,8 +4,10 @@ import { connection } from '../../lib/connection.js'
 import type { Skill } from '../../lib/skills.js'
 import type { ChatImageAttachment } from '../../lib/store.js'
 import { useStore } from '../../lib/store.js'
+import { projectStore } from '../../lib/store/projectStore.js'
 import { ChatInput } from '../chat/ChatInput.js'
 import { EmptyState } from '../chat/EmptyState.js'
+import { Skeleton } from '../Skeleton.js'
 
 function formatRelativeTime(timestamp: number): string {
   const now = Date.now()
@@ -256,6 +258,49 @@ function SelectionCheckbox({
   )
 }
 
+function TaskTableSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="task-table__body">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={`skel-${i}`} className="task-table__row task-table__row--skeleton">
+          <div className="task-table__col task-table__col--check">
+            <Skeleton variant="rect" width={16} height={16} borderRadius={4} />
+          </div>
+          <div className="task-table__col task-table__col--status">
+            <Skeleton variant="circle" width={16} height={16} />
+            <Skeleton width={52} height={12} />
+          </div>
+          <div className="task-table__col task-table__col--name">
+            <Skeleton width={`${55 + (i % 3) * 15}%`} height={14} />
+          </div>
+          <div className="task-table__col task-table__col--updated">
+            <Skeleton width={56} height={12} />
+          </div>
+          <div className="task-table__col task-table__col--actions" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function TaskRowSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={`skel-${i}`} className="task-row task-row--skeleton">
+          <div className="task-row__clickable">
+            <Skeleton variant="circle" width={16} height={16} />
+            <div className="task-row__content">
+              <Skeleton width={`${50 + (i % 3) * 18}%`} height={14} />
+            </div>
+            <Skeleton width={40} height={12} />
+          </div>
+        </div>
+      ))}
+    </>
+  )
+}
+
 interface Props {
   mode: 'full' | 'compact'
 }
@@ -264,8 +309,9 @@ export function TaskListView({ mode }: Props) {
   const allConversations = useStore((s) => s.conversations)
   const sessionStatuses = useStore((s) => s.sessionStatuses)
   const activeConversationId = useStore((s) => s.activeConversationId)
-  const activeProjectId = useStore((s) => s.activeProjectId)
-  const projects = useStore((s) => s.projects)
+  const activeProjectId = projectStore((s) => s.activeProjectId)
+  const projects = projectStore((s) => s.projects)
+  const sessionsLoaded = useStore((s) => s.sessionsLoaded)
   const switchConversation = useStore((s) => s.switchConversation)
   const deleteConversation = useStore((s) => s.deleteConversation)
   const newConversation = useStore((s) => s.newConversation)
@@ -344,7 +390,7 @@ export function TaskListView({ mode }: Props) {
   const handleNewTask = (text: string, _attachments?: ChatImageAttachment[]) => {
     const store = useStore.getState()
     const sessionId = `sess_${Date.now().toString(36)}`
-    const projectId = store.activeProjectId ?? undefined
+    const projectId = projectStore.getState().activeProjectId ?? undefined
     newConversation(undefined, sessionId, projectId)
     connection.sendSessionCreate(sessionId, {
       provider: store.currentProvider,
@@ -372,10 +418,12 @@ export function TaskListView({ mode }: Props) {
 
   const handleSkillSelect = (_skill: Skill) => {}
 
+  const isLoading = !sessionsLoaded
+
   // ── Full mode: Perplexity-style table (no task selected) ──
   if (mode === 'full') {
-    // No tasks → show centered empty state (like chat)
-    if (tasks.length === 0) {
+    // No tasks and done loading → show centered empty state (like chat)
+    if (tasks.length === 0 && !isLoading) {
       return <EmptyState onSend={handleNewTask} onSkillSelect={handleSkillSelect} />
     }
 
@@ -435,6 +483,9 @@ export function TaskListView({ mode }: Props) {
               <div className="task-table__col task-table__col--updated">Updated</div>
               <div className="task-table__col task-table__col--actions" />
             </div>
+            {isLoading ? (
+              <TaskTableSkeleton />
+            ) : (
             <div className="task-table__body">
               {tasks.map((conv) => {
                 const status = getTaskStatus(conv.sessionId, sessionStatuses, conv.messages)
@@ -484,6 +535,7 @@ export function TaskListView({ mode }: Props) {
                 )
               })}
             </div>
+            )}
           </div>
         </div>
       </div>
@@ -536,39 +588,45 @@ export function TaskListView({ mode }: Props) {
       </div>
 
       <div className="task-panel__list">
-        {tasks.map((conv) => {
-          const status = getTaskStatus(conv.sessionId, sessionStatuses, conv.messages)
-          const detail = getStatusDetail(conv.sessionId, sessionStatuses, status)
-          const isActive = conv.id === activeConversationId
-          const isSelected = selectedIds.has(conv.id)
-          return (
-            <div
-              key={conv.id}
-              className={`task-row${isActive ? ' task-row--active' : ''}${isSelected ? ' task-row--selected' : ''}`}
-            >
-              <button
-                type="button"
-                className="task-row__clickable"
-                onClick={() => handleTaskClick(conv)}
-              >
-                <StatusIcon status={status} />
-                <div className="task-row__content">
-                  <span className="task-row__name">{conv.title || 'New task'}</span>
-                  {detail && <span className="task-row__detail">{detail}</span>}
+        {isLoading ? (
+          <TaskRowSkeleton />
+        ) : (
+          <>
+            {tasks.map((conv) => {
+              const status = getTaskStatus(conv.sessionId, sessionStatuses, conv.messages)
+              const detail = getStatusDetail(conv.sessionId, sessionStatuses, status)
+              const isActive = conv.id === activeConversationId
+              const isSelected = selectedIds.has(conv.id)
+              return (
+                <div
+                  key={conv.id}
+                  className={`task-row${isActive ? ' task-row--active' : ''}${isSelected ? ' task-row--selected' : ''}`}
+                >
+                  <button
+                    type="button"
+                    className="task-row__clickable"
+                    onClick={() => handleTaskClick(conv)}
+                  >
+                    <StatusIcon status={status} />
+                    <div className="task-row__content">
+                      <span className="task-row__name">{conv.title || 'New task'}</span>
+                      {detail && <span className="task-row__detail">{detail}</span>}
+                    </div>
+                    <span className="task-row__time">
+                      {formatRelativeTime(conv.updatedAt || conv.createdAt)}
+                    </span>
+                  </button>
+                  <TaskMenu
+                    onDelete={() => handleDeleteTask(conv.id)}
+                    onRename={() => {}}
+                    onPin={() => {}}
+                  />
                 </div>
-                <span className="task-row__time">
-                  {formatRelativeTime(conv.updatedAt || conv.createdAt)}
-                </span>
-              </button>
-              <TaskMenu
-                onDelete={() => handleDeleteTask(conv.id)}
-                onRename={() => {}}
-                onPin={() => {}}
-              />
-            </div>
-          )
-        })}
-        {tasks.length === 0 && <div className="task-panel__empty">No tasks yet</div>}
+              )
+            })}
+            {tasks.length === 0 && <div className="task-panel__empty">No tasks yet</div>}
+          </>
+        )}
       </div>
     </div>
   )

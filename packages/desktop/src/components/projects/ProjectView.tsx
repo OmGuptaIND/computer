@@ -4,20 +4,22 @@ import { Bot, Settings, Trash2, Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { connection } from '../../lib/connection.js'
 import { useStore } from '../../lib/store.js'
+import { artifactStore } from '../../lib/store/artifactStore.js'
+import { projectStore } from '../../lib/store/projectStore.js'
 import { AgentChat } from '../AgentChat.js'
 import { SidePanel } from '../SidePanel.js'
 import { CodeModePanel } from '../code-mode/CodeModePanel.js'
 import { ProjectLanding } from './ProjectLanding.js'
 
 export function ProjectView() {
-  const projects = useStore((s) => s.projects)
-  const activeProjectId = useStore((s) => s.activeProjectId)
-  const setActiveProject = useStore((s) => s.setActiveProject)
-  const activeSessionId = useStore((s) => s.activeProjectSessionId)
-  const setActiveSessionId = useStore((s) => s.setActiveProjectSession)
-  const projectSessions = useStore((s) => s.projectSessions)
-  const projectSessionsLoading = useStore((s) => s.projectSessionsLoading)
-  const artifactPanelOpen = useStore((s) => s.artifactPanelOpen)
+  const projects = projectStore((s) => s.projects)
+  const activeProjectId = projectStore((s) => s.activeProjectId)
+  const setActiveProject = projectStore((s) => s.setActiveProject)
+  const activeSessionId = projectStore((s) => s.activeProjectSessionId)
+  const setActiveSessionId = projectStore((s) => s.setActiveProjectSession)
+  const projectSessions = projectStore((s) => s.projectSessions)
+  const projectSessionsLoading = projectStore((s) => s.projectSessionsLoading)
+  const artifactPanelOpen = artifactStore((s) => s.artifactPanelOpen)
   const pendingPlan = useStore((s) => s.pendingPlan)
   const agentSession: AgentSession | null = useStore((s) => s.getActiveAgentSession())
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -58,7 +60,8 @@ export function ProjectView() {
     })
 
     // Optimistically add to projectSessions so sidebar updates immediately
-    store.setProjectSessions([
+    const ps = projectStore.getState()
+    ps.setProjectSessions([
       {
         id: sessionId,
         title: 'New conversation',
@@ -68,7 +71,7 @@ export function ProjectView() {
         createdAt: Date.now(),
         lastActiveAt: Date.now(),
       },
-      ...store.projectSessions,
+      ...ps.projectSessions,
     ])
 
     const conv = store.findConversationBySession(sessionId)
@@ -116,7 +119,7 @@ export function ProjectView() {
     // Show the agent info panel (AgentEmptyState) with stats, scheduler debug, run history.
     // Run logs are accessed via the modal when clicking a run entry.
     const store = useStore.getState()
-    const agent = store.projectAgents.find((a) => a.sessionId === agentSessionId)
+    const agent = projectStore.getState().projectAgents.find((a: any) => a.sessionId === agentSessionId)
     const title = agent ? agent.agent.name : 'Agent'
 
     // Check if an agent info conversation already exists — don't create duplicates
@@ -147,16 +150,17 @@ export function ProjectView() {
       store.deleteConversation(conv.id)
     }
     // Optimistically remove from projectSessions so UI updates instantly
-    store.setProjectSessions(store.projectSessions.filter((s) => s.id !== sessionId))
+    const ps2 = projectStore.getState()
+    ps2.setProjectSessions(ps2.projectSessions.filter((s) => s.id !== sessionId))
     if (activeSessionId === sessionId) {
       setActiveSessionId(null)
     }
-    connection.sendProjectSessionsList(project.id)
+    projectStore.getState().listProjectSessions(project.id)
   }
 
   const handleBackToLanding = () => {
     setActiveSessionId(null)
-    connection.sendProjectSessionsList(project.id)
+    projectStore.getState().listProjectSessions(project.id)
   }
 
   const handleBackToProjects = () => {
@@ -164,7 +168,7 @@ export function ProjectView() {
   }
 
   const handleDelete = () => {
-    connection.sendProjectDelete(project.id)
+    projectStore.getState().deleteProject(project.id)
     setActiveProject(null)
   }
 

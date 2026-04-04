@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { connection } from '../../lib/connection.js'
-import { useStore } from '../../lib/store.js'
+import { projectStore } from '../../lib/store/projectStore.js'
 import { Skeleton, SkeletonLines } from '../Skeleton.js'
 import { Modal } from '../ui/Modal.js'
 
@@ -187,7 +187,7 @@ function TextFileModal({
 
   function handleSave() {
     if (!filename.trim()) return
-    connection.sendProjectFileTextCreate(projectId, filename.trim(), content)
+    projectStore.getState().createTextFile(projectId, filename.trim(), content)
     onClose()
   }
 
@@ -237,10 +237,10 @@ function FilesSection({ projectId }: { projectId: string }) {
   const [showMenu, setShowMenu] = useState(false)
   const [textModalOpen, setTextModalOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const projectFiles = useStore((s) => s.projectFiles)
+  const projectFiles = projectStore((s) => s.projectFiles)
 
   useEffect(() => {
-    connection.sendProjectFilesList(projectId)
+    projectStore.getState().listProjectFiles(projectId)
   }, [projectId])
 
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -257,7 +257,7 @@ function FilesSection({ projectId }: { projectId: string }) {
       const result = reader.result as string
       // Remove the data:...;base64, prefix
       const base64 = result.split(',')[1] || ''
-      connection.sendProjectFileUpload(projectId, file.name, base64, file.type, file.size)
+      projectStore.getState().uploadProjectFile(projectId, file.name, base64, file.type, file.size)
     }
     reader.readAsDataURL(file)
 
@@ -266,7 +266,7 @@ function FilesSection({ projectId }: { projectId: string }) {
   }
 
   function handleDelete(filename: string) {
-    connection.sendProjectFileDelete(projectId, filename)
+    projectStore.getState().deleteProjectFile(projectId, filename)
   }
 
   function formatSize(bytes: number): string {

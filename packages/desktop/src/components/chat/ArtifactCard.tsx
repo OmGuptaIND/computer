@@ -12,7 +12,7 @@ import {
 import type React from 'react'
 import { useState } from 'react'
 import type { Artifact } from '../../lib/artifacts.js'
-import { useStore } from '../../lib/store.js'
+import { artifactStore } from '../../lib/store/artifactStore.js'
 
 interface Props {
   artifact: Artifact
@@ -37,9 +37,9 @@ const typeLabels: Record<string, string> = {
 export function ArtifactCard({ artifact }: Props) {
   const [expanded, setExpanded] = useState(true)
   const [dismissed, setDismissed] = useState(false)
-  const setActiveArtifact = useStore((s) => s.setActiveArtifact)
-  const setArtifactPanelOpen = useStore((s) => s.setArtifactPanelOpen)
-  const setArtifactViewMode = useStore((s) => s.setArtifactViewMode)
+  const setActiveArtifact = artifactStore((s) => s.setActiveArtifact)
+  const setArtifactPanelOpen = artifactStore((s) => s.setArtifactPanelOpen)
+  const setArtifactViewMode = artifactStore((s) => s.setArtifactViewMode)
 
   const Icon = typeIcons[artifact.renderType] || Braces
   const label = typeLabels[artifact.renderType] || 'File'

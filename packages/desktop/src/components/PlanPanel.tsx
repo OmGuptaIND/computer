@@ -2,6 +2,7 @@ import { Check, ChevronRight, MessageSquare, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { connection } from '../lib/connection.js'
 import { useStore } from '../lib/store.js'
+import { uiStore } from '../lib/store/uiStore.js'
 import { MarkdownRenderer } from './chat/MarkdownRenderer.js'
 
 interface TocEntry {
@@ -31,7 +32,7 @@ function extractToc(markdown: string): TocEntry[] {
 export function PlanPanel() {
   const pendingPlan = useStore((s) => s.pendingPlan)
   const setPendingPlan = useStore((s) => s.setPendingPlan)
-  const setSidePanelView = useStore((s) => s.setSidePanelView)
+  const setSidePanelView = uiStore((s) => s.setSidePanelView)
   const [showFeedback, setShowFeedback] = useState(false)
   const [feedback, setFeedback] = useState('')
   const [activeSection, setActiveSection] = useState<string | null>(null)

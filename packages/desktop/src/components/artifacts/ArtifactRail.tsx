@@ -1,7 +1,7 @@
 import { Braces, FileCode, Network, Sparkles, SquareCode, X } from 'lucide-react'
 import { useState } from 'react'
 import type { ArtifactRenderType } from '../../lib/artifacts.js'
-import { useStore } from '../../lib/store.js'
+import { artifactStore } from '../../lib/store/artifactStore.js'
 
 const TYPE_ICONS: Record<ArtifactRenderType, typeof Sparkles> = {
   html: Sparkles,
@@ -20,9 +20,9 @@ const TYPE_LABELS: Record<ArtifactRenderType, string> = {
 }
 
 export function ArtifactRail() {
-  const artifacts = useStore((s) => s.artifacts)
-  const activeArtifactId = useStore((s) => s.activeArtifactId)
-  const setActiveArtifact = useStore((s) => s.setActiveArtifact)
+  const artifacts = artifactStore((s) => s.artifacts)
+  const activeArtifactId = artifactStore((s) => s.activeArtifactId)
+  const setActiveArtifact = artifactStore((s) => s.setActiveArtifact)
   const [dismissed, setDismissed] = useState(false)
 
   if (artifacts.length === 0 || dismissed) return null

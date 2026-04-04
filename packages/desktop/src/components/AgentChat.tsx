@@ -4,6 +4,8 @@ import { connection } from '../lib/connection.js'
 import type { Skill } from '../lib/skills.js'
 import type { ChatImageAttachment } from '../lib/store.js'
 import { useStore } from '../lib/store.js'
+import { projectStore } from '../lib/store/projectStore.js'
+import { uiStore } from '../lib/store/uiStore.js'
 import { AgentChatHeader } from './chat/AgentChatHeader.js'
 import { AgentEmptyState } from './chat/AgentEmptyState.js'
 import { ChatInput } from './chat/ChatInput.js'
@@ -44,7 +46,7 @@ export function AgentChat() {
   // On mount: resume existing conversation's session, or create a new one
   // When used inside ProjectView, the active conversation will have a projectId —
   // in that case we should NOT switch away from it (the project view manages its own sessions).
-  const activeView = useStore((s) => s.activeView)
+  const activeView = uiStore((s) => s.activeView)
   const sessionsLoaded = useStore((s) => s.sessionsLoaded)
   useEffect(() => {
     // Don't create sessions until the server sessions list has been loaded.
@@ -53,11 +55,13 @@ export function AgentChat() {
 
     const store = useStore.getState()
 
+    const ps = projectStore.getState()
+
     if (!activeConvId) {
       // If there are existing conversations (from localStorage or sync), switch to one
       // instead of creating a new one. This prevents duplicates on reconnect/re-render.
       // Consider conversations from the default project (or legacy ones without projectId).
-      const defaultProject = store.projects.find((p) => p.isDefault)
+      const defaultProject = ps.projects.find((p) => p.isDefault)
       const chatConvs = store.conversations.filter(
         (c) => !c.projectId || c.projectId === defaultProject?.id,
       )
@@ -73,7 +77,7 @@ export function AgentChat() {
 
       // No conversations at all — create a fresh one
       const sessionId = `sess_${Date.now().toString(36)}`
-      const projectId = store.activeProjectId ?? undefined
+      const projectId = ps.activeProjectId ?? undefined
       store.newConversation(undefined, sessionId, projectId)
       store.registerPendingSession(sessionId)
       connection.sendSessionCreate(sessionId, {
@@ -85,7 +89,7 @@ export function AgentChat() {
       // Active conversation belongs to a non-default project but we're in chat mode —
       // switch to a default-project conversation. Only do this in chat mode;
       // in projects mode, ProjectView manages the active conversation.
-      const defaultProject = store.projects.find((p) => p.isDefault)
+      const defaultProject = ps.projects.find((p) => p.isDefault)
       const chatConvs = store.conversations.filter(
         (c) => !c.projectId || c.projectId === defaultProject?.id,
       )
@@ -93,7 +97,7 @@ export function AgentChat() {
         store.switchConversation(chatConvs[0].id)
       } else {
         const sessionId = `sess_${Date.now().toString(36)}`
-        const projectId = store.activeProjectId ?? undefined
+        const projectId = ps.activeProjectId ?? undefined
         store.newConversation(undefined, sessionId, projectId)
         store.registerPendingSession(sessionId)
         connection.sendSessionCreate(sessionId, {
@@ -127,7 +131,7 @@ export function AgentChat() {
       if (!conv) {
         // No conversation at all — create one
         sessionId = `sess_${Date.now().toString(36)}`
-        const projectId = store.activeProjectId ?? undefined
+        const projectId = projectStore.getState().activeProjectId ?? undefined
         newConversation(undefined, sessionId, projectId)
         const waitPromise = store.registerPendingSession(sessionId)
         connection.sendSessionCreate(sessionId, {
@@ -167,7 +171,7 @@ export function AgentChat() {
       let outboundText = text
       const freshConv = useStore.getState().getActiveConversation()
       if (freshConv?.agentSessionId && freshConv.messages.length <= 1) {
-        const agent = useStore
+        const agent = projectStore
           .getState()
           .projectAgents.find((a) => a.sessionId === freshConv.agentSessionId)
         if (agent) {

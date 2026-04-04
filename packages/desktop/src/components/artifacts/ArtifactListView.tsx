@@ -1,7 +1,7 @@
 import { Search } from 'lucide-react'
 import { useMemo } from 'react'
 import type { ArtifactRenderType } from '../../lib/artifacts.js'
-import { useStore } from '../../lib/store.js'
+import { artifactStore } from '../../lib/store/artifactStore.js'
 import { ArtifactListItem } from './ArtifactListItem.js'
 
 const FILTER_OPTIONS: { value: ArtifactRenderType | 'all'; label: string }[] = [
@@ -14,14 +14,14 @@ const FILTER_OPTIONS: { value: ArtifactRenderType | 'all'; label: string }[] = [
 ]
 
 export function ArtifactListView() {
-  const artifacts = useStore((s) => s.artifacts)
-  const activeArtifactId = useStore((s) => s.activeArtifactId)
-  const searchQuery = useStore((s) => s.artifactSearchQuery)
-  const filterType = useStore((s) => s.artifactFilterType)
-  const setSearchQuery = useStore((s) => s.setArtifactSearchQuery)
-  const setFilterType = useStore((s) => s.setArtifactFilterType)
-  const setActiveArtifact = useStore((s) => s.setActiveArtifact)
-  const setViewMode = useStore((s) => s.setArtifactViewMode)
+  const artifacts = artifactStore((s) => s.artifacts)
+  const activeArtifactId = artifactStore((s) => s.activeArtifactId)
+  const searchQuery = artifactStore((s) => s.artifactSearchQuery)
+  const filterType = artifactStore((s) => s.artifactFilterType)
+  const setSearchQuery = artifactStore((s) => s.setArtifactSearchQuery)
+  const setFilterType = artifactStore((s) => s.setArtifactFilterType)
+  const setActiveArtifact = artifactStore((s) => s.setActiveArtifact)
+  const setViewMode = artifactStore((s) => s.setArtifactViewMode)
 
   const filtered = useMemo(() => {
     let result = artifacts

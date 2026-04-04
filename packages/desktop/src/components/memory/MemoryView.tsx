@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { connection } from '../../lib/connection.js'
-import { useStore } from '../../lib/store.js'
+import { projectStore } from '../../lib/store/projectStore.js'
 
 type MemoryScope = 'global' | 'conversation' | 'project'
 
@@ -49,13 +49,13 @@ function parseMemoryFile(raw: { name: string; content: string; scope: MemoryScop
 }
 
 export function MemoryView() {
-  const memories = useStore((s) => s.memories)
-  const memoriesLoading = useStore((s) => s.memoriesLoading)
-  const activeProjectId = useStore((s) => s.activeProjectId)
-  const projects = useStore((s) => s.projects)
-  const projectInstructions = useStore((s) => s.projectInstructions)
-  const projectInstructionsLoading = useStore((s) => s.projectInstructionsLoading)
-  const projectPreferences = useStore((s) => s.projectPreferences)
+  const memories = projectStore((s) => s.memories)
+  const memoriesLoading = projectStore((s) => s.memoriesLoading)
+  const activeProjectId = projectStore((s) => s.activeProjectId)
+  const projects = projectStore((s) => s.projects)
+  const projectInstructions = projectStore((s) => s.projectInstructions)
+  const projectInstructionsLoading = projectStore((s) => s.projectInstructionsLoading)
+  const projectPreferences = projectStore((s) => s.projectPreferences)
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [filterScope, setFilterScope] = useState<MemoryScope | 'all'>('all')
@@ -74,10 +74,10 @@ export function MemoryView() {
   // Fetch data on mount and project change
   useEffect(() => {
     if (!activeProjectId) return
-    useStore.setState({ memoriesLoading: true, projectInstructionsLoading: true, projectPreferencesLoading: true })
+    projectStore.setState({ memoriesLoading: true, projectInstructionsLoading: true, projectPreferencesLoading: true })
     connection.sendConfigQuery('memories', undefined, activeProjectId)
-    connection.sendProjectInstructionsGet(activeProjectId)
-    connection.sendProjectPreferencesGet(activeProjectId)
+    projectStore.getState().getProjectInstructions(activeProjectId)
+    projectStore.getState().getProjectPreferences(activeProjectId)
   }, [activeProjectId])
 
   // Sync draft when instructions load
@@ -104,13 +104,13 @@ export function MemoryView() {
 
   const handleSaveInstructions = () => {
     if (!activeProjectId) return
-    connection.sendProjectInstructionsSave(activeProjectId, instructionsDraft)
+    projectStore.getState().saveProjectInstructions(activeProjectId, instructionsDraft)
     setEditingInstructions(false)
   }
 
   const handleAddPreference = () => {
     if (!activeProjectId || !newPrefTitle.trim() || !newPrefContent.trim()) return
-    connection.sendProjectPreferenceAdd(activeProjectId, newPrefTitle.trim(), newPrefContent.trim())
+    projectStore.getState().addProjectPreference(activeProjectId, newPrefTitle.trim(), newPrefContent.trim())
     setNewPrefTitle('')
     setNewPrefContent('')
     setAddingPreference(false)
@@ -118,7 +118,7 @@ export function MemoryView() {
 
   const handleDeletePreference = (prefId: string) => {
     if (!activeProjectId) return
-    connection.sendProjectPreferenceDelete(activeProjectId, prefId)
+    projectStore.getState().deleteProjectPreference(activeProjectId, prefId)
   }
 
   const scopeCounts = useMemo(() => {

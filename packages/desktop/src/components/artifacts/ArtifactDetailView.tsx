@@ -1,11 +1,9 @@
-import { Channel } from '@anton/protocol'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, Check, Code2, Copy, Download, Eye, Globe, Link } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import type { Artifact } from '../../lib/artifacts.js'
 import { getArtifactFileExtension, getArtifactTypeLabel } from '../../lib/artifacts.js'
-import { connection } from '../../lib/connection.js'
-import { useStore } from '../../lib/store.js'
+import { artifactStore } from '../../lib/store/artifactStore.js'
 import { HighlightedBlock, MarkdownRenderer } from '../chat/MarkdownRenderer.js'
 
 // ── Sub-renderers ──────────────────────────────────────────────────
@@ -96,9 +94,9 @@ function ArtifactContent({
 // ── Detail view ───────────────────────────────────────────────────
 
 export function ArtifactDetailView() {
-  const artifacts = useStore((s) => s.artifacts)
-  const activeArtifactId = useStore((s) => s.activeArtifactId)
-  const setViewMode = useStore((s) => s.setArtifactViewMode)
+  const artifacts = artifactStore((s) => s.artifacts)
+  const activeArtifactId = artifactStore((s) => s.activeArtifactId)
+  const setViewMode = artifactStore((s) => s.setArtifactViewMode)
 
   const artifact = artifacts.find((a) => a.id === activeArtifactId)
 
@@ -140,15 +138,12 @@ export function ArtifactDetailView() {
   const handlePublish = useCallback(() => {
     if (!artifact || publishing) return
     setPublishing(true)
-    // Send publish message via the WS connection (AI channel)
-    connection.send(Channel.AI, {
-      type: 'publish_artifact',
-      artifactId: artifact.id,
-      title: artifact.title || artifact.filename || 'Untitled',
-      content: artifact.content,
-      contentType: artifact.renderType,
-      language: artifact.language,
-    })
+    artifactStore.getState().publishArtifact(
+      artifact.id,
+      artifact.content,
+      artifact.renderType,
+      artifact.title || artifact.filename || 'Untitled',
+    )
     // Publishing state resets when we get the response (publish status update)
     setTimeout(() => setPublishing(false), 5000)
   }, [artifact, publishing])

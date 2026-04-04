@@ -1,6 +1,6 @@
 import type { AgentRunRecord } from '@anton/protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useStore } from '../../lib/store.js'
+import { projectStore } from '../../lib/store/projectStore.js'
 import { AgentDetailView } from './AgentDetailView.js'
 import { AgentListView } from './AgentListView.js'
 import { AgentRunView } from './AgentRunView.js'
@@ -15,7 +15,7 @@ export function AgentsView() {
   const [leftWidth, setLeftWidth] = useState(340)
   const dragRef = useRef<{ startX: number; startW: number } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
-  const allAgents = useStore((s) => s.allAgents)
+  const allAgents = projectStore((s) => s.allAgents)
 
   const selectedAgent = selectedAgentId
     ? allAgents.find((a) => a.sessionId === selectedAgentId)

@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, FileText, RefreshCw, Terminal } from 'lucide
 import { useCallback, useEffect, useState } from 'react'
 import { connection } from '../../lib/connection.js'
 import { useStore } from '../../lib/store.js'
+import { uiStore } from '../../lib/store/uiStore.js'
 
 type DevTab = 'prompt' | 'memories'
 
@@ -10,7 +11,7 @@ const CACHE_TTL_MS = 30_000
 
 export function DevModePanel() {
   const [activeTab, setActiveTab] = useState<DevTab>('prompt')
-  const { systemPrompt, memories, lastFetched } = useStore((s) => s.devModeData)
+  const { systemPrompt, memories, lastFetched } = uiStore((s) => s.devModeData)
   const activeConv = useStore((s) => s.getActiveConversation())
   const sessionId = activeConv?.id
 

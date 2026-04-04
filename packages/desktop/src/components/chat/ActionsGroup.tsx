@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronDown, ChevronRight, PanelRight } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { useStore } from '../../lib/store.js'
+import { artifactStore } from '../../lib/store/artifactStore.js'
 import { ArtifactCard } from './ArtifactCard.js'
 import type { ToolAction } from './groupMessages.js'
 
@@ -277,9 +277,9 @@ interface ToolTreeItemProps {
 
 function ToolTreeItem({ action, isLast }: ToolTreeItemProps) {
   const [showResult, setShowResult] = useState(false)
-  const artifacts = useStore((s) => s.artifacts)
-  const setActiveArtifact = useStore((s) => s.setActiveArtifact)
-  const setArtifactPanelOpen = useStore((s) => s.setArtifactPanelOpen)
+  const artifacts = artifactStore((s) => s.artifacts)
+  const setActiveArtifact = artifactStore((s) => s.setActiveArtifact)
+  const setArtifactPanelOpen = artifactStore((s) => s.setArtifactPanelOpen)
 
   const toolName = action.call.toolName || 'unknown'
   const input = action.call.toolInput as Record<string, unknown> | undefined
@@ -385,7 +385,7 @@ interface Props {
 export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [showAllItems, setShowAllItems] = useState(false)
-  const artifacts = useStore((s) => s.artifacts)
+  const artifacts = artifactStore((s) => s.artifacts)
 
   const actionCallIds = useMemo(() => new Set(actions.map((a) => a.call.id)), [actions])
   const groupArtifacts = useMemo(

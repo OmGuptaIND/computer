@@ -2,7 +2,9 @@ import { AlertTriangle, Download, Loader2, RotateCw } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { connection } from '../lib/connection.js'
 import { semverGt } from '../lib/semver.js'
-import { updateStageLabel, useConnectionStatus, useStore } from '../lib/store.js'
+import { updateStageLabel } from '../lib/store/types.js'
+import { updateStore } from '../lib/store/updateStore.js'
+import { useConnectionStatus } from '../lib/store.js'
 import { FRONTEND_VERSION } from '../lib/version.js'
 import { AntonLogo } from './AntonLogo.js'
 
@@ -12,9 +14,9 @@ import { AntonLogo } from './AntonLogo.js'
  * update before continuing.
  */
 export function ForceUpdateGate({ children }: { children: ReactNode }) {
-  const agentVersion = useStore((s) => s.agentVersion)
-  const updateStage = useStore((s) => s.updateStage)
-  const updateMessage = useStore((s) => s.updateMessage)
+  const agentVersion = updateStore((s) => s.agentVersion)
+  const updateStage = updateStore((s) => s.updateStage)
+  const updateMessage = updateStore((s) => s.updateMessage)
   const status = useConnectionStatus()
 
   // Only gate when we have a confirmed version AND the frontend is newer
@@ -100,7 +102,7 @@ export function ForceUpdateGate({ children }: { children: ReactNode }) {
               type="button"
               className="update-banner__action"
               onClick={() => {
-                useStore.getState().setUpdateProgress(null, null)
+                updateStore.getState().setUpdateProgress(null, null)
                 connection.sendUpdateStart()
               }}
             >

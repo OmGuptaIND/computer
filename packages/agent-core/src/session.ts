@@ -30,8 +30,27 @@ import type {
   AgentTool,
   AgentEvent as PiAgentEvent,
 } from '@mariozechner/pi-agent-core'
-import { completeSimple, getModel } from '@mariozechner/pi-ai'
+import { completeSimple, getModel as piGetModel } from '@mariozechner/pi-ai'
 import type { Api, ImageContent, Model, TextContent } from '@mariozechner/pi-ai'
+import { getAntonModel } from './anton-models.js'
+
+/**
+ * Resolve a model by provider + ID.
+ * Tries pi-ai's built-in registry first, then falls back to the anton catalog.
+ */
+function resolveModel(provider: string, modelId: string): Model<Api> | undefined {
+  // pi-ai's registry (hardcoded at build time)
+  const piModel = (piGetModel as (p: string, m: string) => Model<Api> | undefined)(
+    provider,
+    modelId,
+  )
+  if (piModel) return piModel
+
+  // Anton (GRU LiteLLM proxy) — custom runtime registry
+  if (provider === 'anton') return getAntonModel(modelId)
+
+  return undefined
+}
 import {
   type AskUserHandler,
   CORE_SYSTEM_PROMPT,
@@ -260,14 +279,11 @@ export class Session {
     this.compactionState = opts.compactionState || createInitialCompactionState()
 
     // Runtime strings from config — cast to the SDK's nominal types
-    const model = (getModel as (p: string, m: string) => Model<Api> | undefined)(
-      opts.provider,
-      opts.model,
-    )
+    const model = resolveModel(opts.provider, opts.model)
 
     if (!model) {
       throw new Error(
-        `Unknown model "${opts.model}" for provider "${opts.provider}". Model IDs must exactly match pi SDK's registry. For openrouter, use format like "anthropic/claude-sonnet-4.6" or "MiniMaxAI/MiniMax-M2.5".`,
+        `Unknown model "${opts.model}" for provider "${opts.provider}". Model IDs must exactly match pi SDK's registry. For openrouter, use format like "anthropic/claude-sonnet-4.6". For anton, use the model name directly like "gpt-4.1" or "claude-sonnet-4.6".`,
       )
     }
 
@@ -870,7 +886,7 @@ export class Session {
    * keeps all messages, next LLM call uses the new model.
    */
   switchModel(provider: string, model: string): void {
-    const newModel = (getModel as (p: string, m: string) => Model<Api>)(provider, model)
+    const newModel = resolveModel(provider, model) as Model<Api>
     this.piAgent.setModel(newModel)
     this.resolvedModel = newModel
     this.provider = provider
@@ -1586,6 +1602,7 @@ export class Session {
       together: 'TOGETHER_API_KEY',
       openrouter: 'OPENROUTER_API_KEY',
       mistral: 'MISTRAL_API_KEY',
+      anton: 'ANTON_API_KEY',
     }
     const envVar = envMap[provider]
     if (envVar && process.env[envVar]) return process.env[envVar]

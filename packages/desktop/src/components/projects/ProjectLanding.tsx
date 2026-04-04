@@ -4,9 +4,9 @@ import { motion } from 'framer-motion'
 import { Bot, ListChecks, MoreHorizontal, Play, Plus, Send, Square, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { cronToHuman, formatRelativeTime } from '../../lib/agent-utils.js'
-import { connection } from '../../lib/connection.js'
 import type { SessionMeta } from '../../lib/store.js'
 import { useStore } from '../../lib/store.js'
+import { projectStore } from '../../lib/store/projectStore.js'
 import { Skeleton } from '../Skeleton.js'
 import { ConnectorBanner, ConnectorPill } from '../chat/ConnectorToolbar.js'
 import { WorkflowStatusBanner } from '../workflows/WorkflowStatusBanner.js'
@@ -113,7 +113,7 @@ function AgentCard({
             className="agent-row__icon-btn agent-row__icon-btn--visible"
             onClick={(e) => {
               e.stopPropagation()
-              connection.sendAgentAction(projectId, agent.sessionId, 'stop')
+              projectStore.getState().agentAction(projectId, agent.sessionId, 'stop')
             }}
             aria-label="Stop agent"
           >
@@ -125,7 +125,7 @@ function AgentCard({
             className="agent-row__icon-btn"
             onClick={(e) => {
               e.stopPropagation()
-              connection.sendAgentAction(projectId, agent.sessionId, 'start')
+              projectStore.getState().agentAction(projectId, agent.sessionId, 'start')
             }}
             aria-label="Run agent"
           >
@@ -164,7 +164,7 @@ function AgentCard({
                 className="agent-row__menu-item agent-row__menu-item--danger"
                 onClick={(e) => {
                   e.stopPropagation()
-                  connection.sendAgentAction(projectId, agent.sessionId, 'delete')
+                  projectStore.getState().agentAction(projectId, agent.sessionId, 'delete')
                   setShowMenu(false)
                 }}
               >
@@ -196,15 +196,15 @@ function SessionsAndAgents({
   onOpenAgent: (agentSessionId: string) => void
   onDeleteSession: (id: string) => void
 }) {
-  const agents = useStore((s) => s.projectAgents)
+  const agents = projectStore((s) => s.projectAgents)
   const connectionStatus = useStore((s) => s.connectionStatus)
   const runningCount = agents.filter((a) => a.agent.status === 'running').length
 
   // Fetch agents and workflows on mount, when projectId changes, and on reconnect
   useEffect(() => {
     if (connectionStatus === 'connected') {
-      connection.sendAgentsList(projectId)
-      connection.sendWorkflowsList(projectId)
+      projectStore.getState().listAgents(projectId)
+      projectStore.getState().listWorkflows(projectId)
     }
   }, [projectId, connectionStatus])
 
@@ -308,8 +308,8 @@ export function ProjectLanding({
   const [inputValue, setInputValue] = useState('')
   const [planFirst, setPlanFirst] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const projectWorkflows = useStore((s) => s.projectWorkflows)
-  const projectAgents = useStore((s) => s.projectAgents)
+  const projectWorkflows = projectStore((s) => s.projectWorkflows)
+  const projectAgents = projectStore((s) => s.projectAgents)
   const activeWorkflow = projectWorkflows.find((w) => w.projectId === project.id)
   const workflowAgent = activeWorkflow ? projectAgents.find((a) => a.sessionId === activeWorkflow.agentSessionId) : undefined
 

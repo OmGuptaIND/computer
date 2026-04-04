@@ -5,6 +5,8 @@ import { connection } from '../../lib/connection.js'
 import type { Skill } from '../../lib/skills.js'
 import type { ChatImageAttachment } from '../../lib/store.js'
 import { useStore } from '../../lib/store.js'
+import { projectStore } from '../../lib/store/projectStore.js'
+import { uiStore } from '../../lib/store/uiStore.js'
 import { type PersonalizedSuggestion, generateSuggestions } from '../../lib/suggestions.js'
 import { AntonLogo } from '../AntonLogo.js'
 import { ChatInput } from './ChatInput.js'
@@ -44,8 +46,8 @@ const staticSuggestions: Record<Exclude<Category, 'for-you'>, string[]> = {
 export function EmptyState({ onSend, onSkillSelect }: Props) {
   const [activeCategory, setActiveCategory] = useState<Category>('for-you')
   const [draft, setDraft] = useState('')
-  const setActiveProject = useStore((s) => s.setActiveProject)
-  const setActiveView = useStore((s) => s.setActiveView)
+  const setActiveProject = projectStore((s) => s.setActiveProject)
+  const setActiveView = uiStore((s) => s.setActiveView)
 
   // Generate suggestions once on mount — avoid regenerating every time
   // a new conversation is created (which mutates the conversations array).
@@ -63,11 +65,11 @@ export function EmptyState({ onSend, onSkillSelect }: Props) {
 
       if (projectId) {
         // Verify project still exists before navigating
-        const projects = useStore.getState().projects
-        if (projects.some((p) => p.id === projectId)) {
+        const ps = projectStore.getState()
+        if (ps.projects.some((p) => p.id === projectId)) {
           setActiveProject(projectId)
           setActiveView('home')
-          connection.sendProjectSessionsList(projectId)
+          ps.listProjectSessions(projectId)
           return
         }
       }

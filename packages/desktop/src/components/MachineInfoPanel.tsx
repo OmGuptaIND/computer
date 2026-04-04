@@ -1,7 +1,7 @@
 import { Cpu, HardDrive, MemoryStick, MonitorCog, Timer, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { connection } from '../lib/connection.js'
-import { useStore } from '../lib/store.js'
+import { updateStore } from '../lib/store/updateStore.js'
 
 interface SystemStatus {
   status: string
@@ -31,7 +31,7 @@ export function MachineInfoPanel({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState<SystemStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const agentVersion = useStore((s) => s.agentVersion)
+  const agentVersion = updateStore((s) => s.agentVersion)
 
   const config = connection.currentConfig
   const machineName = config?.host?.replace('.antoncomputer.in', '') ?? config?.host ?? 'unknown'

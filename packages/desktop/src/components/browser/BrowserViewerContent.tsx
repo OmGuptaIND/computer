@@ -1,6 +1,6 @@
 import { Globe, MousePointer, Navigation, PenLine, ScrollText } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import { useStore } from '../../lib/store.js'
+import { artifactStore } from '../../lib/store/artifactStore.js'
 
 function formatAction(action: { action: string; target?: string; value?: string }): string {
   switch (action.action) {
@@ -41,7 +41,7 @@ function actionIcon(action: string) {
 }
 
 export function BrowserViewerContent() {
-  const browserState = useStore((s) => s.browserState)
+  const browserState = artifactStore((s) => s.browserState)
   const actionCount = browserState?.actions.length ?? 0
   const logEndRef = useRef<HTMLDivElement>(null)
 

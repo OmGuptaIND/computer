@@ -2,8 +2,7 @@ import type { AgentRunLogEntry } from '@anton/protocol'
 import { ArrowLeft, Loader2, Terminal } from 'lucide-react'
 import { useEffect } from 'react'
 import { formatAbsoluteTime, formatDuration } from '../../lib/agent-utils.js'
-import { connection } from '../../lib/connection.js'
-import { useStore } from '../../lib/store.js'
+import { projectStore } from '../../lib/store/projectStore.js'
 
 interface RunInfo {
   startedAt: number
@@ -41,13 +40,13 @@ function LogEntry({ log }: { log: AgentRunLogEntry }) {
 }
 
 export function AgentRunView({ agentSessionId, projectId, run, onBack }: Props) {
-  const agentRunLogs = useStore((s) => s.agentRunLogs)
-  const agentRunLogsLoading = useStore((s) => s.agentRunLogsLoading)
+  const agentRunLogs = projectStore((s) => s.agentRunLogs)
+  const agentRunLogsLoading = projectStore((s) => s.agentRunLogsLoading)
 
   useEffect(() => {
     if (!run.completedAt) return
-    useStore.setState({ agentRunLogs: null, agentRunLogsLoading: true })
-    connection.sendAgentRunLogs(
+    projectStore.setState({ agentRunLogs: null, agentRunLogsLoading: true })
+    projectStore.getState().getAgentRunLogs(
       projectId,
       agentSessionId,
       run.startedAt,

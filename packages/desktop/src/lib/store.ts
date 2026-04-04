@@ -1,15 +1,18 @@
 import {
   type AskUserQuestion,
   Channel,
-  type Project,
   type TokenUsage,
-  type UsageStatsDayBreakdown,
-  type UsageStatsModelBreakdown,
-  type UsageStatsSessionEntry,
 } from '@anton/protocol'
 import { create } from 'zustand'
-import { type Artifact, type ArtifactRenderType, extractArtifact } from './artifacts.js'
+import { type Artifact, extractArtifact } from './artifacts.js'
 import { type ConnectionStatus, type WsPayload, connection } from './connection.js'
+// Domain stores
+import { connectorStore } from './store/connectorStore.js'
+import { updateStore } from './store/updateStore.js'
+import { usageStore } from './store/usageStore.js'
+import { uiStore } from './store/uiStore.js'
+import { artifactStore } from './store/artifactStore.js'
+import { projectStore } from './store/projectStore.js'
 import {
   type Conversation,
   autoTitle,
@@ -17,12 +20,6 @@ import {
   loadConversations,
   saveConversations,
 } from './conversations.js'
-import {
-  loadActiveProjectId,
-  loadProjects as loadPersistedProjects,
-  saveActiveProjectId,
-  saveProjects as savePersistedProjects,
-} from './projects.js'
 import type {
   WsAgentCreated,
   WsAgentDeleted,
@@ -348,23 +345,6 @@ interface AppState {
   _pendingCitationSourcesQueue: CitationSource[]
   _pendingWebSearchToolCallIds: Set<string>
 
-  // Browser viewer
-  browserState: {
-    url: string
-    title: string
-    screenshot: string | null
-    actions: Array<{ action: string; target?: string; value?: string; timestamp: number }>
-    active: boolean
-  } | null
-
-  // Artifacts
-  artifacts: Artifact[]
-  activeArtifactId: string | null
-  artifactPanelOpen: boolean
-  artifactSearchQuery: string
-  artifactFilterType: ArtifactRenderType | 'all'
-  artifactViewMode: 'list' | 'detail'
-
   // Per-session status tracking
   sessionStatuses: Map<string, { status: AgentStatus; detail?: string }>
 
@@ -385,126 +365,13 @@ interface AppState {
 
   // Plan review
   pendingPlan: { id: string; title: string; content: string; sessionId?: string } | null
-  sidePanelView: 'artifacts' | 'plan' | 'context' | 'browser' | 'devmode'
 
   // Ask-user questionnaire
   pendingAskUser: { id: string; questions: AskUserQuestion[]; sessionId?: string } | null
 
-  // Version & updates
-  agentVersion: string | null
-  agentGitHash: string | null
-  updateInfo: UpdateInfo | null
-  updateStage: UpdateStage
-  updateMessage: string | null
-  updateDismissed: boolean
-
-  // Projects
-  projects: Project[]
-  activeProjectId: string | null
-  activeProjectSessionId: string | null // when set, ProjectView shows embedded chat
-  projectSessions: SessionMeta[] // sessions for the active project
-  projectSessionsLoading: boolean // true while fetching project sessions
-  projectFiles: { name: string; size: number; mimeType: string }[]
-  projectFilesLoading: boolean
-  projectAgents: import('@anton/protocol').AgentSession[]
-  projectAgentsLoading: boolean
-  selectedAgentId: string | null
-  agentRunLogs: import('@anton/protocol').AgentRunLogEntry[] | null
-  agentRunLogsLoading: boolean
-  activeMode: 'chat' | 'computer'
-  activeView: 'home' | 'chat' | 'memory' | 'agents' | 'terminal' | 'files' | 'connectors' | 'developer' | 'skills' | 'workflows' | 'projects'
-
-  // Workflows
-  workflowRegistry: import('@anton/protocol').WorkflowRegistryEntry[]
-  projectWorkflows: import('@anton/protocol').InstalledWorkflow[]
-  workflowConnectorCheck: {
-    workflowId: string
-    satisfied: string[]
-    missing: string[]
-    optional: { id: string; connected: boolean }[]
-  } | null
-
-  // Project context (fetched from server)
-  projectInstructions: string
-  projectInstructionsLoading: boolean
-  projectPreferences: { id: string; title: string; content: string; createdAt: number }[]
-  projectPreferencesLoading: boolean
-  memories: { name: string; content: string; scope: 'global' | 'conversation' | 'project' }[]
-  memoriesLoading: boolean
-
-  // All agents across all projects (for home/task list)
-  allAgents: import('@anton/protocol').AgentSession[]
-  allAgentsLoading: boolean
-
-  // Usage stats (server-computed)
-  usageStats: {
-    totals: TokenUsage
-    byModel: UsageStatsModelBreakdown[]
-    byDay: UsageStatsDayBreakdown[]
-    sessions: UsageStatsSessionEntry[]
-  } | null
-  usageStatsLoading: boolean
-
-  // Connectors
-  connectors: ConnectorStatusInfo[]
-  connectorRegistry: ConnectorRegistryInfo[]
-
-  // Theme
-  theme: 'light' | 'dark' | 'system'
-  resolvedTheme: 'light' | 'dark'
-  setTheme: (theme: 'light' | 'dark' | 'system') => void
-
-  // Onboarding
-  onboardingLoaded: boolean
-  onboardingCompleted: boolean
-  onboardingRole: string | null
-  setOnboardingCompleted: (role?: string) => void
-
-  // Dev Mode
-  devMode: boolean
-  setDevMode: (enabled: boolean) => void
-  devModeData: { systemPrompt: string | null; memories: { name: string; content: string; scope?: string }[]; lastFetched: number }
-  setDevModeData: (data: { systemPrompt?: string | null; memories?: { name: string; content: string; scope?: string }[] }) => void
-  eventLog: { id: number; timestamp: number; type: string; summary: string }[]
-  appendEventLog: (type: string, summary: string) => void
-
-  // Sidebar
-  sidebarCollapsed: boolean
-  setSidebarCollapsed: (collapsed: boolean) => void
-  toggleSidebar: () => void
-  sidebarWidth: number
-  setSidebarWidth: (width: number) => void
-
-  // Tasks visibility
-  tasksHidden: boolean
-  setTasksHidden: (hidden: boolean) => void
-  toggleTasksHidden: () => void
-
-  // Project actions
-  setProjects: (projects: Project[]) => void
-  setActiveProject: (id: string | null) => void
-  addProject: (project: Project) => void
-  updateProject: (id: string, changes: Partial<Project>) => void
-  removeProject: (id: string) => void
-  setProjectSessions: (sessions: SessionMeta[]) => void
-  setProjectFiles: (files: { name: string; size: number; mimeType: string }[]) => void
-  setProjectAgents: (agents: import('@anton/protocol').AgentSession[]) => void
-  setSelectedAgent: (id: string | null) => void
-  setActiveProjectSession: (sessionId: string | null) => void
-  setActiveView: (view: 'home' | 'chat' | 'memory' | 'agents' | 'terminal' | 'files' | 'connectors' | 'developer' | 'skills' | 'workflows') => void
+  // Navigation (orchestration — delegates to uiStore but handles conversation routing)
+  setActiveView: (view: 'home' | 'chat' | 'memory' | 'agents' | 'terminal' | 'files' | 'connectors' | 'developer' | 'skills' | 'workflows' | 'projects') => void
   setActiveMode: (mode: 'chat' | 'computer') => void
-  setProjectInstructions: (content: string) => void
-  setProjectPreferences: (prefs: { id: string; title: string; content: string; createdAt: number }[]) => void
-  setMemories: (memories: { name: string; content: string; scope: 'global' | 'conversation' | 'project' }[]) => void
-  setAllAgents: (agents: import('@anton/protocol').AgentSession[]) => void
-  fetchAllAgents: () => void
-
-  // Connector actions
-  setConnectors: (connectors: ConnectorStatusInfo[]) => void
-  addOrUpdateConnector: (connector: ConnectorStatusInfo) => void
-  removeConnector: (id: string) => void
-  updateConnectorStatus: (id: string, updates: Partial<ConnectorStatusInfo>) => void
-  setConnectorRegistry: (entries: ConnectorRegistryInfo[]) => void
 
   // Actions
   setConnectionStatus: (status: ConnectionStatus) => void
@@ -544,10 +411,8 @@ interface AppState {
   // Response model tracking
   setLastResponseModel: (provider: string, model: string) => void
 
-  // Usage actions
+  // Usage actions (turn/session usage stays here, aggregate stats moved to usageStore)
   setUsage: (turn: TokenUsage | null, session: TokenUsage | null) => void
-  requestUsageStats: () => void
-  setUsageStats: (stats: AppState['usageStats']) => void
 
   // Agent status & steps actions
   setAgentStatusDetail: (detail: string | null) => void
@@ -558,26 +423,6 @@ interface AppState {
   // Session readiness actions
   registerPendingSession: (id: string) => Promise<void>
   resolvePendingSession: (id: string) => void
-
-  // Browser viewer actions
-  setBrowserState: (state: {
-    url: string
-    title: string
-    screenshot?: string
-    lastAction: { action: string; target?: string; value?: string; timestamp: number }
-    elementCount?: number
-  }) => void
-  clearBrowserState: () => void
-
-  // Artifact actions
-  addArtifact: (artifact: Artifact) => void
-  setActiveArtifact: (id: string | null) => void
-  setArtifactPanelOpen: (open: boolean) => void
-  clearArtifacts: () => void
-  setArtifactSearchQuery: (query: string) => void
-  setArtifactFilterType: (type: ArtifactRenderType | 'all') => void
-  setArtifactViewMode: (mode: 'list' | 'detail') => void
-  updateArtifactPublishStatus: (artifactId: string, url: string, slug: string) => void
 
   // Confirm actions
   setPendingConfirm: (
@@ -596,11 +441,7 @@ interface AppState {
     ask: { id: string; questions: AskUserQuestion[]; sessionId?: string } | null,
   ) => void
 
-  // Update actions
-  setAgentVersionInfo: (version: string, gitHash: string) => void
-  setUpdateInfo: (info: UpdateInfo | null) => void
-  setUpdateProgress: (stage: UpdateStage, message: string | null) => void
-  dismissUpdate: () => void
+  // Update actions — moved to updateStore
 
   // Reset actions
   resetForDisconnect: () => void
@@ -656,13 +497,6 @@ export const useStore = create<AppState>((set, get) => {
     citations: new Map(),
     _pendingCitationSourcesQueue: [],
     _pendingWebSearchToolCallIds: new Set(),
-    browserState: null,
-    artifacts: [],
-    activeArtifactId: null,
-    artifactPanelOpen: false,
-    artifactSearchQuery: '',
-    artifactFilterType: 'all' as const,
-    artifactViewMode: 'list' as const,
     sessionStatuses: new Map(),
     _activeStreamingSessions: new Set(),
     _sessionsNeedingHistoryRefresh: new Set(),
@@ -672,196 +506,15 @@ export const useStore = create<AppState>((set, get) => {
     _loadingOlderSessions: new Set(),
     pendingConfirm: null,
     pendingPlan: null,
-    sidePanelView: 'artifacts' as const,
     pendingAskUser: null,
-    agentVersion: null,
-    agentGitHash: null,
-    updateInfo: null,
-    updateStage: null,
-    updateMessage: null,
-    updateDismissed: false,
-    projects: loadPersistedProjects(),
-    activeProjectId: loadActiveProjectId(),
-    activeProjectSessionId: null,
-    projectSessions: [],
-    projectSessionsLoading: false,
-    projectFiles: [],
-    projectFilesLoading: false,
-    projectAgents: [],
-    projectAgentsLoading: false,
-    selectedAgentId: null,
-    agentRunLogs: null,
-    agentRunLogsLoading: false,
-    activeMode: (localStorage.getItem('anton-mode') as 'chat' | 'computer') || 'computer',
-    activeView: 'home',
-    workflowRegistry: [],
-    projectWorkflows: [],
-    workflowConnectorCheck: null,
-    projectInstructions: '',
-    projectInstructionsLoading: false,
-    projectPreferences: [],
-    projectPreferencesLoading: false,
-    memories: [],
-    memoriesLoading: false,
-    allAgents: [],
-    allAgentsLoading: false,
 
-    // Usage stats
-    usageStats: null,
-    usageStatsLoading: false,
 
-    // Connectors
-    connectors: [],
-    connectorRegistry: [],
-
-    theme: (localStorage.getItem('anton-theme') as 'light' | 'dark' | 'system') || 'dark',
-    resolvedTheme: (() => {
-      const saved = localStorage.getItem('anton-theme') || 'dark'
-      if (saved === 'system') {
-        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-      }
-      return saved as 'light' | 'dark'
-    })(),
-    setTheme: (theme) => {
-      localStorage.setItem('anton-theme', theme)
-      const resolved =
-        theme === 'system'
-          ? window.matchMedia('(prefers-color-scheme: dark)').matches
-            ? 'dark'
-            : 'light'
-          : theme
-      document.documentElement.setAttribute('data-theme', resolved)
-      set({ theme, resolvedTheme: resolved })
-    },
-
-    onboardingLoaded: false,
-    onboardingCompleted: false,
-    onboardingRole: null,
-    setOnboardingCompleted: (role?: string) => {
-      set({ onboardingCompleted: true, onboardingRole: role ?? null })
-      connection.send(Channel.CONTROL, {
-        type: 'config_update',
-        key: 'onboarding',
-        value: { completed: true, role: role ?? undefined },
-      })
-    },
-
-    devMode: localStorage.getItem('anton-devmode') === 'true',
-    setDevMode: (enabled) => {
-      localStorage.setItem('anton-devmode', String(enabled))
-      set({ devMode: enabled })
-      if (!enabled) {
-        // Close dev panel if open
-        const s = get()
-        if (s.sidePanelView === 'devmode') {
-          set({ artifactPanelOpen: false })
-        }
-      }
-    },
-    devModeData: { systemPrompt: null, memories: [], lastFetched: 0 },
-    setDevModeData: (data) => set((s) => ({
-      devModeData: {
-        systemPrompt: data.systemPrompt !== undefined ? data.systemPrompt : s.devModeData.systemPrompt,
-        memories: data.memories !== undefined ? data.memories : s.devModeData.memories,
-        lastFetched: Date.now(),
-      },
-    })),
-    eventLog: [],
-    appendEventLog: (type, summary) => set((s) => {
-      const entry = { id: Date.now() + Math.random(), timestamp: Date.now(), type, summary }
-      const log = [entry, ...s.eventLog]
-      return { eventLog: log.length > 200 ? log.slice(0, 200) : log }
-    }),
-
-    sidebarCollapsed: false,
-    setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
-    toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-    sidebarWidth: 240,
-    setSidebarWidth: (width) => set({ sidebarWidth: width }),
-
-    tasksHidden: false,
-    setTasksHidden: (hidden) => set({ tasksHidden: hidden }),
-    toggleTasksHidden: () => set((s) => ({ tasksHidden: !s.tasksHidden })),
-
-    setProjects: (projects) => {
-      savePersistedProjects(projects)
-      set({ projects })
-
-      // Auto-select the default project if no project is active
-      const { activeProjectId } = get()
-      if (!activeProjectId) {
-        const defaultProject = projects.find((p) => p.isDefault)
-        if (defaultProject) {
-          get().setActiveProject(defaultProject.id)
-        }
-      }
-    },
-    setActiveProject: (id) => {
-      saveActiveProjectId(id)
-      set({
-        activeProjectId: id,
-        activeProjectSessionId: null,
-        projectSessions: [],
-        projectSessionsLoading: !!id,
-        projectFiles: [],
-        projectFilesLoading: !!id,
-        projectAgents: [],
-        projectAgentsLoading: !!id,
-        selectedAgentId: null,
-        agentRunLogs: null,
-        agentRunLogsLoading: false,
-      })
-    },
-    addProject: (project) => {
-      set((state) => {
-        const projects = [project, ...state.projects]
-        savePersistedProjects(projects)
-        return { projects }
-      })
-    },
-    updateProject: (id, changes) => {
-      set((state) => {
-        const projects = state.projects.map((p) =>
-          p.id === id ? { ...p, ...changes, updatedAt: Date.now() } : p,
-        )
-        savePersistedProjects(projects)
-        return { projects }
-      })
-    },
-    removeProject: (id) => {
-      set((state) => {
-        const projects = state.projects.filter((p) => p.id !== id)
-        savePersistedProjects(projects)
-        const activeProjectId = state.activeProjectId === id ? null : state.activeProjectId
-        if (!activeProjectId) saveActiveProjectId(null)
-        return { projects, activeProjectId }
-      })
-    },
-    setProjectSessions: (sessions) =>
-      set({ projectSessions: sessions, projectSessionsLoading: false }),
-    setProjectFiles: (files) => set({ projectFiles: files, projectFilesLoading: false }),
-    setProjectAgents: (agents) => set({ projectAgents: agents, projectAgentsLoading: false }),
-    setSelectedAgent: (id) => set({ selectedAgentId: id }),
-    setActiveProjectSession: (sessionId) => set({ activeProjectSessionId: sessionId }),
-    setProjectInstructions: (content) => set({ projectInstructions: content, projectInstructionsLoading: false }),
-    setProjectPreferences: (prefs) => set({ projectPreferences: prefs, projectPreferencesLoading: false }),
-    setMemories: (memories) => set({ memories, memoriesLoading: false }),
     setActiveMode: (mode) => {
       localStorage.setItem('anton-mode', mode)
-      if (mode === 'computer') {
-        set({ activeMode: mode, activeView: 'home' })
-      } else {
-        set({ activeMode: mode, activeView: 'chat' })
-      }
-    },
-    setAllAgents: (agents) => set({ allAgents: agents, allAgentsLoading: false }),
-    fetchAllAgents: () => {
-      const state = get()
-      if (state.projects.length === 0) return
-      set({ allAgentsLoading: true })
-      for (const project of state.projects) {
-        connection.sendAgentsList(project.id)
-      }
+      uiStore.setState({
+        activeMode: mode,
+        activeView: mode === 'computer' ? 'home' : 'chat',
+      })
     },
     setActiveView: (view) => {
       if (view === 'chat') {
@@ -871,41 +524,23 @@ export const useStore = create<AppState>((set, get) => {
         const activeConv = state.conversations.find((c) => c.id === state.activeConversationId)
         if (activeConv?.projectId) {
           // Try to find an existing chat conversation (default project or legacy)
-          const defaultProject = state.projects.find((p) => p.isDefault)
+          const defaultProject = projectStore.getState().projects.find((p) => p.isDefault)
           const chatConv = state.conversations.find(
             (c) => !c.projectId || c.projectId === defaultProject?.id,
           )
           if (chatConv) {
             localStorage.setItem(ACTIVE_CONV_KEY, chatConv.id)
-            set({ activeView: view, activeConversationId: chatConv.id })
+            set({ activeConversationId: chatConv.id })
           } else {
             localStorage.removeItem(ACTIVE_CONV_KEY)
-            set({ activeView: view, activeConversationId: null })
+            set({ activeConversationId: null })
           }
-          return
         }
       }
-      set({ activeView: view })
+      uiStore.setState({ activeView: view })
     },
 
-    // Connector actions
-    setConnectors: (connectors) => set({ connectors }),
-    addOrUpdateConnector: (connector) =>
-      set((s) => {
-        const idx = s.connectors.findIndex((c) => c.id === connector.id)
-        if (idx >= 0) {
-          const updated = [...s.connectors]
-          updated[idx] = connector
-          return { connectors: updated }
-        }
-        return { connectors: [...s.connectors, connector] }
-      }),
-    removeConnector: (id) => set((s) => ({ connectors: s.connectors.filter((c) => c.id !== id) })),
-    updateConnectorStatus: (id, updates) =>
-      set((s) => ({
-        connectors: s.connectors.map((c) => (c.id === id ? { ...c, ...updates } : c)),
-      })),
-    setConnectorRegistry: (entries) => set({ connectorRegistry: entries }),
+    // Connector actions — moved to connectorStore
 
     setConnectionStatus: (status) => set({ connectionStatus: status }),
     setAgentStatus: (status, sessionId?) => {
@@ -1079,7 +714,7 @@ export const useStore = create<AppState>((set, get) => {
           : undefined) ?? []
 
       // Close artifact panel when switching conversations
-      updates.artifactPanelOpen = false
+      artifactStore.setState({ artifactPanelOpen: false })
 
       // If this session completed a turn in the background, fetch fresh history
       if (conv?.sessionId && get()._sessionsNeedingHistoryRefresh.has(conv.sessionId)) {
@@ -1287,7 +922,7 @@ export const useStore = create<AppState>((set, get) => {
       const state = get()
       const conv = state.conversations.find((c) => c.id === state.activeConversationId)
       if (!conv?.agentSessionId) return null
-      return state.projectAgents.find((a) => a.sessionId === conv.agentSessionId) ?? null
+      return projectStore.getState().projectAgents.find((a) => a.sessionId === conv.agentSessionId) ?? null
     },
 
     findConversationBySession: (sessionId) => {
@@ -1425,11 +1060,7 @@ export const useStore = create<AppState>((set, get) => {
 
     setUsage: (turn, session) => set({ turnUsage: turn, sessionUsage: session }),
 
-    requestUsageStats: () => {
-      set({ usageStatsLoading: true })
-      connection.send(Channel.AI, { type: 'usage_stats' })
-    },
-    setUsageStats: (stats) => set({ usageStats: stats, usageStatsLoading: false }),
+    // requestUsageStats and setUsageStats — moved to usageStore
 
     setAgentStatusDetail: (detail) => set({ agentStatusDetail: detail }),
 
@@ -1457,87 +1088,22 @@ export const useStore = create<AppState>((set, get) => {
       }
     },
 
-    addArtifact: (artifact) =>
-      set((state) => {
-        // Deduplicate by filepath (update existing if same file written again)
-        const existing = artifact.filepath
-          ? state.artifacts.findIndex((a) => a.filepath === artifact.filepath)
-          : -1
-        let artifacts: Artifact[]
-        if (existing >= 0) {
-          artifacts = [...state.artifacts]
-          artifacts[existing] = artifact
-        } else {
-          artifacts = [...state.artifacts, artifact]
-        }
-        return {
-          artifacts,
-          activeArtifactId: artifact.id,
-        }
-      }),
-
-    setActiveArtifact: (id) => set({ activeArtifactId: id }),
-
-    setArtifactPanelOpen: (open) => set({ artifactPanelOpen: open }),
-
-    setBrowserState: (state) => {
-      const current = get().browserState
-      const actions = current?.actions ?? []
-      // Keep last 50 actions
-      const newActions = [...actions, state.lastAction].slice(-50)
-      set({
-        browserState: {
-          url: state.url,
-          title: state.title,
-          screenshot: state.screenshot ?? current?.screenshot ?? null,
-          actions: newActions,
-          active: true,
-        },
-      })
-    },
-
-    clearBrowserState: () => set({ browserState: null }),
-
-    clearArtifacts: () => set({ artifacts: [], activeArtifactId: null, artifactPanelOpen: false }),
-
-    setArtifactSearchQuery: (query) => set({ artifactSearchQuery: query }),
-    setArtifactFilterType: (type) => set({ artifactFilterType: type }),
-    setArtifactViewMode: (mode) => set({ artifactViewMode: mode }),
-
-    updateArtifactPublishStatus: (artifactId, url, slug) =>
-      set((state) => ({
-        artifacts: state.artifacts.map((a) =>
-          a.id === artifactId
-            ? { ...a, publishedUrl: url, publishedSlug: slug, publishedAt: Date.now() }
-            : a,
-        ),
-      })),
-
     setPendingConfirm: (confirm) => set({ pendingConfirm: confirm }),
 
     setPendingPlan: (plan) => set({ pendingPlan: plan }),
-    setSidePanelView: (view) => set({ sidePanelView: view }),
-    openContextPanel: () => set({ sidePanelView: 'context', artifactPanelOpen: true }),
+    setSidePanelView: (view) => uiStore.setState({ sidePanelView: view }),
+    openContextPanel: () => {
+      uiStore.setState({ sidePanelView: 'context' })
+      artifactStore.setState({ artifactPanelOpen: true })
+    },
     setPendingAskUser: (ask) => set({ pendingAskUser: ask }),
 
-    setAgentVersionInfo: (version, gitHash) =>
-      set({ agentVersion: version, agentGitHash: gitHash }),
-
-    setUpdateInfo: (info) => set({ updateInfo: info, updateDismissed: false }),
-
-    setUpdateProgress: (stage, message) => set({ updateStage: stage, updateMessage: message }),
-
-    dismissUpdate: () => set({ updateDismissed: true }),
+    // Update actions — moved to updateStore
 
     resetForDisconnect: () => {
-      const { updateStage, updateInfo, updateMessage } = get()
-      const isUpdating = updateStage === 'restarting'
-
       set({
         // KEEP: conversations, activeConversationId — user's chat history persists
-        // KEEP: projects, activeProjectId — project context persists
         // KEEP: activeView — don't reset navigation
-        // KEEP: update state if agent is restarting for an update (expected disconnect)
 
         // Clear transient session/connection state
         currentSessionId: null,
@@ -1561,21 +1127,6 @@ export const useStore = create<AppState>((set, get) => {
         lastResponseProvider: null,
         lastResponseModel: null,
         providers: [],
-        agentVersion: null,
-        agentGitHash: null,
-        updateInfo: isUpdating ? updateInfo : null,
-        updateStage: isUpdating ? updateStage : null,
-        updateMessage: isUpdating ? updateMessage : null,
-        updateDismissed: false,
-        projectSessions: [],
-        projectSessionsLoading: false,
-        projectFiles: [],
-        projectFilesLoading: false,
-        projectAgents: [],
-        projectAgentsLoading: false,
-        selectedAgentId: null,
-        allAgents: [],
-        allAgentsLoading: false,
         // Clear stale streaming/sync state so reconnection doesn't think
         // old sessions are still streaming (which would block history sync)
         _activeStreamingSessions: new Set(),
@@ -1585,8 +1136,13 @@ export const useStore = create<AppState>((set, get) => {
         _sessionHasMore: new Map(),
         _loadingOlderSessions: new Set(),
       })
-      // DO NOT clear conversations or active conversation — preserve chat history
-      // On reconnect, session_history will sync the server's persisted state
+
+      // Reset domain stores
+      connectorStore.getState().reset()
+      updateStore.getState().resetKeepIfUpdating()
+      usageStore.getState().reset()
+      projectStore.getState().resetTransient()
+      artifactStore.getState().reset()
     },
 
     resetForMachineSwitch: () => {
@@ -1598,9 +1154,6 @@ export const useStore = create<AppState>((set, get) => {
         currentSessionId: null,
         sessions: [],
         sessionsLoaded: false,
-        projects: [],
-        activeProjectId: null,
-        activeView: 'home',
         agentStatus: 'idle',
         agentStatusDetail: null,
         workingSessionId: null,
@@ -1619,21 +1172,6 @@ export const useStore = create<AppState>((set, get) => {
         lastResponseProvider: null,
         lastResponseModel: null,
         providers: [],
-        agentVersion: null,
-        agentGitHash: null,
-        updateInfo: null,
-        updateStage: null,
-        updateMessage: null,
-        updateDismissed: false,
-        projectSessions: [],
-        projectSessionsLoading: false,
-        projectFiles: [],
-        projectFilesLoading: false,
-        projectAgents: [],
-        projectAgentsLoading: false,
-        selectedAgentId: null,
-        allAgents: [],
-        allAgentsLoading: false,
         _activeStreamingSessions: new Set(),
         _sessionsNeedingHistoryRefresh: new Set(),
         _syncingSessionIds: new Set(),
@@ -1641,6 +1179,14 @@ export const useStore = create<AppState>((set, get) => {
         _sessionHasMore: new Map(),
         _loadingOlderSessions: new Set(),
       })
+
+      // Reset all domain stores
+      connectorStore.getState().reset()
+      updateStore.getState().reset()
+      usageStore.getState().reset()
+      uiStore.getState().reset()
+      projectStore.getState().reset()
+      artifactStore.getState().reset()
     },
   }
 })
@@ -1662,21 +1208,21 @@ function handleWsMessage(channel: number, msg: WsPayload) {
   if (channel === Channel.CONTROL) {
     if (msg.type === 'auth_ok') {
       const m = msg as unknown as WsAuthOk
-      store.setAgentVersionInfo(m.version || '', m.gitHash || '')
+      const us = updateStore.getState()
+      us.setAgentVersionInfo(m.version || '', m.gitHash || '')
 
       // Reconnected after an update restart — mark update as done
-      if (store.updateStage === 'restarting') {
-        store.setUpdateProgress('done', `Updated to v${m.version}`)
-        store.setUpdateInfo({
+      if (us.updateStage === 'restarting') {
+        us.setUpdateProgress('done', `Updated to v${m.version}`)
+        us.setUpdateInfo({
           currentVersion: m.version,
           latestVersion: m.version,
           updateAvailable: false,
-          changelog: store.updateInfo?.changelog ?? null,
-          releaseUrl: store.updateInfo?.releaseUrl ?? null,
+          changelog: us.updateInfo?.changelog ?? null,
+          releaseUrl: us.updateInfo?.releaseUrl ?? null,
         })
       } else if (m.updateAvailable) {
-        // If agent already knows about an update, store it
-        store.setUpdateInfo({
+        us.setUpdateInfo({
           currentVersion: m.version,
           latestVersion: m.updateAvailable.version,
           updateAvailable: true,
@@ -1684,9 +1230,11 @@ function handleWsMessage(channel: number, msg: WsPayload) {
           releaseUrl: m.updateAvailable.releaseUrl,
         })
       }
+
+      // Onboarding state from providers is handled in providers_list_response
     } else if (msg.type === 'update_check_response') {
       const m = msg as unknown as WsUpdateCheckResponse
-      store.setUpdateInfo({
+      updateStore.getState().setUpdateInfo({
         currentVersion: m.currentVersion,
         latestVersion: m.latestVersion,
         updateAvailable: m.updateAvailable,
@@ -1695,15 +1243,15 @@ function handleWsMessage(channel: number, msg: WsPayload) {
       })
     } else if (msg.type === 'update_progress') {
       const m = msg as unknown as WsUpdateProgress
-      store.setUpdateProgress(m.stage, m.message)
+      updateStore.getState().setUpdateProgress(m.stage, m.message)
     } else if (msg.type === 'config_query_response') {
       const m = msg as unknown as { key: string; value: unknown }
       if (m.key === 'system_prompt' && typeof m.value === 'string') {
-        store.setDevModeData({ systemPrompt: m.value })
+        uiStore.getState().setDevModeData({ systemPrompt: m.value })
       } else if (m.key === 'memories' && Array.isArray(m.value)) {
         const memories = m.value as { name: string; content: string; scope: 'global' | 'conversation' | 'project' }[]
-        store.setDevModeData({ memories })
-        store.setMemories(memories)
+        uiStore.getState().setDevModeData({ memories })
+        projectStore.getState().setMemories(memories)
       }
     }
     // Don't return — let other control messages fall through for ping/pong etc.
@@ -1713,7 +1261,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
   if (channel === Channel.EVENTS && msg.type === 'job_event') {
     const m = msg as unknown as WsJobEvent
     // Refresh job list when a job state changes
-    if (m.projectId === store.activeProjectId) {
+    if (m.projectId === projectStore.getState().activeProjectId) {
       connection.sendAgentsList(m.projectId)
     }
     return
@@ -1722,7 +1270,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
   // ── EVENTS channel: agent status + update notifications ──
   if (channel === Channel.EVENTS && msg.type === 'update_available') {
     const m = msg as unknown as WsUpdateAvailable
-    store.setUpdateInfo({
+    updateStore.getState().setUpdateInfo({
       currentVersion: m.currentVersion,
       latestVersion: m.latestVersion,
       updateAvailable: true,
@@ -1735,7 +1283,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
   if (channel === Channel.EVENTS && msg.type === 'agent_status') {
     const m = msg as unknown as WsAgentStatusMsg
     console.log(`[WS] Agent status: ${m.status}`, m.detail || '', m.sessionId || '')
-    store.appendEventLog('status', `Agent ${m.status}${m.detail ? ` — ${m.detail}` : ''}${m.sessionId ? ` (${m.sessionId.slice(0, 12)})` : ''}`)
+    uiStore.getState().appendEventLog('status', `Agent ${m.status}${m.detail ? ` — ${m.detail}` : ''}${m.sessionId ? ` (${m.sessionId.slice(0, 12)})` : ''}`)
     const sid: string | undefined = m.sessionId
 
     // Update per-session status map
@@ -1825,7 +1373,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
       : msg.type === 'thinking' ? 'Thinking...'
       : msg.type === 'session_created' ? `Session created: ${(msg as any).sessionId?.slice(0, 12) || ''}`
       : `Session destroyed: ${(msg as any).sessionId?.slice(0, 12) || ''}`
-    store.appendEventLog(msg.type, summary)
+    uiStore.getState().appendEventLog(msg.type, summary)
   }
 
   switch (msg.type) {
@@ -2018,8 +1566,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
 
     case 'artifact': {
       const m = msg as unknown as WsArtifact
-      // Server-side artifact detection — add directly to store
-      store.addArtifact({
+      artifactStore.getState().addArtifact({
         id: m.id,
         type: m.artifactType,
         renderType: m.renderType,
@@ -2031,7 +1578,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
         toolCallId: `tc_${m.toolCallId}`,
         timestamp: Date.now(),
         conversationId: store.activeConversationId || undefined,
-        projectId: store.activeProjectId || undefined,
+        projectId: projectStore.getState().activeProjectId || undefined,
       })
       break
     }
@@ -2039,7 +1586,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
     case 'publish_artifact_response': {
       const m = msg as unknown as WsPublishArtifactResponse
       if (m.success && m.artifactId) {
-        store.updateArtifactPublishStatus(m.artifactId, m.publicUrl, m.slug)
+        artifactStore.getState().updateArtifactPublishStatus(m.artifactId, m.publicUrl, m.slug)
       }
       break
     }
@@ -2140,9 +1687,10 @@ function handleWsMessage(channel: number, msg: WsPayload) {
         )
         store.updateConversationTitle(m.sessionId, m.title)
         // Also update projectSessions so sidebar reflects the new title
-        if (store.projectSessions.some((s: SessionMeta) => s.id === m.sessionId)) {
-          store.setProjectSessions(
-            store.projectSessions.map((s: SessionMeta) =>
+        const ps = projectStore.getState()
+        if (ps.projectSessions.some((s: SessionMeta) => s.id === m.sessionId)) {
+          ps.setProjectSessions(
+            ps.projectSessions.map((s: SessionMeta) =>
               s.id === m.sessionId ? { ...s, title: m.title } : s,
             ),
           )
@@ -2176,8 +1724,9 @@ function handleWsMessage(channel: number, msg: WsPayload) {
     case 'browser_state': {
       const m = msg as unknown as WsBrowserState
       if (isForActiveSession) {
-        const wasActive = store.browserState?.active
-        store.setBrowserState({
+        const as = artifactStore.getState()
+        const wasActive = as.browserState?.active
+        as.setBrowserState({
           url: m.url,
           title: m.title,
           screenshot: m.screenshot,
@@ -2187,7 +1736,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
         // Auto-open browser viewer on first browser event
         if (!wasActive) {
           store.setSidePanelView('browser')
-          useStore.setState({ artifactPanelOpen: true })
+          artifactStore.setState({ artifactPanelOpen: true })
         }
       }
       break
@@ -2195,7 +1744,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
 
     case 'browser_close': {
       if (isForActiveSession) {
-        store.clearBrowserState()
+        artifactStore.getState().clearBrowserState()
       }
       break
     }
@@ -2355,7 +1904,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
 
     case 'usage_stats_response': {
       const m = msg as unknown as WsUsageStatsResponse
-      store.setUsageStats({
+      usageStore.getState().setUsageStats({
         totals: m.totals,
         byModel: m.byModel,
         byDay: m.byDay,
@@ -2478,8 +2027,9 @@ function handleWsMessage(channel: number, msg: WsPayload) {
       }
 
       // Use server-sent artifacts if available (first page includes all artifacts)
+      const as = artifactStore.getState()
       if (m.artifacts && Array.isArray(m.artifacts) && m.artifacts.length > 0) {
-        store.clearArtifacts()
+        as.clearArtifacts()
         for (const _a of m.artifacts as unknown[]) {
           const a = _a as {
             id: string
@@ -2492,7 +2042,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
             content: string
             toolCallId: string
           }
-          store.addArtifact({
+          as.addArtifact({
             id: a.id,
             type: a.type as 'file' | 'output' | 'artifact',
             renderType: a.renderType as import('./artifacts.js').ArtifactRenderType,
@@ -2507,7 +2057,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
         }
       } else if (isFirstPage) {
         // Fallback: reconstruct artifacts from messages (backward compat)
-        store.clearArtifacts()
+        as.clearArtifacts()
         const toolCalls = new Map<string, ChatMessage>()
         for (const m of historyMessages) {
           if (m.id.startsWith('tc_') && m.toolName) {
@@ -2521,7 +2071,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
             if (call && !m.isError) {
               const artifact = extractArtifact(call, m)
               if (artifact) {
-                store.addArtifact(artifact)
+                as.addArtifact(artifact)
               }
             }
           }
@@ -2562,8 +2112,9 @@ function handleWsMessage(channel: number, msg: WsPayload) {
       const m = msg as unknown as WsSessionDestroyed
       store.setSessions(store.sessions.filter((s: SessionMeta) => s.id !== m.id))
       // Also remove from projectSessions so project view updates immediately
-      if (store.projectSessions.some((s: SessionMeta) => s.id === m.id)) {
-        store.setProjectSessions(store.projectSessions.filter((s: SessionMeta) => s.id !== m.id))
+      const ps = projectStore.getState()
+      if (ps.projectSessions.some((s: SessionMeta) => s.id !== m.id)) {
+        ps.setProjectSessions(ps.projectSessions.filter((s: SessionMeta) => s.id !== m.id))
       }
       break
     }
@@ -2572,11 +2123,15 @@ function handleWsMessage(channel: number, msg: WsPayload) {
     case 'providers_list_response': {
       const m = msg as unknown as WsProvidersListResponse
       store.setProviders(m.providers, m.defaults)
-      useStore.setState({
-        onboardingLoaded: true,
-        onboardingCompleted: !!m.onboarding?.completed,
-        onboardingRole: m.onboarding?.role ?? null,
-      })
+      // Onboarding state now lives in uiStore
+      const ui = uiStore.getState()
+      ui.setOnboardingLoaded(true)
+      if (m.onboarding?.completed) {
+        uiStore.setState({
+          onboardingCompleted: true,
+          onboardingRole: m.onboarding?.role ?? null,
+        })
+      }
       break
     }
 
@@ -2620,58 +2175,59 @@ function handleWsMessage(channel: number, msg: WsPayload) {
     // ── Project responses ──────────────────────────────────────
     case 'project_created': {
       const m = msg as unknown as WsProjectCreated
-      store.addProject(m.project)
-      store.setActiveProject(m.project.id)
+      const ps = projectStore.getState()
+      ps.addProject(m.project)
+      ps.setActiveProject(m.project.id)
       connection.sendProjectSessionsList(m.project.id)
       break
     }
 
     case 'projects_list_response': {
       const m = msg as unknown as WsProjectsListResponse
-      store.setProjects(m.projects)
+      projectStore.getState().setProjects(m.projects)
       break
     }
 
     case 'project_updated': {
       const m = msg as unknown as WsProjectUpdated
-      store.updateProject(m.project.id, m.project)
+      projectStore.getState().updateProject(m.project.id, m.project)
       break
     }
 
     case 'project_deleted': {
       const m = msg as unknown as WsProjectDeleted
-      store.removeProject(m.id)
+      projectStore.getState().removeProject(m.id)
       break
     }
 
     case 'project_files_list_response': {
       const m = msg as unknown as WsProjectFilesListResponse
-      if (m.projectId === store.activeProjectId) {
-        store.setProjectFiles(m.files)
+      if (m.projectId === projectStore.getState().activeProjectId) {
+        projectStore.getState().setProjectFiles(m.files)
       }
       break
     }
 
     case 'project_sessions_list_response': {
       const m = msg as unknown as WsProjectSessionsListResponse
-      if (m.projectId === store.activeProjectId) {
-        store.setProjectSessions(m.sessions)
+      if (m.projectId === projectStore.getState().activeProjectId) {
+        projectStore.getState().setProjectSessions(m.sessions)
       }
       break
     }
 
     case 'project_instructions_response': {
       const m = msg as unknown as { projectId: string; content: string }
-      if (m.projectId === store.activeProjectId) {
-        store.setProjectInstructions(m.content)
+      if (m.projectId === projectStore.getState().activeProjectId) {
+        projectStore.getState().setProjectInstructions(m.content)
       }
       break
     }
 
     case 'project_preferences_response': {
       const m = msg as unknown as { projectId: string; preferences: { id: string; title: string; content: string; createdAt: number }[] }
-      if (m.projectId === store.activeProjectId) {
-        store.setProjectPreferences(m.preferences)
+      if (m.projectId === projectStore.getState().activeProjectId) {
+        projectStore.getState().setProjectPreferences(m.preferences)
       }
       break
     }
@@ -2679,92 +2235,88 @@ function handleWsMessage(channel: number, msg: WsPayload) {
     // ── Agent responses ──────────────────────────────────────────
     case 'agents_list_response': {
       const m = msg as unknown as WsAgentsListResponse
-      if (m.projectId === store.activeProjectId) {
-        store.setProjectAgents(m.agents)
+      const ps = projectStore.getState()
+      if (m.projectId === ps.activeProjectId) {
+        ps.setProjectAgents(m.agents)
       }
       // Also accumulate into allAgents (replace agents for this project, keep others)
-      const otherAgents = store.allAgents.filter((a) => a.projectId !== m.projectId)
-      useStore.setState({ allAgents: [...otherAgents, ...m.agents], allAgentsLoading: false })
+      const otherAgents = ps.allAgents.filter((a) => a.projectId !== m.projectId)
+      ps.setAllAgents([...otherAgents, ...m.agents])
       break
     }
 
     case 'agent_created': {
       const m = msg as unknown as WsAgentCreated
-      const agents = [...store.projectAgents]
+      const ps = projectStore.getState()
+      const agents = [...ps.projectAgents]
       const idx = agents.findIndex((a) => a.sessionId === m.agent.sessionId)
       if (idx >= 0) agents[idx] = m.agent
       else agents.push(m.agent)
-      store.setProjectAgents(agents)
+      ps.setProjectAgents(agents)
       // Also update allAgents
-      const allIdx = store.allAgents.findIndex((a) => a.sessionId === m.agent.sessionId)
-      const allAgents = [...store.allAgents]
+      const allAgents = [...ps.allAgents]
+      const allIdx = allAgents.findIndex((a) => a.sessionId === m.agent.sessionId)
       if (allIdx >= 0) allAgents[allIdx] = m.agent
       else allAgents.push(m.agent)
-      useStore.setState({ allAgents })
+      ps.setAllAgents(allAgents)
       break
     }
 
     case 'agent_updated': {
       const m = msg as unknown as WsAgentUpdated
-      const agents = store.projectAgents.map((a) =>
-        a.sessionId === m.agent.sessionId ? m.agent : a,
+      const ps = projectStore.getState()
+      ps.setProjectAgents(
+        ps.projectAgents.map((a) => a.sessionId === m.agent.sessionId ? m.agent : a),
       )
-      store.setProjectAgents(agents)
-      // Also update allAgents
-      useStore.setState({
-        allAgents: store.allAgents.map((a) => a.sessionId === m.agent.sessionId ? m.agent : a),
-      })
+      ps.setAllAgents(
+        ps.allAgents.map((a) => a.sessionId === m.agent.sessionId ? m.agent : a),
+      )
       break
     }
 
     case 'agent_deleted': {
       const m = msg as unknown as WsAgentDeleted
-      const agents = store.projectAgents.filter((a) => a.sessionId !== m.sessionId)
-      store.setProjectAgents(agents)
-      // Also update allAgents
-      useStore.setState({
-        allAgents: store.allAgents.filter((a) => a.sessionId !== m.sessionId),
-      })
+      const ps = projectStore.getState()
+      ps.setProjectAgents(ps.projectAgents.filter((a) => a.sessionId !== m.sessionId))
+      ps.setAllAgents(ps.allAgents.filter((a) => a.sessionId !== m.sessionId))
       break
     }
 
     case 'agent_run_logs_response': {
       const m = msg as unknown as WsAgentRunLogsResponse
-      useStore.setState({ agentRunLogs: m.logs, agentRunLogsLoading: false })
+      projectStore.getState().setAgentRunLogs(m.logs)
       break
     }
 
     // ── Workflow responses ──────────────────────────────────────
     case 'workflow_registry_list_response': {
       const m = msg as any
-      useStore.setState({ workflowRegistry: m.entries })
+      projectStore.getState().setWorkflowRegistry(m.entries)
       break
     }
 
     case 'workflow_check_connectors_response': {
       const m = msg as any
-      useStore.setState({
-        workflowConnectorCheck: {
-          workflowId: m.workflowId,
-          satisfied: m.satisfied,
-          missing: m.missing,
-          optional: m.optional,
-        },
+      projectStore.getState().setWorkflowConnectorCheck({
+        workflowId: m.workflowId,
+        satisfied: m.satisfied,
+        missing: m.missing,
+        optional: m.optional,
       })
       break
     }
 
     case 'workflow_installed': {
       const m = msg as any
-      const existing = store.projectWorkflows
-      useStore.setState({ projectWorkflows: [...existing, m.workflow] })
+      const ps = projectStore.getState()
+      ps.setProjectWorkflows([...ps.projectWorkflows, m.workflow])
       // Refresh agents list since a new agent was created
-      if (store.activeProjectId) {
-        connection.sendAgentsList(store.activeProjectId)
+      if (ps.activeProjectId) {
+        connection.sendAgentsList(ps.activeProjectId)
       }
       // Navigate to the project and open a new conversation for bootstrap
       if (m.workflow.projectId) {
-        store.setActiveProject(m.workflow.projectId)
+        ps.setActiveProject(m.workflow.projectId)
         store.setActiveView('chat')
         // Small delay to let project switch complete, then create new conversation
         setTimeout(() => {
@@ -2780,46 +2332,47 @@ function handleWsMessage(channel: number, msg: WsPayload) {
 
     case 'workflows_list_response': {
       const m = msg as any
-      useStore.setState({ projectWorkflows: m.workflows })
+      projectStore.getState().setProjectWorkflows(m.workflows)
       break
     }
 
     case 'workflow_uninstalled': {
       const m = msg as any
-      useStore.setState({
-        projectWorkflows: store.projectWorkflows.filter((w) => w.workflowId !== m.workflowId),
-      })
+      const ps = projectStore.getState()
+      ps.setProjectWorkflows(
+        ps.projectWorkflows.filter((w) => w.workflowId !== m.workflowId),
+      )
       break
     }
 
     // ── Connector responses ──────────────────────────────────────
     case 'connectors_list_response': {
       const m = msg as unknown as WsConnectorsListResponse
-      store.setConnectors(m.connectors)
+      connectorStore.getState().setConnectors(m.connectors)
       break
     }
 
     case 'connector_added': {
       const m = msg as unknown as WsConnectorAdded
-      store.addOrUpdateConnector(m.connector)
+      connectorStore.getState().addOrUpdateConnector(m.connector)
       break
     }
 
     case 'connector_updated': {
       const m = msg as unknown as WsConnectorUpdated
-      store.addOrUpdateConnector(m.connector)
+      connectorStore.getState().addOrUpdateConnector(m.connector)
       break
     }
 
     case 'connector_removed': {
       const m = msg as unknown as WsConnectorRemoved
-      store.removeConnector(m.id)
+      connectorStore.getState().removeConnector(m.id)
       break
     }
 
     case 'connector_status': {
       const m = msg as unknown as WsConnectorStatus
-      store.updateConnectorStatus(m.id, {
+      connectorStore.getState().updateConnectorStatus(m.id, {
         connected: m.connected,
         toolCount: m.toolCount,
         error: m.error,
@@ -2829,7 +2382,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
 
     case 'connector_registry_list_response': {
       const m = msg as unknown as WsConnectorRegistryListResponse
-      store.setConnectorRegistry(m.entries)
+      connectorStore.getState().setConnectorRegistry(m.entries)
       break
     }
   }
