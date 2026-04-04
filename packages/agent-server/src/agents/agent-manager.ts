@@ -19,6 +19,7 @@ import {
   saveAgentMemory,
   saveAgentMetadata,
 } from '@anton/agent-config'
+import { createLogger } from '@anton/logger'
 import type { AgentMetadata, AgentRunRecord, AgentSession } from '@anton/protocol'
 import { getNextCronTime, isValidCron } from './cron.js'
 
@@ -48,6 +49,8 @@ export interface AgentEvent {
   projectId?: string
   sessionId?: string
 }
+
+const log = createLogger('agent-manager')
 
 export class AgentManager {
   private agents: Map<string, AgentSession> = new Map() // sessionId → AgentSession
@@ -85,7 +88,7 @@ export class AgentManager {
       }
     }
     if (this.agents.size > 0) {
-      console.log(`  Loaded ${this.agents.size} agent(s)`)
+      log.info({ count: this.agents.size }, 'agents loaded')
     }
   }
 
@@ -175,7 +178,7 @@ export class AgentManager {
     if (entry.agent.status === 'running') return entry // already running
 
     if (!this.sendMessage) {
-      console.error(`Agent "${entry.agent.name}": no sendMessage handler set`)
+      log.error({ agent: entry.agent.name }, 'no sendMessage handler set')
       return undefined
     }
 
@@ -215,7 +218,7 @@ export class AgentManager {
 
       // Check if the LLM actually ran
       if (result.eventCount === 0) {
-        console.warn(`Agent "${entry.agent.name}": 0 events produced — run failed silently`)
+        log.warn({ agent: entry.agent.name }, '0 events produced — run failed silently')
         entry.agent.status = 'error'
         entry.agent.lastRunAt = Date.now()
         runRecord.status = 'error'
@@ -237,7 +240,7 @@ export class AgentManager {
     } catch (err) {
       // Note: runRecord.runSessionId may be undefined here if sendMessage threw.
       // This is acceptable — failed runs with no session have no logs to view.
-      console.error(`Agent "${entry.agent.name}" error:`, err)
+      log.error({ agent: entry.agent.name, err }, 'agent run error')
       entry.agent.status = 'error'
       entry.agent.lastRunAt = Date.now()
       runRecord.status = 'error'
@@ -333,7 +336,7 @@ export class AgentManager {
     for (const sessionId of due) {
       const entry = this.agents.get(sessionId)
       if (!entry || entry.agent.status === 'running') continue // double-check before running
-      console.log(`[AgentManager] Cron trigger: ${entry.agent.name}`)
+      log.info({ agent: entry.agent.name }, 'cron trigger')
       await this.runAgent(sessionId, 'cron')
     }
 

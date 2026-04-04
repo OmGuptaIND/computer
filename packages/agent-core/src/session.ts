@@ -23,6 +23,7 @@ import {
   saveSessionTasks,
 } from '@anton/agent-config'
 import type { ProjectType } from '@anton/agent-config'
+import { createLogger, withContext } from '@anton/logger'
 import type { ChatImageAttachmentInput, SessionImageAttachment, TokenUsage } from '@anton/protocol'
 import { Agent as PiAgent } from '@mariozechner/pi-agent-core'
 import type {
@@ -137,12 +138,15 @@ export interface SessionInfo {
 /** Fallback max messages if compaction fails */
 const FALLBACK_MAX_MESSAGES = 100
 
+const baseLog = createLogger('session')
+
 export class Session {
   readonly id: string
   provider: string
   model: string
   readonly createdAt: number
 
+  private log: ReturnType<typeof withContext>
   private piAgent: PiAgent
   private config: AgentConfig
   private confirmHandler?: ConfirmHandler
@@ -231,6 +235,7 @@ export class Session {
     parentTraceSpan?: Span // for sub-agents: nest under parent's trace
   }) {
     this.id = opts.id
+    this.log = withContext(baseLog, { sessionId: opts.id })
     this.provider = opts.provider
     this.model = opts.model
     this.config = opts.config
@@ -296,13 +301,9 @@ export class Session {
       getApiKey: async (provider: string) => {
         const key = this.resolveApiKey(provider, this.clientApiKey, this.config)
         if (!key) {
-          console.error(
-            `[session ${this.id}] No API key found for provider "${provider}". Check config or env vars.`,
-          )
+          this.log.error({ provider }, 'no API key found — check config or env vars')
         } else {
-          console.log(
-            `[session ${this.id}] Resolved API key for "${provider}" (${key.slice(0, 8)}...)`,
-          )
+          this.log.debug({ provider, keyPrefix: key.slice(0, 8) }, 'resolved API key')
         }
         return key
       },
@@ -351,7 +352,7 @@ export class Session {
                 })
                 compSpan.end()
               } catch (spanErr) {
-                console.error('[tracing] Failed to log compaction span:', spanErr)
+                this.log.error({ err: spanErr }, 'tracing: failed to log compaction span')
               }
             }
           }
@@ -359,7 +360,7 @@ export class Session {
           return compacted
         } catch (err) {
           // Safe fallback: sliding window
-          console.error('[compaction] Failed, falling back to sliding window:', err)
+          this.log.error({ err }, 'compaction failed, falling back to sliding window')
           if (messages.length > FALLBACK_MAX_MESSAGES) {
             return messages.slice(messages.length - FALLBACK_MAX_MESSAGES)
           }
@@ -578,7 +579,7 @@ export class Session {
         this.provider,
         async (provider: string) => this.resolveApiKey(provider, this.clientApiKey, this.config),
       ).catch((err) => {
-        console.warn('AI title generation failed, keeping regex title:', err.message)
+        this.log.warn({ err }, 'AI title generation failed, keeping regex title')
         return null
       })
     }
@@ -637,16 +638,14 @@ export class Session {
     }
 
     const unsub = this.piAgent.subscribe((event: PiAgentEvent) => {
-      console.log(`[session ${this.id}] pi event: ${event.type}`)
+      this.log.debug({ event: event.type }, 'pi event')
       // Log detailed info for error diagnosis
       if (event.type === 'turn_end' || event.type === 'agent_end') {
         const msg = (
           event as unknown as { message?: { stopReason?: string; errorMessage?: string } }
         ).message
         if (msg?.stopReason === 'error') {
-          console.error(
-            `[session ${this.id}] LLM ERROR in ${event.type}: ${msg.errorMessage || 'unknown'}`,
-          )
+          this.log.error({ event: event.type, error: msg.errorMessage || 'unknown' }, 'LLM error')
         }
       }
       const translated = this.translateEvent(event)
@@ -787,7 +786,7 @@ export class Session {
 
         traceSpan.end()
       } catch (spanErr) {
-        console.error('[tracing] Failed to close trace span:', spanErr)
+        this.log.error({ err: spanErr }, 'tracing: failed to close trace span')
       }
       this.currentTraceSpan = undefined
     }
@@ -809,13 +808,9 @@ export class Session {
         }
       }
 
-      console.log(
-        `[session ${this.id}] processMessage complete: ${eventCount} events, ${textEventCount} text chunks`,
-      )
+      this.log.info({ eventCount, textEventCount }, 'processMessage complete')
       if (eventCount === 0) {
-        console.error(
-          `[session ${this.id}] WARNING: No events produced! The LLM may not have been called. Check API key.`,
-        )
+        this.log.error('no events produced — LLM may not have been called, check API key')
       }
 
       // Final persist (incremental persists happen during tool_execution_end/turn_end,
@@ -904,7 +899,7 @@ export class Session {
       this._connectorManager,
     )
     this.piAgent.setTools(newTools)
-    console.log(`[session ${this.id}] refreshed tools (${newTools.length} total)`)
+    this.log.info({ toolCount: newTools.length }, 'refreshed tools')
   }
 
   /**
@@ -1364,7 +1359,7 @@ export class Session {
         }
         // Surface LLM errors (e.g. invalid API key, rate limits) that the pi SDK captures
         if (msg?.stopReason === 'error' && msg?.errorMessage) {
-          console.error(`[session ${this.id}] LLM error: ${msg.errorMessage}`)
+          this.log.error({ error: msg.errorMessage }, 'LLM error')
         }
         // Emit streaming token update so the client can show live counters
         const events: SessionEvent[] = [

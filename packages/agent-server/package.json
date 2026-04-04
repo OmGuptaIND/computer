@@ -15,6 +15,7 @@
   "dependencies": {
     "@anton/agent-config": "workspace:*",
     "@anton/agent-core": "workspace:*",
+    "@anton/logger": "workspace:*",
     "@anton/connectors": "workspace:*",
     "@anton/protocol": "workspace:*",
     "ws": "^8.18.0",

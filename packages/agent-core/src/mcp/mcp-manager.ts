@@ -8,9 +8,12 @@
  * 4. Server shutdown → stopAll() kills all processes
  */
 
+import { createLogger } from '@anton/logger'
 import type { AgentTool } from '@mariozechner/pi-agent-core'
 import { McpClient, type McpServerConfig } from './mcp-client.js'
 import { mcpClientToAgentTools } from './mcp-tool-adapter.js'
+
+const log = createLogger('mcp-manager')
 
 export interface ConnectorStatus {
   id: string
@@ -38,17 +41,14 @@ export class McpManager {
     const enabled = configs.filter((c) => c.enabled)
     if (enabled.length === 0) return
 
-    console.log(`[mcp-manager] starting ${enabled.length} connectors...`)
+    log.info({ count: enabled.length }, 'starting connectors')
 
     // Start in parallel, don't fail-fast
     const results = await Promise.allSettled(enabled.map((c) => this.start(c.id)))
     for (let i = 0; i < results.length; i++) {
       const r = results[i]
       if (r.status === 'rejected') {
-        console.error(
-          `[mcp-manager] failed to start "${enabled[i].id}":`,
-          r.reason?.message || r.reason,
-        )
+        log.error({ connector: enabled[i].id, err: r.reason }, 'failed to start connector')
       }
     }
   }
@@ -57,7 +57,7 @@ export class McpManager {
    * Stop all connectors and clean up.
    */
   async stopAll(): Promise<void> {
-    console.log('[mcp-manager] stopping all connectors...')
+    log.info('stopping all connectors')
     const promises = Array.from(this.clients.keys()).map((id) => this.stop(id))
     await Promise.allSettled(promises)
   }
@@ -77,31 +77,28 @@ export class McpManager {
     const client = new McpClient(config)
 
     client.on('disconnected', () => {
-      console.log(`[mcp-manager] connector "${id}" disconnected`)
+      log.info({ connector: id }, 'connector disconnected')
       this.clients.delete(id)
       // Auto-reconnect after 5 seconds
       setTimeout(async () => {
         if (this.configs.has(id) && this.configs.get(id)?.enabled !== false) {
           try {
-            console.log(`[mcp-manager] auto-reconnecting "${id}"...`)
+            log.info({ connector: id }, 'auto-reconnecting')
             await this.start(id)
           } catch (err) {
-            console.error(
-              `[mcp-manager] auto-reconnect failed for "${id}":`,
-              (err as Error).message,
-            )
+            log.error({ connector: id, err }, 'auto-reconnect failed')
           }
         }
       }, 5_000)
     })
 
     client.on('error', (err: Error) => {
-      console.error(`[mcp-manager] connector "${id}" error:`, err.message)
+      log.error({ connector: id, err }, 'connector error')
     })
 
     await client.connect()
     this.clients.set(id, client)
-    console.log(`[mcp-manager] connector "${id}" started with ${client.getTools().length} tools`)
+    log.info({ connector: id, toolCount: client.getTools().length }, 'connector started')
   }
 
   /**
@@ -112,7 +109,7 @@ export class McpManager {
     if (client) {
       await client.disconnect()
       this.clients.delete(id)
-      console.log(`[mcp-manager] connector "${id}" stopped`)
+      log.info({ connector: id }, 'connector stopped')
     }
   }
 
@@ -224,11 +221,11 @@ export class McpManager {
       for (const [id, client] of this.clients) {
         const ok = await client.ping()
         if (!ok) {
-          console.log(`[mcp-manager] health check failed for "${id}", restarting...`)
+          log.warn({ connector: id }, 'health check failed, restarting')
           try {
             await this.restart(id)
           } catch (err) {
-            console.error(`[mcp-manager] restart failed for "${id}":`, (err as Error).message)
+            log.error({ connector: id, err }, 'restart failed')
           }
         }
       }

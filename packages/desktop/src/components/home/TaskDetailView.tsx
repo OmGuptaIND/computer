@@ -111,7 +111,7 @@ export function TaskDetailView() {
   const handleSkillSelect = (_skill: Skill) => {}
 
   // No conversation selected — don't render (parent shows full-width task list)
-  if (!activeConv || messages.length === 0) {
+  if (!activeConv) {
     return null
   }
 

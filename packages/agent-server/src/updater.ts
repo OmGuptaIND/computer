@@ -18,12 +18,15 @@ import {
   getAntonDir,
   semverGt,
 } from '@anton/agent-config'
+import { createLogger } from '@anton/logger'
 
 export type UpdateStage = 'downloading' | 'replacing' | 'restarting' | 'done' | 'error'
 export type UpdateProgress = { stage: UpdateStage; message: string }
 
 /** Where the repo lives on disk */
 const REPO_DIR = '/opt/anton'
+
+const log = createLogger('updater')
 
 export class Updater {
   private cachedManifest: UpdateManifest | null = null
@@ -36,12 +39,12 @@ export class Updater {
   /** Start periodic update checks */
   start() {
     this.checkForUpdates().catch((err) => {
-      console.warn('  Update check failed:', (err as Error).message)
+      log.warn({ err }, 'update check failed')
     })
 
     this.checkTimer = setInterval(() => {
       this.checkForUpdates().catch((err) => {
-        console.warn('  Update check failed:', (err as Error).message)
+        log.warn({ err }, 'update check failed')
       })
     }, UPDATE_CHECK_INTERVAL)
   }
@@ -82,7 +85,7 @@ export class Updater {
       if (semverGt(manifest.version, VERSION)) {
         const isNew = !this.cachedManifest || this.cachedManifest.version !== manifest.version
         this.cachedManifest = manifest
-        console.log(`  Update available: v${VERSION} → v${manifest.version}`)
+        log.info({ current: VERSION, available: manifest.version }, 'update available')
 
         if (isNew && this.onUpdateFound) {
           this.onUpdateFound(manifest)

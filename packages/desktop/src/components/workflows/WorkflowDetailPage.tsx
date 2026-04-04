@@ -77,13 +77,20 @@ function InstallModal({
 
   const handleConfirm = useCallback(() => {
     setInstalling(true)
-    projectStore.getState().createProject({
-      name: workflow.name,
-      description: workflow.description,
-      icon: WORKFLOW_ICONS[workflow.id] || '\u{26A1}',
-      color: '#6366f1',
-    })
-    setPendingProjectName(workflow.name)
+    // Check if a project with this workflow name already exists
+    const existingProject = projectStore.getState().projects.find((p) => p.name === workflow.name)
+    if (existingProject) {
+      // Install into the existing project instead of creating a duplicate
+      projectStore.getState().installWorkflow(existingProject.id, workflow.id, {})
+    } else {
+      projectStore.getState().createProject({
+        name: workflow.name,
+        description: workflow.description,
+        icon: WORKFLOW_ICONS[workflow.id] || '\u{26A1}',
+        color: '#6366f1',
+      })
+      setPendingProjectName(workflow.name)
+    }
   }, [workflow.id, workflow.name, workflow.description])
 
   const allReady =

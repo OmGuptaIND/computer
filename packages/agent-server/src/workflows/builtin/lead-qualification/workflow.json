@@ -111,6 +111,57 @@
     }
   },
 
+  "pipeline": [
+    {
+      "id": "trigger",
+      "label": "New Lead",
+      "description": "Email or web form submission detected",
+      "icon": "mail",
+      "type": "trigger",
+      "next": ["enrich"]
+    },
+    {
+      "id": "enrich",
+      "label": "Enrich Lead",
+      "description": "Company data, role, social profiles",
+      "icon": "search",
+      "type": "agent",
+      "next": ["score"]
+    },
+    {
+      "id": "score",
+      "label": "Score & Qualify",
+      "description": "ICP fit scoring (0-100)",
+      "icon": "bar-chart",
+      "type": "agent",
+      "next": ["route"]
+    },
+    {
+      "id": "route",
+      "label": "Route to Sheet",
+      "description": "Add to Google Sheets pipeline",
+      "icon": "table",
+      "type": "connector",
+      "next": ["outreach", "notify"]
+    },
+    {
+      "id": "outreach",
+      "label": "Send Outreach",
+      "description": "Personalized email if score >= threshold",
+      "icon": "send",
+      "type": "agent",
+      "next": []
+    },
+    {
+      "id": "notify",
+      "label": "Slack Alert",
+      "description": "Notify team of hot lead",
+      "icon": "message-square",
+      "type": "connector",
+      "next": []
+    }
+  ],
+
   "resources": [
     "templates/scoring-rubric.md",
     "templates/email-patterns.md",

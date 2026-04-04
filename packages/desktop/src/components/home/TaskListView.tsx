@@ -530,7 +530,6 @@ export function TaskListView({ mode }: Props) {
                         />
                       </div>
                       <div className="task-table__col task-table__col--status">
-                        <StatusIcon status={status} />
                         <span
                           className={`task-table__status-label task-table__status-label--${status}`}
                         >

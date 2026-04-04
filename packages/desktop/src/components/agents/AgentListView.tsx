@@ -178,6 +178,7 @@ interface Props {
 
 export function AgentListView({ mode, selectedId, onSelect }: Props) {
   const allAgents = projectStore((s) => s.allAgents)
+  const projects = projectStore((s) => s.projects)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -355,7 +356,9 @@ export function AgentListView({ mode, selectedId, onSelect }: Props) {
                         <span className="task-table__task-title">{agent.agent.name}</span>
                       </div>
                       <div className="task-table__col task-table__col--project">
-                        <span className="agent-project-pill">{agent.projectId}</span>
+                        <span className="agent-project-pill">
+                          {projects.find((p) => p.id === agent.projectId)?.name || agent.projectId}
+                        </span>
                       </div>
                       <div className="task-table__col task-table__col--updated">
                         {agent.agent.lastRunAt
@@ -431,6 +434,8 @@ export function AgentListView({ mode, selectedId, onSelect }: Props) {
       <div className="task-panel__list">
         {filtered.map((agent) => {
           const status = getDisplayStatus(agent)
+          const projectName =
+            projects.find((p) => p.id === agent.projectId)?.name || agent.projectId
           return (
             <div
               key={agent.sessionId}
@@ -441,17 +446,18 @@ export function AgentListView({ mode, selectedId, onSelect }: Props) {
                 className="task-row__clickable"
                 onClick={() => onSelect(agent.sessionId)}
               >
-                <div className="task-row__status">
-                  <AgentStatusIcon status={status} />
-                  <span
-                    className={`task-row__status-label task-row__status-label--${status === 'running' ? 'working' : status === 'scheduled' ? 'completed' : status}`}
-                  >
-                    {STATUS_LABELS[status]}
-                  </span>
-                </div>
+                <AgentStatusIcon status={status} />
                 <div className="task-row__content">
                   <span className="task-row__name">{agent.agent.name}</span>
-                  <span className="task-row__detail">{agent.projectId}</span>
+                  <span className="task-row__detail">
+                    <span
+                      className={`task-row__status-label task-row__status-label--${status === 'running' ? 'working' : status === 'scheduled' ? 'completed' : status}`}
+                    >
+                      {STATUS_LABELS[status]}
+                    </span>
+                    <span className="task-row__detail-sep">&middot;</span>
+                    <span>{projectName}</span>
+                  </span>
                 </div>
                 <span className="task-row__time">
                   {agent.agent.lastRunAt ? formatRelativeTime(agent.agent.lastRunAt) : 'Never'}

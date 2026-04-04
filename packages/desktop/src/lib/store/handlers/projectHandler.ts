@@ -71,7 +71,10 @@ export function handleProjectMessage(msg: AiMessage): boolean {
         ps.setProjectAgents(msg.agents)
       }
       const otherAgents = ps.allAgents.filter((a) => a.projectId !== msg.projectId)
-      ps.setAllAgents([...otherAgents, ...msg.agents])
+      const merged = [...otherAgents, ...msg.agents]
+      // Dedup by sessionId to prevent race conditions from concurrent fetches
+      const deduped = [...new Map(merged.map((a) => [a.sessionId, a])).values()]
+      ps.setAllAgents(deduped)
       return true
     }
 
@@ -132,20 +135,20 @@ export function handleProjectMessage(msg: AiMessage): boolean {
     case 'workflow_installed': {
       const ps = projectStore.getState()
       ps.setProjectWorkflows([...ps.projectWorkflows, msg.workflow])
-      if (ps.activeProjectId) {
-        connection.sendAgentsList(ps.activeProjectId)
-      }
       if (msg.workflow.projectId) {
+        // Switch to the new project and fetch its agents
         ps.setActiveProject(msg.workflow.projectId)
-        uiStore.setState({ activeView: 'chat' })
+        connection.sendAgentsList(msg.workflow.projectId)
+        // Navigate to home view and create a setup conversation
         const store = useStore.getState()
-        setTimeout(() => {
-          store.newConversation(
-            `${msg.workflow.manifest.name} Setup`,
-            undefined,
-            msg.workflow.projectId,
-          )
-        }, 100)
+        store.newConversation(
+          `${msg.workflow.manifest.name} Setup`,
+          undefined,
+          msg.workflow.projectId,
+        )
+        uiStore.setState({ activeView: 'home' })
+      } else if (ps.activeProjectId) {
+        connection.sendAgentsList(ps.activeProjectId)
       }
       return true
     }

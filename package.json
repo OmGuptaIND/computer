@@ -5,7 +5,7 @@
   "description": "Your personal cloud computer. Open source. AI-native. Self-hosted.",
   "scripts": {
     "agent:dev": "pnpm --filter @anton/agent-server dev",
-    "agent:build": "pnpm --filter @anton/protocol build && pnpm --filter @anton/agent-config build && pnpm --filter @anton/agent-core build && pnpm --filter @anton/agent-server build && pnpm --filter @anton/agent build",
+    "agent:build": "pnpm --filter @anton/protocol build && pnpm --filter @anton/logger build && pnpm --filter @anton/agent-config build && pnpm --filter @anton/agent-core build && pnpm --filter @anton/agent-server build && pnpm --filter @anton/agent build",
     "cli:dev": "pnpm --filter @anton/cli dev",
     "cli:build": "pnpm --filter @anton/cli build",
     "desktop:dev": "pnpm --filter @anton/desktop dev",

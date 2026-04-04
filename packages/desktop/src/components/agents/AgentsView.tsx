@@ -1,19 +1,23 @@
 import type { AgentRunRecord } from '@anton/protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { projectStore } from '../../lib/store/projectStore.js'
+import { WorkflowPipelineView } from '../workflows/WorkflowPipelineView.js'
 import { AgentDetailView } from './AgentDetailView.js'
 import { AgentListView } from './AgentListView.js'
 import { AgentRunView } from './AgentRunView.js'
 
 type RightPanel = { view: 'home' } | { view: 'run'; run: AgentRunRecord }
+type DetailTab = 'flow' | 'agent'
 
 export function AgentsView() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [rightPanel, setRightPanel] = useState<RightPanel>({ view: 'home' })
+  const [detailTab, setDetailTab] = useState<DetailTab>('flow')
   const [leftWidth, setLeftWidth] = useState(340)
   const dragRef = useRef<{ startX: number; startW: number } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const allAgents = projectStore((s) => s.allAgents)
+  const projectWorkflows = projectStore((s) => s.projectWorkflows)
 
   const selectedAgent = selectedAgentId
     ? allAgents.find((a) => a.sessionId === selectedAgentId)
@@ -52,9 +56,16 @@ export function AgentsView() {
     }
   }, [isDragging])
 
+  // Check if selected agent belongs to a workflow with pipeline data
+  const selectedWorkflow = selectedAgentId
+    ? projectWorkflows.find((w) => w.agentSessionId === selectedAgentId)
+    : null
+  const pipelineSteps = selectedWorkflow?.manifest?.pipeline
+
   const handleSelect = useCallback((id: string) => {
     setSelectedAgentId(id)
     setRightPanel({ view: 'home' })
+    setDetailTab('flow')
   }, [])
 
   const handleViewRun = useCallback((run: AgentRunRecord) => {
@@ -96,11 +107,37 @@ export function AgentsView() {
               onBack={() => setRightPanel({ view: 'home' })}
             />
           ) : (
-            <AgentDetailView
-              agentId={selectedAgentId!}
-              onBack={() => setSelectedAgentId(null)}
-              onViewRun={handleViewRun}
-            />
+            <>
+              {pipelineSteps && pipelineSteps.length > 0 && (
+                <div className="wf-tab-bar">
+                  <button
+                    type="button"
+                    className={`wf-tab-bar__tab${detailTab === 'flow' ? ' wf-tab-bar__tab--active' : ''}`}
+                    onClick={() => setDetailTab('flow')}
+                  >
+                    Flow
+                  </button>
+                  <button
+                    type="button"
+                    className={`wf-tab-bar__tab${detailTab === 'agent' ? ' wf-tab-bar__tab--active' : ''}`}
+                    onClick={() => setDetailTab('agent')}
+                  >
+                    Agent
+                  </button>
+                </div>
+              )}
+              {pipelineSteps && pipelineSteps.length > 0 && detailTab === 'flow' ? (
+                <div className="wf-pipeline-scroll">
+                  <WorkflowPipelineView steps={pipelineSteps} />
+                </div>
+              ) : (
+                <AgentDetailView
+                  agentId={selectedAgentId!}
+                  onBack={() => setSelectedAgentId(null)}
+                  onViewRun={handleViewRun}
+                />
+              )}
+            </>
           )}
         </div>
       )}

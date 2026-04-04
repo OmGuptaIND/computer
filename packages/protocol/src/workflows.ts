@@ -96,6 +96,31 @@ export interface WorkflowManifest {
    * The orchestrator agent uses stored preferences to adapt its behavior.
    */
   preferences?: WorkflowPreference[]
+
+  /**
+   * Visual pipeline definition — describes how agents and connectors
+   * connect in a flow diagram. Each step is a node; `next` defines edges.
+   * Used by the UI to render a Zapier/Make-style pipeline visualization.
+   */
+  pipeline?: WorkflowPipelineStep[]
+}
+
+// ── Pipeline ───────────────────────────────────────────────────────
+
+/** A single step/node in the workflow pipeline visualization */
+export interface WorkflowPipelineStep {
+  /** Step ID (matches an agent key or a connector/action name) */
+  id: string
+  /** Display label for the node */
+  label: string
+  /** Short description shown below the label */
+  description?: string
+  /** Icon identifier (connector name like "gmail", or agent role like "scorer") */
+  icon?: string
+  /** Type of node for visual styling */
+  type: 'trigger' | 'agent' | 'connector' | 'action'
+  /** Which step(s) follow this one (IDs). Empty or omitted = terminal node. */
+  next?: string[]
 }
 
 // ── Hooks ───────────────────────────────────────────────────────────

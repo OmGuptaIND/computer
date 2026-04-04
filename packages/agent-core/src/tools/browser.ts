@@ -1,7 +1,9 @@
 import { execFile, execSync } from 'node:child_process'
 import { promisify } from 'node:util'
+import { createLogger } from '@anton/logger'
 
 const execFileAsync = promisify(execFile)
+const log = createLogger('browser')
 import type { BrowserAction } from '@anton/protocol'
 import { Readability } from '@mozilla/readability'
 import { parseHTML } from 'linkedom'
@@ -105,7 +107,7 @@ function resetIdleTimer(): void {
   if (idleTimer) clearTimeout(idleTimer)
   idleTimer = setTimeout(() => {
     if (session) {
-      console.log('[browser] Auto-closing browser after 5 minutes idle')
+      log.info('auto-closing browser after 5 minutes idle')
       closeBrowser().catch(() => {})
     }
   }, BROWSER_IDLE_TIMEOUT_MS)
@@ -136,14 +138,14 @@ async function ensureBrowser(): Promise<BrowserSession> {
     const msg = (launchErr as Error).message || ''
     if (msg.includes("Executable doesn't exist") || msg.includes('browserType.launch')) {
       // Chromium not installed — install it async using playwright's own CLI
-      console.log('[browser] Chromium not found, installing...')
+      log.info('Chromium not found, installing')
       chromiumJustInstalled = true
       // Use playwright's CLI from the installed package (not npx)
       const playwrightCli = require.resolve('playwright/cli')
       await execFileAsync(process.execPath, [playwrightCli, 'install', 'chromium'], {
         timeout: 120_000,
       })
-      console.log('[browser] Chromium installed successfully')
+      log.info('Chromium installed successfully')
       // Retry launch after install
       browser = await pw.chromium.launch({
         headless: true,

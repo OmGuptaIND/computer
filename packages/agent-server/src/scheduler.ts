@@ -9,6 +9,9 @@
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AgentConfig, SkillConfig } from '@anton/agent-config'
+import { createLogger } from '@anton/logger'
+
+const log = createLogger('scheduler')
 import { getAntonDir } from '@anton/agent-config'
 import { buildSkillPrompt } from '@anton/agent-config'
 import { type Session, createSession, resumeSession } from '@anton/agent-core'
@@ -64,7 +67,7 @@ export class Scheduler {
 
       const nextRun = getNextCronTime(skill.schedule)
       if (!nextRun) {
-        console.warn(`Invalid schedule for skill "${skill.name}": ${skill.schedule}`)
+        log.warn({ skill: skill.name, schedule: skill.schedule }, 'invalid schedule')
         continue
       }
 
@@ -79,9 +82,9 @@ export class Scheduler {
         enabled: true,
       })
 
-      console.log(
-        `  Scheduled: ${skill.name} (cron: ${skill.schedule}, ` +
-          `next: ${nextRun.toLocaleString()})`,
+      log.info(
+        { skill: skill.name, cron: skill.schedule, nextRun: nextRun.toISOString() },
+        'scheduled',
       )
     }
   }
@@ -115,7 +118,7 @@ export class Scheduler {
     if (this.jobs.length === 0) return
 
     this.running = true
-    console.log(`\n  Scheduler started with ${this.jobs.length} job(s)`)
+    log.info({ jobCount: this.jobs.length }, 'scheduler started')
 
     this.tick()
   }
@@ -135,7 +138,7 @@ export class Scheduler {
 
       if (now >= job.nextRun.getTime()) {
         this.runJob(job).catch((err) => {
-          console.error(`Scheduler error for "${job.skill.name}":`, err)
+          log.error({ skill: job.skill.name, err }, 'job execution error')
           this.onEvent?.(job.skill.name, 'error', (err as Error).message)
         })
 
@@ -146,7 +149,7 @@ export class Scheduler {
         } else {
           // Could not find next run — disable
           job.enabled = false
-          console.warn(`No future run found for "${job.skill.name}", disabling.`)
+          log.warn({ skill: job.skill.name }, 'no future run found, disabling')
         }
       }
     }
@@ -173,7 +176,7 @@ export class Scheduler {
     const timestamp = new Date().toISOString()
 
     appendFileSync(logFile, `\n[${timestamp}] Running skill: ${job.skill.name}\n`)
-    console.log(`[Scheduler] Running: ${job.skill.name}`)
+    log.info({ skill: job.skill.name }, 'running job')
 
     this.onEvent?.(job.skill.name, 'started')
     job.lastRun = new Date()

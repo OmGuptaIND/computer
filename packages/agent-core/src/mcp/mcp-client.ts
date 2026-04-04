@@ -8,6 +8,7 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { createInterface } from 'node:readline'
+import { createLogger } from '@anton/logger'
 
 // ── JSON-RPC 2.0 types ─────────────────────────────────────────────
 
@@ -70,10 +71,12 @@ export class McpClient extends EventEmitter {
   private buffer = ''
   /** Serializes requests to prevent concurrent stdin writes to non-thread-safe MCP servers */
   private requestQueue: Promise<void> = Promise.resolve()
+  private log
 
   constructor(config: McpServerConfig) {
     super()
     this.config = config
+    this.log = createLogger('mcp-client').child({ connector: config.id })
   }
 
   isConnected(): boolean {
@@ -110,18 +113,18 @@ export class McpClient extends EventEmitter {
     if (this.process.stderr) {
       const rl = createInterface({ input: this.process.stderr })
       rl.on('line', (line) => {
-        console.error(`[mcp:${this.config.id}] stderr: ${line}`)
+        this.log.error({ stream: 'stderr' }, line)
       })
     }
 
     this.process.on('error', (err) => {
-      console.error(`[mcp:${this.config.id}] process error:`, err.message)
+      this.log.error({ err }, 'process error')
       this.connected = false
       this.emit('error', err)
     })
 
     this.process.on('exit', (code) => {
-      console.log(`[mcp:${this.config.id}] process exited with code ${code}`)
+      this.log.info({ exitCode: code }, 'process exited')
       this.connected = false
       this.rejectAllPending(new Error(`MCP server exited with code ${code}`))
       this.emit('disconnected', code)
@@ -143,8 +146,9 @@ export class McpClient extends EventEmitter {
         serverInfo?: { name: string }
       }
 
-      console.log(
-        `[mcp:${this.config.id}] initialized — server: ${initResult.serverInfo?.name ?? 'unknown'}, protocol: ${initResult.protocolVersion}`,
+      this.log.info(
+        { server: initResult.serverInfo?.name ?? 'unknown', protocol: initResult.protocolVersion },
+        'initialized',
       )
 
       // Send initialized notification
@@ -179,8 +183,9 @@ export class McpClient extends EventEmitter {
   async refreshTools(): Promise<McpTool[]> {
     const result = (await this.request('tools/list', {})) as { tools: McpTool[] }
     this.tools = result.tools || []
-    console.log(
-      `[mcp:${this.config.id}] discovered ${this.tools.length} tools: ${this.tools.map((t) => t.name).join(', ')}`,
+    this.log.info(
+      { count: this.tools.length, tools: this.tools.map((t) => t.name) },
+      'discovered tools',
     )
     return this.tools
   }

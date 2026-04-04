@@ -6,6 +6,9 @@
  */
 
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto'
+import { createLogger } from '@anton/logger'
+
+const log = createLogger('token-store')
 import {
   existsSync,
   mkdirSync,
@@ -64,7 +67,7 @@ export class TokenStore {
       )
       return JSON.parse(plaintext)
     } catch (err) {
-      console.error(`[TokenStore] Failed to load token for ${provider}:`, err)
+      log.error({ provider, err }, 'failed to load token')
       return null
     }
   }

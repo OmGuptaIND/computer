@@ -17,6 +17,7 @@
 import { loadConfig, loadProjects, loadSkills } from '@anton/agent-config'
 import { GIT_HASH, VERSION } from '@anton/agent-config'
 import { closeBrowserSession, flushTraces, initTracing } from '@anton/agent-core'
+import { createLogger, initLogger } from '@anton/logger'
 import { AgentManager } from './agents/index.js'
 import { Scheduler } from './scheduler.js'
 import { AgentServer } from './server.js'
@@ -30,6 +31,10 @@ async function main() {
    └─────────────────────────────────────┘
   `)
 
+  // Initialize structured logging (before anything else)
+  initLogger()
+  const log = createLogger('server')
+
   // Load config (creates default on first run)
   const config = loadConfig()
 
@@ -38,19 +43,20 @@ async function main() {
   config.skills = skills
 
   if (skills.length > 0) {
-    console.log(`  Loaded ${skills.length} skill(s):`)
-    for (const skill of skills) {
-      console.log(`    - ${skill.name}: ${skill.description}`)
-    }
+    log.info({ count: skills.length, skills: skills.map((s) => s.name) }, 'skills loaded')
   }
 
   // Show provider status
   const providers = Object.entries(config.providers ?? {})
   const configured = providers.filter(([, p]) => p.apiKey && p.apiKey.length > 0)
-  console.log(`  Providers: ${configured.length}/${providers.length} configured`)
-  if (config.defaults) {
-    console.log(`  Default:   ${config.defaults.provider}/${config.defaults.model}`)
-  }
+  log.info(
+    {
+      configured: configured.length,
+      total: providers.length,
+      default: config.defaults ? `${config.defaults.provider}/${config.defaults.model}` : undefined,
+    },
+    'providers status',
+  )
 
   // Initialize Braintrust tracing (no-ops if no API key)
   initTracing(config.braintrust)
@@ -76,7 +82,7 @@ async function main() {
 
   // Graceful shutdown
   const shutdown = async () => {
-    console.log('\nShutting down...')
+    log.info('shutting down')
     scheduler.stop()
     agentManager.shutdown()
     await server.shutdown() // Stop MCP servers, kill PTYs, release resources
@@ -90,7 +96,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Fatal error:', err)
+  createLogger('server').fatal({ err }, 'fatal error')
   process.exit(1)
 })
 

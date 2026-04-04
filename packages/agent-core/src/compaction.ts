@@ -7,7 +7,10 @@
  * Called from Session's transformContext hook before every LLM call.
  */
 
+import { createLogger } from '@anton/logger'
 import type { AgentMessage } from '@mariozechner/pi-agent-core'
+
+const log = createLogger('compaction')
 import { completeSimple } from '@mariozechner/pi-ai'
 import type {
   Api,
@@ -297,16 +300,14 @@ export async function compactContext(
     return { messages, state }
   }
 
-  console.log(
-    `[compaction] Tokens: ~${totalTokens} / threshold: ~${Math.round(threshold)} — compacting...`,
-  )
+  log.info({ tokens: totalTokens, threshold: Math.round(threshold) }, 'compacting')
 
   // Layer 1: Trim tool outputs
   const trimmed = trimToolOutputs(messages, config.toolOutputMaxTokens)
   const trimmedTokens = estimateTokens(trimmed)
 
   if (trimmedTokens < threshold && !customInstructions) {
-    console.log(`[compaction] Layer 1 sufficient: ~${trimmedTokens} tokens after trimming`)
+    log.info({ tokens: trimmedTokens }, 'layer 1 sufficient')
     return { messages: trimmed, state }
   }
 
@@ -345,7 +346,7 @@ export async function compactContext(
     .join('\n')
 
   if (!summaryText) {
-    console.error('[compaction] LLM returned empty summary, falling back')
+    log.error('LLM returned empty summary, falling back')
     return { messages: trimmed, state }
   }
 
@@ -360,9 +361,14 @@ export async function compactContext(
   }
 
   const compactedTokens = estimateTokens(compactedMessages)
-  console.log(
-    `[compaction] Layer 2 complete: ~${totalTokens} → ~${compactedTokens} tokens ` +
-      `(${olderMessages.length} messages summarized, ${recentMessages.length} preserved)`,
+  log.info(
+    {
+      tokensBefore: totalTokens,
+      tokensAfter: compactedTokens,
+      summarized: olderMessages.length,
+      preserved: recentMessages.length,
+    },
+    'layer 2 complete',
   )
 
   return { messages: compactedMessages, state: newState }

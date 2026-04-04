@@ -5,8 +5,7 @@ import { TaskListView } from './TaskListView.js'
 
 export function HomeView() {
   const activeConv = useStore((s) => s.getActiveConversation())
-  const hasMessages = (activeConv?.messages?.length || 0) > 0
-  const hasOpenTask = !!activeConv && hasMessages
+  const hasOpenTask = !!activeConv
   const [leftWidth, setLeftWidth] = useState(() =>
     Math.max(400, Math.floor(window.innerWidth * 0.32)),
   )

@@ -9,6 +9,9 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { AgentConfig } from '@anton/agent-config'
+import { createLogger } from '@anton/logger'
+
+const log = createLogger('telegram')
 import type { McpManager, Session } from '@anton/agent-core'
 import { createSession, resumeSession } from '@anton/agent-core'
 import type { ConnectorManager } from '@anton/connectors'
@@ -46,9 +49,9 @@ export class TelegramBotHandler {
     })
     const data = (await res.json()) as { ok: boolean; description?: string }
     if (data.ok) {
-      console.log(`  Telegram webhook registered: ${webhookUrl}`)
+      log.info({ webhookUrl }, 'webhook registered')
     } else {
-      console.error(`  Telegram webhook registration failed: ${data.description}`)
+      log.error({ description: data.description }, 'webhook registration failed')
     }
   }
 
@@ -66,7 +69,7 @@ export class TelegramBotHandler {
       try {
         const update = JSON.parse(body) as TelegramUpdate
         this.handleUpdate(update).catch((err) => {
-          console.error('[TelegramBot] Error handling update:', err)
+          log.error({ err }, 'error handling update')
         })
       } catch {
         // ignore malformed payloads

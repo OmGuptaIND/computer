@@ -72,6 +72,7 @@ import {
   resumeSession,
 } from '@anton/agent-core'
 import { CONNECTOR_FACTORIES, ConnectorManager } from '@anton/connectors'
+import { createLogger } from '@anton/logger'
 import { Channel, decodeFrame, encodeFrame, parseJsonPayload } from '@anton/protocol'
 import type { AiMessage, ChannelId, ControlMessage, TerminalMessage } from '@anton/protocol'
 import { WebSocket, WebSocketServer } from 'ws'
@@ -86,6 +87,8 @@ import {
 } from './workflows/builtin-registry.js'
 import { buildWorkflowAgentContext } from './workflows/workflow-context.js'
 import { WorkflowInstaller } from './workflows/workflow-installer.js'
+
+const log = createLogger('server')
 
 const DEFAULT_SESSION_ID = 'default'
 
@@ -167,7 +170,7 @@ export class AgentServer {
     const ttl = config.sessions?.ttlDays ?? 7
     const cleaned = cleanExpiredSessions(ttl)
     if (cleaned > 0) {
-      console.log(`  Cleaned ${cleaned} expired session(s).`)
+      log.info({ cleaned }, 'Cleaned expired sessions')
     }
   }
 
@@ -179,9 +182,9 @@ export class AgentServer {
   async shutdown(): Promise<void> {
     try {
       await this.mcpManager.stopAll()
-      console.log('[server] MCP servers stopped')
+      log.info('MCP servers stopped')
     } catch (err) {
-      console.error('[server] Error stopping MCP servers:', err)
+      log.error({ err }, 'Error stopping MCP servers')
     }
     // Kill any active PTY sessions
     for (const [id, pty] of this.ptys) {
@@ -219,7 +222,7 @@ export class AgentServer {
         this.wireAgentAutoHandlers(session)
         this.sessions.set(runSessionId, session)
 
-        console.log(`[AgentRun] Created fresh session ${runSessionId} for agent ${agentSessionId}`)
+        log.info({ runSessionId, agentSessionId }, 'Created fresh agent run session')
 
         let eventCount = 0
         let summary = ''
@@ -228,13 +231,18 @@ export class AgentServer {
           // Run the conversation
           eventCount = await this.handleChatMessage({ content, sessionId: runSessionId })
 
-          console.log(`[AgentRun] ${runSessionId}: ${eventCount} events produced`)
+          log.info({ runSessionId, eventCount }, 'Agent run events produced')
 
           // Extract summary from the last assistant text
           try {
             const history = session.getHistory()
-            console.log(
-              `[AgentRun] ${runSessionId}: ${history.length} history entries, roles: ${history.map((h) => h.role).join(',')}`,
+            log.debug(
+              {
+                runSessionId,
+                historyLength: history.length,
+                roles: history.map((h) => h.role).join(','),
+              },
+              'Agent run history entries',
             )
             for (let i = history.length - 1; i >= 0; i--) {
               if (history[i].role === 'assistant' && history[i].content) {
@@ -243,10 +251,10 @@ export class AgentServer {
               }
             }
           } catch (extractErr) {
-            console.warn('[AgentRun] Summary extraction failed:', extractErr)
+            log.warn({ err: extractErr }, 'Agent run summary extraction failed')
           }
         } catch (err) {
-          console.error(`[AgentRun] Failed for ${agentSessionId}:`, err)
+          log.error({ err, agentSessionId }, 'Agent run failed')
           throw err
         } finally {
           // Always clean up cached session (persisted to disk by the session itself)
@@ -309,7 +317,7 @@ export class AgentServer {
     plainWss.on('connection', (ws) => this.handleConnection(ws))
 
     plainServer.listen(port, () => {
-      console.log(`  ws://0.0.0.0:${port}  (primary, plain)`)
+      log.info({ port }, 'WebSocket server listening (plain)')
     })
 
     this.wss = plainWss
@@ -331,10 +339,10 @@ export class AgentServer {
         tlsWss.on('connection', (ws) => this.handleConnection(ws))
 
         tlsServer.listen(tlsPort, () => {
-          console.log(`  wss://0.0.0.0:${tlsPort} (TLS, self-signed)`)
+          log.info({ port: tlsPort }, 'WebSocket server listening (TLS, self-signed)')
         })
       } catch (err: unknown) {
-        console.error(`  TLS server failed to start: ${(err as Error).message}`)
+        log.error({ err }, 'TLS server failed to start')
       }
     }
 
@@ -362,8 +370,7 @@ export class AgentServer {
     // Start Telegram bot if token is configured
     await this.startTelegramBot()
 
-    console.log(`\n  Agent ID: ${this.config.agentId}`)
-    console.log(`  Token:    ${this.config.token}\n`)
+    log.info({ agentId: this.config.agentId, token: this.config.token }, 'Server started')
 
     // Log all stored sessions for debugging sync issues
     this.logStoredSessions()
@@ -372,7 +379,7 @@ export class AgentServer {
   // ── Connection handling ─────────────────────────────────────────
 
   private handleConnection(ws: WebSocket) {
-    console.log('Client connected, waiting for auth...')
+    log.info('Client connected, waiting for auth')
 
     let authenticated = false
     const authTimeout = setTimeout(() => {
@@ -412,7 +419,7 @@ export class AgentServer {
               }
 
               this.sendToClient(Channel.CONTROL, authOk)
-              console.log('Client authenticated')
+              log.info('Client authenticated')
 
               this.sendToClient(Channel.EVENTS, {
                 type: 'agent_status',
@@ -438,7 +445,7 @@ export class AgentServer {
 
         await this.handleMessage(frame.channel, frame.payload)
       } catch (err: unknown) {
-        console.error('Message error:', (err as Error).message)
+        log.error({ err }, 'Message error')
       }
     })
 
@@ -448,8 +455,9 @@ export class AgentServer {
         // If there are pending interactive prompts (ask_user, confirm), don't cancel
         // those turns — the user just needs to reconnect and answer
         if (this.pendingPrompts.size > 0) {
-          console.log(
-            `Client disconnected — ${this.pendingPrompts.size} pending prompt(s), keeping turns alive`,
+          log.info(
+            { pendingPrompts: this.pendingPrompts.size },
+            'Client disconnected with pending prompts, keeping turns alive',
           )
         } else {
           // Cancel interactive turns but keep background work (sub-agents, agent jobs) alive
@@ -460,12 +468,12 @@ export class AgentServer {
               sessionId.startsWith('agent-job-') ||
               sessionId.startsWith('agent--')
             ) {
-              console.log(`Keeping background turn alive: ${sessionId}`)
+              log.debug({ sessionId }, 'Keeping background turn alive')
               continue
             }
             const session = this.sessions.get(sessionId)
             if (session) {
-              console.log(`Cancelling active turn for session ${sessionId}`)
+              log.info({ sessionId }, 'Cancelling active turn on disconnect')
               session.cancel()
             }
           }
@@ -487,7 +495,7 @@ export class AgentServer {
           } catch {}
           this.ptys.delete(id)
         }
-        console.log('Client disconnected')
+        log.info('Client disconnected')
       }
     })
   }
@@ -513,7 +521,7 @@ export class AgentServer {
         break
 
       default:
-        console.log(`Unknown channel: ${channel}`)
+        log.warn({ channel }, 'Unknown channel')
     }
   }
 
@@ -706,7 +714,7 @@ export class AgentServer {
 
   private async handleUpdateStart() {
     for await (const progress of this.updater.selfUpdate()) {
-      console.log(`[update] ${progress.stage}: ${progress.message}`)
+      log.info({ stage: progress.stage }, progress.message)
       this.sendToClient(Channel.CONTROL, {
         type: 'update_progress',
         stage: progress.stage,
@@ -761,7 +769,7 @@ export class AgentServer {
           this.sendToClient(Channel.TERMINAL, { type: 'pty_close', id: msg.id })
         })
 
-        console.log(`PTY spawned: ${msg.id} (${shell})`)
+        log.info({ ptyId: msg.id, shell }, 'PTY spawned')
         break
       }
 
@@ -859,7 +867,7 @@ export class AgentServer {
       }
 
       default:
-        console.log(`Unknown filesync message type: ${msg.type}`)
+        log.warn({ msgType: msg.type }, 'Unknown filesync message type')
     }
   }
 
@@ -1044,7 +1052,10 @@ export class AgentServer {
             content: msg.content,
             sessionId: steerSessionId,
           })
-          console.log(`[${steerSessionId}] Steering: "${msg.content.slice(0, 60)}"`)
+          log.info(
+            { sessionId: steerSessionId, content: msg.content.slice(0, 60) },
+            'Steering session',
+          )
         } else {
           // Session not active — treat as a regular message
           await this.handleChatMessage({ content: msg.content, sessionId: msg.sessionId })
@@ -1057,7 +1068,7 @@ export class AgentServer {
         const cancelSessionId = msg.sessionId || DEFAULT_SESSION_ID
         const cancelSession = this.sessions.get(cancelSessionId)
         if (cancelSession && this.activeTurns.has(cancelSessionId)) {
-          console.log(`[${cancelSessionId}] Cancelling turn via client request`)
+          log.info({ sessionId: cancelSessionId }, 'Cancelling turn via client request')
           cancelSession.cancel()
         }
         break
@@ -1195,8 +1206,14 @@ export class AgentServer {
         })
       }
 
-      console.log(
-        `Session created: ${msg.id} (${session.provider}/${session.model})${msg.projectId ? ` [project: ${msg.projectId}]` : ''}`,
+      log.info(
+        {
+          sessionId: msg.id,
+          provider: session.provider,
+          model: session.model,
+          projectId: msg.projectId,
+        },
+        'Session created',
       )
     } catch (err: unknown) {
       this.sendToClient(Channel.AI, {
@@ -1417,7 +1434,7 @@ export class AgentServer {
       this.activeTurns.delete(msg.id)
       deletePersistedSession(msg.id)
     } catch (err: unknown) {
-      console.error(`Error destroying session ${msg.id}:`, (err as Error).message)
+      log.error({ err, sessionId: msg.id }, 'Error destroying session')
     }
 
     this.sendToClient(Channel.AI, {
@@ -1437,13 +1454,14 @@ export class AgentServer {
           })
         }
       } catch (e) {
-        console.warn(
-          `Failed to update project stats after session destroy: ${(e as Error).message}`,
+        log.warn(
+          { err: e, sessionId: msg.id },
+          'Failed to update project stats after session destroy',
         )
       }
     }
 
-    console.log(`Session destroyed: ${msg.id}`)
+    log.info({ sessionId: msg.id }, 'Session destroyed')
   }
 
   private handleSessionHistory(msg: { id: string; before?: number; limit?: number }) {
@@ -1492,9 +1510,16 @@ export class AgentServer {
       const page = session.getHistory({ before: msg.before, limit })
       const hasMore = page.length > 0 && page[0].seq > 1
 
-      console.log(
-        `[Session history] ${msg.id}: sending ${page.length}/${totalCount} entries` +
-          ` (lastSeq=${lastSeq}, hasMore=${hasMore}, before=${msg.before ?? 'latest'})`,
+      log.debug(
+        {
+          sessionId: msg.id,
+          sent: page.length,
+          totalCount,
+          lastSeq,
+          hasMore,
+          before: msg.before ?? 'latest',
+        },
+        'Sending session history',
       )
 
       // On first page, include artifacts extracted from full history
@@ -1547,7 +1572,7 @@ export class AgentServer {
         success: true,
         provider: msg.provider,
       })
-      console.log(`API key updated for provider: ${msg.provider}`)
+      log.info({ provider: msg.provider }, 'API key updated')
     } catch {
       this.sendToClient(Channel.AI, {
         type: 'provider_set_key_response',
@@ -1565,9 +1590,12 @@ export class AgentServer {
       for (const [id, session] of this.sessions) {
         try {
           session.switchModel(msg.provider, msg.model)
-          console.log(`Switched session ${id} to ${msg.provider}/${msg.model}`)
+          log.debug(
+            { sessionId: id, provider: msg.provider, model: msg.model },
+            'Switched session model',
+          )
         } catch (err) {
-          console.warn(`Failed to switch session ${id}:`, (err as Error).message)
+          log.warn({ err, sessionId: id }, 'Failed to switch session model')
         }
       }
 
@@ -1577,7 +1605,7 @@ export class AgentServer {
         provider: msg.provider,
         model: msg.model,
       })
-      console.log(`Default set to: ${msg.provider}/${msg.model}`)
+      log.info({ provider: msg.provider, model: msg.model }, 'Default provider/model set')
     } catch {
       this.sendToClient(Channel.AI, {
         type: 'provider_set_default_response',
@@ -1596,7 +1624,7 @@ export class AgentServer {
         success: true,
         provider: msg.provider,
       })
-      console.log(`Models updated for provider: ${msg.provider} (${msg.models.length} models)`)
+      log.info({ provider: msg.provider, count: msg.models.length }, 'Models updated for provider')
     } catch {
       this.sendToClient(Channel.AI, {
         type: 'provider_set_models_response',
@@ -1794,7 +1822,7 @@ export class AgentServer {
         logs,
       })
     } catch (err) {
-      console.error('Failed to get agent run logs:', err)
+      log.error({ err }, 'Failed to get agent run logs')
       this.sendToClient(Channel.AI, {
         type: 'agent_run_logs_response',
         sessionId: msg.sessionId,
@@ -1941,14 +1969,14 @@ export class AgentServer {
 
   private wireAgentAutoHandlers(session: Session) {
     session.setConfirmHandler(async (_command, _reason) => {
-      console.log(`[${session.id}] Agent auto-approved confirm: ${_command}`)
+      log.debug({ sessionId: session.id, command: _command }, 'Agent auto-approved confirm')
       return true
     })
     session.setPlanConfirmHandler(async (_title, _content) => {
       return { approved: true, feedback: '' }
     })
     session.setAskUserHandler(async (_questions) => {
-      console.log(`[${session.id}] Agent auto-skipped ask_user (autonomous mode)`)
+      log.debug({ sessionId: session.id }, 'Agent auto-skipped ask_user (autonomous mode)')
       return {}
     })
   }
@@ -2428,7 +2456,7 @@ export class AgentServer {
 
         // For agent sessions that have never run: create a fresh session
         if (!session && isAgentSession && projectId) {
-          console.log(`Creating new session for agent: ${sessionId}`)
+          log.info({ sessionId }, 'Creating new session for agent')
           session = createSession(sessionId, this.config, opts)
         }
 
@@ -2442,7 +2470,7 @@ export class AgentServer {
             this.wireAskUserHandler(session)
           }
           this.sessions.set(sessionId, session)
-          console.log(`Auto-resumed session from disk: ${sessionId}`)
+          log.info({ sessionId }, 'Auto-resumed session from disk')
         } else {
           this.sendToClient(Channel.AI, {
             type: 'error',
@@ -2468,7 +2496,7 @@ export class AgentServer {
       sessionId,
     })
 
-    console.log(`[${sessionId}] Processing: "${msg.content.slice(0, 50)}"`)
+    log.info({ sessionId, content: msg.content.slice(0, 50) }, 'Processing message')
 
     // Load conversation context on first message (cross-conversation matching uses message text)
     if (!session.contextInfo) {
@@ -2619,9 +2647,15 @@ export class AgentServer {
       // Flush any remaining buffered text after the loop
       textBuffer.destroy()
       const turnDurationMs = Date.now() - turnStartMs
-      console.log(
-        `[${sessionId}] Turn complete: ${eventCount} events, ${toolCallCount} tool calls, ` +
-          `${accumulatedText.length} chars, ${turnDurationMs}ms`,
+      log.info(
+        {
+          sessionId,
+          eventCount,
+          toolCallCount,
+          chars: accumulatedText.length,
+          durationMs: turnDurationMs,
+        },
+        'Turn complete',
       )
 
       // Track session in project history if this is a project session
@@ -2649,12 +2683,12 @@ export class AgentServer {
             this.sendToClient(Channel.AI, { type: 'project_updated', project: updatedProject })
           }
         } catch (e) {
-          console.warn(`Failed to update project history: ${(e as Error).message}`)
+          log.warn({ err: e, sessionId }, 'Failed to update project history')
         }
       }
     } catch (err: unknown) {
       const errMsg = (err as Error).message
-      console.error(`[${sessionId}] Error:`, errMsg)
+      log.error({ sessionId, err: errMsg }, 'Session error')
       // Flush any buffered text before sending error so partial response isn't lost
       textBuffer.destroy()
       this.sendToClient(Channel.AI, {
@@ -2689,7 +2723,7 @@ export class AgentServer {
       sessionId,
     })
 
-    console.log(`[${sessionId}] Manual compaction requested`)
+    log.info({ sessionId }, 'Manual compaction requested')
 
     try {
       const state = await session.compactNow(customInstructions)
@@ -2701,12 +2735,16 @@ export class AgentServer {
         totalCompactions: state.compactionCount,
       })
 
-      console.log(
-        `[${sessionId}] Compaction complete: ${state.compactedMessageCount} messages compacted ` +
-          `(${state.compactionCount} total compactions)`,
+      log.info(
+        {
+          sessionId,
+          compactedMessages: state.compactedMessageCount,
+          totalCompactions: state.compactionCount,
+        },
+        'Compaction complete',
       )
     } catch (err: unknown) {
-      console.error(`[${sessionId}] Compaction failed:`, (err as Error).message)
+      log.error({ err, sessionId }, 'Compaction failed')
       this.sendToClient(Channel.AI, {
         type: 'error',
         message: `Compaction failed: ${(err as Error).message}`,
@@ -2859,7 +2897,7 @@ export class AgentServer {
       }))
 
     if (mcpConfigs.length > 0) {
-      console.log(`  Starting ${mcpConfigs.length} MCP connector(s)...`)
+      log.info({ count: mcpConfigs.length }, 'Starting MCP connectors')
       await this.mcpManager.startAll(mcpConfigs)
     }
   }
@@ -2877,7 +2915,7 @@ export class AgentServer {
     )
     if (toActivate.length === 0) return
 
-    console.log(`  Activating ${toActivate.length} OAuth connector(s)...`)
+    log.info({ count: toActivate.length }, 'Activating OAuth connectors')
     for (const providerId of toActivate) {
       await this.connectorManager.activate(providerId)
     }
@@ -2906,7 +2944,7 @@ export class AgentServer {
     }
 
     if (!publicUrl) {
-      console.log('  Telegram bot token found but DOMAIN not set — skipping webhook registration')
+      log.warn('Telegram bot token found but DOMAIN not set, skipping webhook registration')
       return
     }
 
@@ -2942,7 +2980,7 @@ export class AgentServer {
       if (token) {
         this.connectorManager.activateWithToken(c.id, token)
         this.applyConnectorMetadata(c.id, c.metadata)
-        console.log(`  Activated API connector: ${c.id}`)
+        log.info({ connectorId: c.id }, 'Activated API connector')
       }
     }
   }
@@ -3009,14 +3047,14 @@ export class AgentServer {
 
       // Start Telegram bot if just connected
       if (msg.connector.id === 'telegram' && msg.connector.apiKey && !this.telegramBot) {
-        this.startTelegramBot().catch((err) => console.error('[TelegramBot] Failed to start:', err))
+        this.startTelegramBot().catch((err) => log.error({ err }, 'Telegram bot failed to start'))
       }
 
       this.sendToClient(Channel.AI, {
         type: 'connector_added',
         connector: this.buildConnectorStatus(msg.connector),
       })
-      console.log(`Connector added: ${msg.connector.id} (${msg.connector.name})`)
+      log.info({ connectorId: msg.connector.id, name: msg.connector.name }, 'Connector added')
     } catch (err) {
       this.sendToClient(Channel.AI, {
         type: 'error',
@@ -3065,7 +3103,7 @@ export class AgentServer {
       removeConnectorConfig(this.config, msg.id)
       this.refreshAllSessionTools()
       this.sendToClient(Channel.AI, { type: 'connector_removed', id: msg.id })
-      console.log(`Connector removed: ${msg.id}`)
+      log.info({ connectorId: msg.id }, 'Connector removed')
     } catch (err) {
       this.sendToClient(Channel.AI, {
         type: 'error',
@@ -3269,7 +3307,7 @@ export class AgentServer {
       type: 'connector_removed',
       id: msg.provider,
     })
-    console.log(`OAuth connector disconnected: ${msg.provider}`)
+    log.info({ provider: msg.provider }, 'OAuth connector disconnected')
   }
 
   private async handleOAuthComplete(result: {
@@ -3316,7 +3354,7 @@ export class AgentServer {
         },
       })
 
-      console.log(`OAuth connector connected: ${result.provider}`)
+      log.info({ provider: result.provider }, 'OAuth connector connected')
     }
 
     this.sendToClient(Channel.AI, {
@@ -3344,7 +3382,7 @@ export class AgentServer {
       const chatId = Number(metadata.OWNER_CHAT_ID)
       if (!Number.isNaN(chatId) && 'setOwnerChatId' in connector) {
         ;(connector as { setOwnerChatId: (id: number) => void }).setOwnerChatId(chatId)
-        console.log(`  Telegram owner chat ID set: ${chatId}`)
+        log.info({ chatId }, 'Telegram owner chat ID set')
       }
     }
   }
@@ -3360,10 +3398,10 @@ export class AgentServer {
     try {
       const metas = listSessionMetas()
       if (metas.length === 0) {
-        console.log('[Sessions on disk] (none)')
+        log.debug('No sessions on disk')
         return
       }
-      console.log(`[Sessions on disk] ${metas.length} session(s):`)
+      log.info({ count: metas.length }, 'Sessions on disk')
       for (const m of metas.slice(0, 20)) {
         const ago = Math.round((Date.now() - m.lastActiveAt) / 60_000)
         const agoStr =
@@ -3372,11 +3410,15 @@ export class AgentServer {
             : ago < 1440
               ? `${Math.round(ago / 60)}h ago`
               : `${Math.round(ago / 1440)}d ago`
-        console.log(`  - ${m.id}: "${m.title}" (${m.messageCount} msgs, last active ${agoStr})`)
+        log.debug(
+          { sessionId: m.id, title: m.title, messageCount: m.messageCount, lastActive: agoStr },
+          'Stored session',
+        )
       }
-      if (metas.length > 20) console.log(`  ... and ${metas.length - 20} more`)
+      if (metas.length > 20)
+        log.debug({ remaining: metas.length - 20 }, 'Additional sessions on disk')
     } catch (err: unknown) {
-      console.error('[Sessions on disk] Failed to list:', (err as Error).message)
+      log.error({ err }, 'Failed to list sessions on disk')
     }
   }
 
@@ -3400,7 +3442,7 @@ function ensureCerts(certDir: string) {
 
   if (existsSync(certPath) && existsSync(keyPath)) return
 
-  console.log('Generating self-signed TLS certificate...')
+  log.info('Generating self-signed TLS certificate')
 
   try {
     execSync(`mkdir -p "${certDir}"`)
@@ -3409,6 +3451,6 @@ function ensureCerts(certDir: string) {
       { stdio: 'pipe' },
     )
   } catch (err: unknown) {
-    console.error('Failed to generate certs:', (err as Error).message)
+    log.error({ err }, 'Failed to generate certs')
   }
 }

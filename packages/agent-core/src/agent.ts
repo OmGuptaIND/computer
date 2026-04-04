@@ -15,7 +15,10 @@
 
 import type { AgentConfig } from '@anton/agent-config'
 import { loadCoreSystemPrompt } from '@anton/agent-config'
+import { createLogger } from '@anton/logger'
 import type { AskUserQuestion } from '@anton/protocol'
+
+const log = createLogger('tools')
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core'
 import { Type } from '@mariozechner/pi-ai'
 import type { Static, TSchema, TextContent } from '@mariozechner/pi-ai'
@@ -1177,7 +1180,7 @@ export function buildTools(
   if (mcpManager) {
     const mcpTools = mcpManager.getAllTools()
     if (mcpTools.length > 0) {
-      console.log(`[buildTools] adding ${mcpTools.length} MCP tools from connectors`)
+      log.info({ count: mcpTools.length }, 'adding MCP tools from connectors')
       tools.push(...mcpTools)
     }
   }
@@ -1186,7 +1189,7 @@ export function buildTools(
   if (connectorManager) {
     const directTools = connectorManager.getAllTools()
     if (directTools.length > 0) {
-      console.log(`[buildTools] adding ${directTools.length} direct connector tools`)
+      log.info({ count: directTools.length }, 'adding direct connector tools')
       tools.push(...directTools)
     }
   }
@@ -1204,12 +1207,9 @@ export function buildTools(
     deduped.push(tool)
   }
   if (duplicates.length > 0) {
-    console.warn(
-      `[buildTools] removed ${duplicates.length} duplicate tool(s): ${duplicates.join(', ')}. ` +
-        `Final count: ${deduped.length}`,
-    )
+    log.warn({ duplicates, finalCount: deduped.length }, 'removed duplicate tools')
   }
-  console.log(`[buildTools] ${deduped.length} tools registered`)
+  log.info({ count: deduped.length }, 'tools registered')
 
   return deduped
 }

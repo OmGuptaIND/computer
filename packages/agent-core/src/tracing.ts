@@ -7,8 +7,11 @@
  */
 
 import { createHash } from 'node:crypto'
+import { createLogger } from '@anton/logger'
 import type { TokenUsage } from '@anton/protocol'
 import { type Span, flush as btFlush, initLogger } from 'braintrust'
+
+const log = createLogger('tracing')
 
 let tracingEnabled = false
 let logger: ReturnType<typeof initLogger> | null = null
@@ -25,7 +28,7 @@ export function initTracing(opts?: {
 }) {
   const apiKey = opts?.apiKey || process.env.BRAINTRUST_API_KEY
   if (!apiKey) {
-    console.log('[tracing] No BRAINTRUST_API_KEY — tracing disabled')
+    log.info('no BRAINTRUST_API_KEY — tracing disabled')
     return
   }
 
@@ -34,7 +37,7 @@ export function initTracing(opts?: {
   tracingEnabled = true
   _sampleRate = Math.max(0, Math.min(1, opts?.sampleRate ?? 0.1))
   _onlineScoringEnabled = opts?.onlineScoring ?? false
-  console.log(`[tracing] Braintrust enabled for project "${projectName}"`)
+  log.info({ project: projectName }, 'Braintrust enabled')
 }
 
 export function isTracingEnabled(): boolean {
@@ -257,6 +260,6 @@ export async function flushTraces(): Promise<void> {
   try {
     await btFlush()
   } catch (err) {
-    console.error('[tracing] flush error:', err)
+    log.error({ err }, 'flush error')
   }
 }

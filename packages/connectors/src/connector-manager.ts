@@ -1,5 +1,8 @@
+import { createLogger } from '@anton/logger'
 import type { AgentTool } from '@mariozechner/pi-agent-core'
 import type { ConnectorFactory, DirectConnector, TokenGetter } from './types.js'
+
+const log = createLogger('connector-manager')
 
 /**
  * Manages active direct API connectors.
@@ -19,7 +22,7 @@ export class ConnectorManager {
   async activate(providerId: string): Promise<void> {
     const factory = this.factories[providerId]
     if (!factory) {
-      console.log(`[ConnectorManager] No direct connector for: ${providerId}`)
+      log.debug({ providerId }, 'no direct connector factory')
       return
     }
 
@@ -28,11 +31,9 @@ export class ConnectorManager {
       const connector = factory()
       connector.setToken(token)
       this.connectors.set(providerId, connector)
-      console.log(
-        `[ConnectorManager] Activated: ${connector.name} (${connector.getTools().length} tools)`,
-      )
+      log.info({ connector: connector.name, toolCount: connector.getTools().length }, 'activated')
     } catch (err) {
-      console.error(`[ConnectorManager] Failed to activate ${providerId}:`, err)
+      log.error({ providerId, err }, 'failed to activate')
     }
   }
 
@@ -40,7 +41,7 @@ export class ConnectorManager {
   deactivate(providerId: string): void {
     const connector = this.connectors.get(providerId)
     if (connector) {
-      console.log(`[ConnectorManager] Deactivated: ${connector.name}`)
+      log.info({ connector: connector.name }, 'deactivated')
       this.connectors.delete(providerId)
     }
   }
@@ -98,9 +99,7 @@ export class ConnectorManager {
     const connector = factory()
     connector.setToken(token)
     this.connectors.set(providerId, connector)
-    console.log(
-      `[ConnectorManager] Activated: ${connector.name} (${connector.getTools().length} tools)`,
-    )
+    log.info({ connector: connector.name, toolCount: connector.getTools().length }, 'activated')
   }
 
   /** Refresh a connector's token. */
@@ -111,7 +110,7 @@ export class ConnectorManager {
       const token = await this.getToken(providerId)
       connector.setToken(token)
     } catch (err) {
-      console.error(`[ConnectorManager] Failed to refresh token for ${providerId}:`, err)
+      log.error({ providerId, err }, 'failed to refresh token')
     }
   }
 

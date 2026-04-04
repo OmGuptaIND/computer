@@ -1,5 +1,5 @@
 {
-  "name": "@anton/connectors",
+  "name": "@anton/logger",
   "version": "1.0.30",
   "type": "module",
   "main": "dist/index.js",
@@ -9,13 +9,11 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@anton/agent-config": "workspace:*",
-    "@anton/logger": "workspace:*",
-    "@mariozechner/pi-agent-core": "^0.60.0",
-    "@sinclair/typebox": "^0.34.0"
+    "pino": "^9.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "pino-pretty": "^13.0.0",
     "typescript": "^5.6.0"
   }
 }
