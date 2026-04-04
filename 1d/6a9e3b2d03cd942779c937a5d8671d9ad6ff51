@@ -1,0 +1,47 @@
+packages/desktop/src/components/workflows/WorkflowDetailPage.tsx
+  b86c1b79f0b75756 98,112,152
+packages/desktop/src/components/chat/AskUserInline.tsx
+  b86c1b79f0b75756 102
+packages/desktop/src/components/chat/ToolCallBlock.tsx
+  b86c1b79f0b75756 105,150
+packages/desktop/src/components/files/ProjectFilesView.tsx
+  b86c1b79f0b75756 215-223,319-330
+packages/desktop/src/components/projects/ProjectView.tsx
+  b86c1b79f0b75756 123
+packages/desktop/src/App.tsx
+  b86c1b79f0b75756 45-46,52-53,56
+packages/desktop/src/components/agents/AgentListView.tsx
+  b86c1b79f0b75756 47-54,72-79,92-99,339
+packages/desktop/src/components/Sidebar.tsx
+  b86c1b79f0b75756 40,360-361
+packages/desktop/src/components/home/TaskListView.tsx
+  b86c1b79f0b75756 52-59,77-84,98-105,268,285-286,310-311,516
+packages/desktop/src/components/home/TaskDetailView.tsx
+  b86c1b79f0b75756 172-173
+packages/desktop/src/components/projects/ProjectLanding.tsx
+  b86c1b79f0b75756 37
+packages/desktop/src/components/memory/MemoryView.tsx
+  b86c1b79f0b75756 179,207-211,244,279,364
+packages/agent-server/src/server.ts
+  b86c1b79f0b75756 1845-1846,1878-1879,1887-1888,1896-1897,1914-1915,2291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "1d6a9e3b2d03cd942779c937a5d8671d9ad6ff51",
+  "prompts": {
+    "b86c1b79f0b75756": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9ea7e932-7812-4d56-8f40-5115d6521554",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 166,
+      "total_deletions": 130,
+      "accepted_lines": 231,
+      "overriden_lines": 0
+    }
+  }
+}
