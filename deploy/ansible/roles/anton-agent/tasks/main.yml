@@ -1,6 +1,8 @@
 ---
-# Anton Agent Deployment Role
-# Uses the `anton` CLI to set up and configure the agent — same as cloud-init.
+# Anton Agent Deployment Role (repo-clone model)
+#
+# Clones the repo to /opt/anton, installs deps, builds, configures systemd.
+# Uses the `anton` CLI for configuration after the repo is set up.
 
 # ── System Dependencies ──────────────────────────────────────────
 
@@ -9,17 +11,20 @@
     name:
       - curl
       - jq
+      - git
       - dnsutils
       - debian-keyring
       - debian-archive-keyring
       - apt-transport-https
       - ufw
+      - python3
+      - python3-pip
     state: present
     update_cache: true
     cache_valid_time: 3600
   when: ansible_facts["os_family"] == "Debian"
 
-# ── Node.js 22 (required to run the CLI) ────────────────────────
+# ── Node.js 22 ──────────────────────────────────────────────────
 
 - name: Check Node.js version
   command: node --version
@@ -44,24 +49,93 @@
     node_check.rc != 0 or
     (node_check.stdout | regex_replace('^v', '') | split('.') | first | int) < 22
 
-# ── Anton CLI ────────────────────────────────────────────────────
+# ── pnpm ────────────────────────────────────────────────────────
 
-- name: Fetch manifest for CLI version
-  uri:
-    url: "https://raw.githubusercontent.com/OmGuptaIND/computer/main/manifest.json"
-    return_content: true
-  register: manifest_response
+- name: Check pnpm
+  command: pnpm --version
+  register: pnpm_check
+  ignore_errors: true
+  changed_when: false
 
-- name: Parse CLI version from manifest
-  set_fact:
-    cli_version: "{{ (manifest_response.content | from_json).version }}"
+- name: Install pnpm
+  command: npm install -g pnpm
+  when: pnpm_check.rc != 0
 
-- name: Download CLI
-  get_url:
-    url: "https://github.com/OmGuptaIND/computer/releases/download/v{{ cli_version }}/anton-cli.mjs"
-    dest: /usr/local/bin/anton-cli.mjs
+# ── Anton user ──────────────────────────────────────────────────
+
+- name: Create anton user
+  user:
+    name: "{{ anton_user }}"
+    home: "/home/{{ anton_user }}"
+    shell: /bin/bash
+    create_home: true
+    state: present
+
+- name: Create .anton directory
+  file:
+    path: "/home/{{ anton_user }}/.anton"
+    state: directory
+    owner: "{{ anton_user }}"
+    group: "{{ anton_user }}"
     mode: "0755"
+
+# ── Clone/update repo ───────────────────────────────────────────
+
+- name: Create /opt/anton directory
+  file:
+    path: /opt/anton
+    state: directory
+    owner: "{{ anton_user }}"
+    group: "{{ anton_user }}"
+    mode: "0755"
+
+- name: Check if repo exists
+  stat:
+    path: /opt/anton/.git
+  register: repo_check
+
+- name: Clone repo
+  become: true
+  become_user: "{{ anton_user }}"
+  git:
+    repo: "https://github.com/OmGuptaIND/computer.git"
+    dest: /opt/anton
+    version: "{{ anton_branch | default('main') }}"
     force: true
+  when: not repo_check.stat.exists
+
+- name: Pull latest
+  become: true
+  become_user: "{{ anton_user }}"
+  git:
+    repo: "https://github.com/OmGuptaIND/computer.git"
+    dest: /opt/anton
+    version: "{{ anton_branch | default('main') }}"
+    force: true
+  when: repo_check.stat.exists
+  tags: [build]
+
+# ── Install + Build ─────────────────────────────────────────────
+
+- name: Install dependencies
+  become: true
+  become_user: "{{ anton_user }}"
+  command: pnpm install
+  args:
+    chdir: /opt/anton
+  changed_when: true
+  tags: [build]
+
+- name: Build all packages
+  become: true
+  become_user: "{{ anton_user }}"
+  command: pnpm -r build
+  args:
+    chdir: /opt/anton
+  changed_when: true
+  tags: [build]
+
+# ── Anton CLI ────────────────────────────────────────────────────
 
 - name: Install anton wrapper script
   copy:
@@ -69,7 +143,7 @@
     mode: "0755"
     content: |
       #!/usr/bin/env bash
-      exec node /usr/local/bin/anton-cli.mjs "$@"
+      exec node /opt/anton/packages/cli/dist/index.js "$@"
 
 # ── Agent Setup via CLI ──────────────────────────────────────────
 
@@ -83,14 +157,51 @@
   set_fact:
     resolved_token: "{{ existing_token.stdout | trim or anton_token }}"
 
-- name: Run agent setup
-  command: >
-    anton computer setup
-    --port {{ anton_port }}
-    --yes
-    {% if resolved_token | length > 0 %}--token {{ resolved_token }}{% endif %}
-  changed_when: true
+- name: Write environment file
+  copy:
+    dest: "/home/{{ anton_user }}/.anton/agent.env"
+    owner: "{{ anton_user }}"
+    group: "{{ anton_user }}"
+    mode: "0600"
+    content: |
+      HOME=/home/{{ anton_user }}
+      ANTON_DIR=/home/{{ anton_user }}/.anton
+      ANTON_TOKEN={{ resolved_token | default('') }}
+      {% if anthropic_api_key | length > 0 %}ANTHROPIC_API_KEY={{ anthropic_api_key }}{% endif %}
+      {% if braintrust_api_key | default('') | length > 0 %}BRAINTRUST_API_KEY={{ braintrust_api_key }}{% endif %}
   notify: restart anton-agent
+
+# ── Systemd service ──────────────────────────────────────────────
+
+- name: Create anton-agent systemd service
+  copy:
+    dest: /etc/systemd/system/anton-agent.service
+    content: |
+      [Unit]
+      Description=Anton Agent
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User={{ anton_user }}
+      Group={{ anton_user }}
+      EnvironmentFile=/home/{{ anton_user }}/.anton/agent.env
+      WorkingDirectory=/opt/anton
+      ExecStart=/usr/bin/node /opt/anton/packages/agent-server/dist/index.js --port {{ anton_port }}
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: restart anton-agent
+
+- name: Enable and start anton-agent
+  systemd:
+    name: anton-agent
+    enabled: true
+    state: started
+    daemon_reload: true
 
 # ── Configure via CLI ────────────────────────────────────────────
 
@@ -198,6 +309,8 @@
     daemon_reload: true
   when: anton_domain | length > 0
 
+# ── Handlers ─────────────────────────────────────────────────────
+
 # ── Print connection info ────────────────────────────────────────
 
 - name: Read final token
@@ -215,7 +328,7 @@
     msg: |
       Anton Agent deployed successfully!
 
-      CLI:     v{{ cli_version }}
+      Repo:    /opt/anton
       Connect: {{ anton_connect }}
       Token:   {{ final_token.stdout | default('check /home/anton/.anton/agent.env') }}
 

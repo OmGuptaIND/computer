@@ -38,6 +38,8 @@ export interface ConfigQueryMessage {
   key: 'providers' | 'defaults' | 'security' | 'system_prompt' | 'memories'
   /** Optional session ID — when provided, system_prompt returns the full composed prompt and memories includes conversation-scoped ones. */
   sessionId?: string
+  /** Optional project ID — when provided, memories also includes project-scoped context. */
+  projectId?: string
 }
 
 export interface ConfigQueryResponse {
@@ -110,6 +112,7 @@ export interface PtySpawnMessage {
   cols: number
   rows: number
   shell?: string
+  cwd?: string // working directory — defaults to project workspace
 }
 
 export interface PtyResizeMessage {
@@ -590,6 +593,7 @@ export interface ProjectCreateMessage {
     description?: string
     icon?: string
     color?: string
+    workspacePath?: string // custom location — if not provided, auto-generates ~/Anton/{name}/
   }
 }
 
@@ -628,12 +632,64 @@ export interface ProjectDeletedMessage {
   id: string
 }
 
-// Project context updates (instructions / memory)
+// Project context updates (legacy — use project_instructions_* instead for instructions)
 export interface ProjectContextUpdateMessage {
   type: 'project_context_update'
   id: string
   field: 'notes' | 'summary'
   value: string
+}
+
+// ── Project instructions ────────────────────────────────────────────
+
+export interface ProjectInstructionsGetMessage {
+  type: 'project_instructions_get'
+  projectId: string
+}
+
+export interface ProjectInstructionsResponse {
+  type: 'project_instructions_response'
+  projectId: string
+  content: string
+}
+
+export interface ProjectInstructionsSaveMessage {
+  type: 'project_instructions_save'
+  projectId: string
+  content: string
+}
+
+// ── User preferences (per-project, persistent) ─────────────────────
+
+export interface Preference {
+  id: string
+  title: string
+  content: string
+  createdAt: number
+}
+
+export interface ProjectPreferencesGetMessage {
+  type: 'project_preferences_get'
+  projectId: string
+}
+
+export interface ProjectPreferencesResponse {
+  type: 'project_preferences_response'
+  projectId: string
+  preferences: Preference[]
+}
+
+export interface ProjectPreferenceAddMessage {
+  type: 'project_preference_add'
+  projectId: string
+  title: string
+  content: string
+}
+
+export interface ProjectPreferenceDeleteMessage {
+  type: 'project_preference_delete'
+  projectId: string
+  preferenceId: string
 }
 
 // Project file operations
@@ -778,6 +834,70 @@ export interface AgentRunLogEntry {
   toolName?: string
   toolInput?: string
   isError?: boolean
+}
+
+// ── Workflow management ──────────────────────────────────────────────
+
+import type { InstalledWorkflow, WorkflowManifest, WorkflowRegistryEntry } from './workflows.js'
+
+// Client → Server
+export interface WorkflowRegistryListMessage {
+  type: 'workflow_registry_list'
+}
+
+export interface WorkflowCheckConnectorsMessage {
+  type: 'workflow_check_connectors'
+  workflowId: string
+}
+
+export interface WorkflowInstallMessage {
+  type: 'workflow_install'
+  projectId: string
+  workflowId: string
+  userInputs: Record<string, unknown>
+}
+
+export interface WorkflowsListMessage {
+  type: 'workflows_list'
+  projectId: string
+}
+
+export interface WorkflowUninstallMessage {
+  type: 'workflow_uninstall'
+  projectId: string
+  workflowId: string
+}
+
+// Server → Client
+export interface WorkflowRegistryListResponse {
+  type: 'workflow_registry_list_response'
+  entries: WorkflowRegistryEntry[]
+}
+
+export interface WorkflowCheckConnectorsResponse {
+  type: 'workflow_check_connectors_response'
+  workflowId: string
+  manifest: WorkflowManifest
+  satisfied: string[]
+  missing: string[]
+  optional: { id: string; connected: boolean }[]
+}
+
+export interface WorkflowInstalledMessage {
+  type: 'workflow_installed'
+  workflow: InstalledWorkflow
+}
+
+export interface WorkflowsListResponse {
+  type: 'workflows_list_response'
+  projectId: string
+  workflows: InstalledWorkflow[]
+}
+
+export interface WorkflowUninstalledMessage {
+  type: 'workflow_uninstalled'
+  projectId: string
+  workflowId: string
 }
 
 // ── Connector management ─────────────────────────────────────────────
@@ -1069,6 +1189,13 @@ export type AiMessage =
   | ProjectFilesListResponse
   | ProjectSessionsListMessage
   | ProjectSessionsListResponse
+  | ProjectInstructionsGetMessage
+  | ProjectInstructionsResponse
+  | ProjectInstructionsSaveMessage
+  | ProjectPreferencesGetMessage
+  | ProjectPreferencesResponse
+  | ProjectPreferenceAddMessage
+  | ProjectPreferenceDeleteMessage
   // Agents
   | AgentCreateMessage
   | AgentCreatedMessage
@@ -1080,6 +1207,17 @@ export type AiMessage =
   | AgentResultDeliveredMessage
   | AgentRunLogsMessage
   | AgentRunLogsResponse
+  // Workflows
+  | WorkflowRegistryListMessage
+  | WorkflowRegistryListResponse
+  | WorkflowCheckConnectorsMessage
+  | WorkflowCheckConnectorsResponse
+  | WorkflowInstallMessage
+  | WorkflowInstalledMessage
+  | WorkflowsListMessage
+  | WorkflowsListResponse
+  | WorkflowUninstallMessage
+  | WorkflowUninstalledMessage
   // Connectors
   | ConnectorsListMessage
   | ConnectorsListResponse

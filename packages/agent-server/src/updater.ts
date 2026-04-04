@@ -1,14 +1,14 @@
 /**
  * Self-update checker and executor for the anton.computer agent.
  *
- * Flow:
+ * Repo-clone model:
  *   1. On startup + every UPDATE_CHECK_INTERVAL, fetch the manifest from GitHub
  *   2. Compare versions — if newer, cache in memory
- *   3. On client connect (auth_ok), include updateAvailable if cached
- *   4. Client can trigger update_start → agent downloads binary, replaces, restarts
+ *   3. Client can trigger update_start → agent does git pull + pnpm build + restart
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
+import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   UPDATE_CHECK_INTERVAL,
@@ -22,12 +22,15 @@ import {
 export type UpdateStage = 'downloading' | 'replacing' | 'restarting' | 'done' | 'error'
 export type UpdateProgress = { stage: UpdateStage; message: string }
 
+/** Where the repo lives on disk */
+const REPO_DIR = '/opt/anton'
+
 export class Updater {
   private cachedManifest: UpdateManifest | null = null
   private checkTimer: ReturnType<typeof setInterval> | null = null
   private updating = false
 
-  /** Called when a periodic check discovers a new version (not on explicit update_check) */
+  /** Called when a periodic check discovers a new version */
   onUpdateFound?: (manifest: UpdateManifest) => void
 
   /** Start periodic update checks */
@@ -96,7 +99,7 @@ export class Updater {
   }
 
   /**
-   * Execute self-update: download pre-compiled binary, replace, restart.
+   * Execute self-update: git pull + pnpm install + build + restart.
    */
   async *selfUpdate(): AsyncGenerator<UpdateProgress> {
     if (this.updating) {
@@ -107,7 +110,7 @@ export class Updater {
     this.updating = true
 
     try {
-      // If no manifest cached, do a fresh check before giving up
+      // If no manifest cached, do a fresh check
       if (!this.cachedManifest) {
         yield { stage: 'downloading', message: 'Checking for updates...' }
         await this.checkForUpdates()
@@ -119,13 +122,7 @@ export class Updater {
         return
       }
 
-      const binaryUrl = this.resolveBinaryUrl(manifest)
-      if (!binaryUrl) {
-        yield { stage: 'error', message: `No binary available for ${process.platform}-${process.arch}` }
-        return
-      }
-
-      yield* this.binaryUpdate(manifest, binaryUrl)
+      yield* this.repoUpdate(manifest)
     } catch (err: unknown) {
       yield { stage: 'error', message: `Update failed: ${(err as Error).message}` }
     } finally {
@@ -133,7 +130,7 @@ export class Updater {
     }
   }
 
-  /** Get current update status for update_check_response */
+  /** Get current update status */
   getStatus() {
     const manifest = this.getUpdateAvailable()
     return {
@@ -147,83 +144,46 @@ export class Updater {
 
   // ── Private ────────────────────────────────────────────────────
 
-  /**
-   * Resolve the path of the currently running binary.
-   * Priority: process.execPath (for SEA binaries) → /usr/local/bin/anton-agent → ~/.anton/anton-agent
-   */
-  private resolveCurrentBinaryPath(): string {
+  private async *repoUpdate(manifest: UpdateManifest): AsyncGenerator<UpdateProgress> {
     const antonDir = getAntonDir()
 
-    const execName = process.execPath.split('/').pop() ?? ''
-    if (execName.includes('anton-agent')) {
-      return process.execPath
-    }
-
-    const systemBin = '/usr/local/bin/anton-agent'
-    if (existsSync(systemBin)) {
-      return systemBin
-    }
-
-    return join(antonDir, 'anton-agent')
-  }
-
-  private async *binaryUpdate(
-    manifest: UpdateManifest,
-    binaryUrl: string,
-  ): AsyncGenerator<UpdateProgress> {
-    const antonDir = getAntonDir()
-    const binaryPath = this.resolveCurrentBinaryPath()
-    const tempPath = `${binaryPath}.update-${Date.now()}`
-
-    // 1. Download binary
-    yield { stage: 'downloading', message: `Downloading v${manifest.version}...` }
-    const res = await fetch(binaryUrl, {
-      signal: AbortSignal.timeout(300_000),
-      headers: { 'User-Agent': `anton-agent/${VERSION}` },
-    })
-
-    if (!res.ok || !res.body) {
-      yield { stage: 'error', message: `Download failed: HTTP ${res.status}` }
+    // Check if repo exists
+    if (!existsSync(join(REPO_DIR, '.git'))) {
+      yield { stage: 'error', message: `Repo not found at ${REPO_DIR}. Run 'anton computer setup' first.` }
       return
     }
 
-    const { createWriteStream, unlinkSync, renameSync, chmodSync } = await import('node:fs')
-    const { pipeline } = await import('node:stream/promises')
-    const { Readable } = await import('node:stream')
-
-    const fileStream = createWriteStream(tempPath)
-    // @ts-expect-error -- ReadableStream is compatible with node Readable via fromWeb
-    const nodeReadable = Readable.fromWeb(res.body)
-    await pipeline(nodeReadable, fileStream)
-
-    chmodSync(tempPath, 0o755)
-    yield { stage: 'downloading', message: `Downloaded v${manifest.version}` }
-
-    // 2. Atomic replace
-    yield { stage: 'replacing', message: `Replacing binary at ${binaryPath}...` }
+    // 1. Git pull
+    yield { stage: 'downloading', message: `Pulling v${manifest.version}...` }
     try {
-      if (existsSync(binaryPath)) {
-        renameSync(binaryPath, `${binaryPath}.bak`)
-      }
-      renameSync(tempPath, binaryPath)
+      execSync('git fetch origin', { cwd: REPO_DIR, stdio: 'pipe', timeout: 60_000 })
+      execSync('git reset --hard origin/main', { cwd: REPO_DIR, stdio: 'pipe', timeout: 30_000 })
     } catch (err) {
-      try {
-        if (existsSync(`${binaryPath}.bak`)) {
-          renameSync(`${binaryPath}.bak`, binaryPath)
-        }
-      } catch {}
-      try {
-        unlinkSync(tempPath)
-      } catch {}
-      yield { stage: 'error', message: `Binary replace failed: ${(err as Error).message}` }
+      yield { stage: 'error', message: `Git pull failed: ${(err as Error).message}` }
+      return
+    }
+    yield { stage: 'downloading', message: 'Code updated' }
+
+    // 2. Install deps
+    yield { stage: 'replacing', message: 'Installing dependencies...' }
+    try {
+      execSync('pnpm install', { cwd: REPO_DIR, stdio: 'pipe', timeout: 300_000 })
+    } catch (err) {
+      yield { stage: 'error', message: `pnpm install failed: ${(err as Error).message}` }
       return
     }
 
+    // 3. Build
+    yield { stage: 'replacing', message: 'Building...' }
     try {
-      unlinkSync(`${binaryPath}.bak`)
-    } catch {}
+      execSync('pnpm -r build', { cwd: REPO_DIR, stdio: 'pipe', timeout: 120_000 })
+    } catch (err) {
+      yield { stage: 'error', message: `Build failed: ${(err as Error).message}` }
+      return
+    }
+    yield { stage: 'replacing', message: 'Build complete' }
 
-    // 3. Write version.json
+    // 4. Write version.json
     writeFileSync(
       join(antonDir, 'version.json'),
       JSON.stringify({
@@ -234,13 +194,12 @@ export class Updater {
       }),
     )
 
-    // 4. Clear cached manifest
+    // 5. Clear cached manifest
     this.cachedManifest = null
 
-    // 5. Restart
+    // 6. Restart
     yield { stage: 'restarting', message: 'Restarting anton-agent service...' }
     try {
-      const { execSync } = await import('node:child_process')
       execSync('sudo systemctl restart anton-agent', { stdio: 'pipe', timeout: 30_000 })
     } catch {
       yield {
@@ -250,17 +209,5 @@ export class Updater {
     }
 
     yield { stage: 'done', message: `Updated to v${manifest.version} (${manifest.gitHash})` }
-  }
-
-  private resolveBinaryUrl(manifest: UpdateManifest): string | null {
-    if (!manifest.binaries) return null
-
-    const platform =
-      process.platform === 'linux' ? 'linux' : process.platform === 'darwin' ? 'darwin' : null
-    const arch = process.arch === 'x64' ? 'x64' : process.arch === 'arm64' ? 'arm64' : null
-
-    if (!platform || !arch) return null
-
-    return manifest.binaries[`${platform}-${arch}`] ?? null
   }
 }

@@ -1,11 +1,11 @@
 import type { AskUserQuestion } from '@anton/protocol'
-import { ListChecks, Plus, Send, Square, X } from 'lucide-react'
+import { Plus, Send, Square, X } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Skill } from '../../lib/skills.js'
 import type { ChatImageAttachment } from '../../lib/store.js'
 import { useIsCurrentSessionWorking } from '../../lib/store.js'
-import { AskUserDialog } from './AskUserDialog.js'
+import { AskUserInline } from './AskUserInline.js'
 import { ConnectorBanner, ConnectorPill } from './ConnectorToolbar.js'
 import { ModelSelector } from './ModelSelector.js'
 import { SlashCommandMenu } from './SlashCommandMenu.js'
@@ -15,8 +15,10 @@ interface Props {
   onSteer?: (text: string) => void
   onCancelTurn?: () => void
   onSkillSelect: (skill: Skill) => void
-  variant?: 'docked' | 'hero'
+  /** @deprecated variant is no longer used — all inputs render identically */
+  variant?: string
   initialValue?: string
+  placeholder?: string
   pendingAskUser?: { id: string; questions: AskUserQuestion[] } | null
   onAskUserSubmit?: (answers: Record<string, string>) => void
 }
@@ -51,13 +53,12 @@ export function ChatInput({
   onSteer,
   onCancelTurn,
   onSkillSelect,
-  variant = 'docked',
   initialValue,
+  placeholder: customPlaceholder,
   pendingAskUser,
   onAskUserSubmit,
 }: Props) {
   const [input, setInput] = useState('')
-  const [planFirst, setPlanFirst] = useState(false)
   const [showSlashMenu, setShowSlashMenu] = useState(false)
   const [slashFilter, setSlashFilter] = useState('')
   const [attachments, setAttachments] = useState<ChatImageAttachment[]>([])
@@ -65,7 +66,6 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isCurrentSessionWorking = useIsCurrentSessionWorking()
-  const isHero = variant === 'hero'
 
   // Sync external initialValue into input (e.g. from suggestion chips)
   useEffect(() => {
@@ -81,7 +81,7 @@ export function ChatInput({
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
-    ta.style.height = `${Math.min(ta.scrollHeight, 220)}px`
+    ta.style.height = `${Math.max(64, Math.min(ta.scrollHeight, 220))}px`
   }, [input])
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -145,18 +145,13 @@ export function ChatInput({
       return
     }
 
-    const message = planFirst
-      ? `Think step by step and create a plan before doing anything. Once I approve the plan, execute it.${text ? `\n\n${text}` : ''}`
-      : text
-
-    onSend(message, attachments)
+    onSend(text, attachments)
     setInput('')
     setAttachments([])
     setAttachmentError(null)
-    setPlanFirst(false)
     setShowSlashMenu(false)
     textareaRef.current?.focus()
-  }, [input, attachments, isCurrentSessionWorking, onSend, onSteer, planFirst])
+  }, [input, attachments, isCurrentSessionWorking, onSend, onSteer])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (showSlashMenu) return
@@ -196,10 +191,10 @@ export function ChatInput({
 
   if (pendingAskUser && onAskUserSubmit) {
     return (
-      <div className={`composer${isHero ? ' composer--hero' : ''}`}>
+      <div className="composer composer--hero">
         <div className="composer__anchor">
           <div className="composer__box composer__box--ask-user">
-            <AskUserDialog questions={pendingAskUser.questions} onSubmit={onAskUserSubmit} />
+            <AskUserInline questions={pendingAskUser.questions} onSubmit={onAskUserSubmit} />
           </div>
         </div>
       </div>
@@ -207,7 +202,7 @@ export function ChatInput({
   }
 
   return (
-    <div className={`composer${isHero ? ' composer--hero' : ''}`}>
+    <div className="composer composer--hero">
       <div className="composer__anchor">
         <SlashCommandMenu
           filter={slashFilter}
@@ -260,7 +255,7 @@ export function ChatInput({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={isHero ? 'What should we work on next?' : 'Ask a follow-up'}
+            placeholder={customPlaceholder || 'What should we work on next?'}
             rows={1}
             className="composer__textarea"
           />
@@ -279,17 +274,9 @@ export function ChatInput({
                 <Plus size={18} strokeWidth={1.5} />
               </button>
               <ConnectorPill />
-              <button
-                type="button"
-                className={`composer__btn composer__btn--plan${planFirst ? ' composer__btn--plan-active' : ''}`}
-                onClick={() => setPlanFirst(!planFirst)}
-                aria-label="Plan first"
-                data-tooltip={planFirst ? 'Plan mode on' : 'Plan first'}
-              >
-                <ListChecks size={18} strokeWidth={1.5} />
-              </button>
             </div>
             <div className="composer__toolbar-right">
+              <span className="composer__shortcut-hint">⌘K</span>
               <ModelSelector />
               {isCurrentSessionWorking ? (
                 <>
@@ -330,7 +317,7 @@ export function ChatInput({
           </div>
         </div>
 
-        {/* Banner below composer box — Manus style */}
+        {/* Banner below composer box */}
         <ConnectorBanner />
       </div>
     </div>

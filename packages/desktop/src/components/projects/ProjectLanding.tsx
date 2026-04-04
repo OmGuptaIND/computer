@@ -9,6 +9,7 @@ import type { SessionMeta } from '../../lib/store.js'
 import { useStore } from '../../lib/store.js'
 import { Skeleton } from '../Skeleton.js'
 import { ConnectorBanner, ConnectorPill } from '../chat/ConnectorToolbar.js'
+import { WorkflowStatusBanner } from '../workflows/WorkflowStatusBanner.js'
 import { ModelSelector } from '../chat/ModelSelector.js'
 import { ProjectConfigPanel } from './ProjectConfigPanel.js'
 import { SessionCard } from './SessionCard.js'
@@ -199,10 +200,11 @@ function SessionsAndAgents({
   const connectionStatus = useStore((s) => s.connectionStatus)
   const runningCount = agents.filter((a) => a.agent.status === 'running').length
 
-  // Fetch agents on mount, when projectId changes, and on reconnect
+  // Fetch agents and workflows on mount, when projectId changes, and on reconnect
   useEffect(() => {
     if (connectionStatus === 'connected') {
       connection.sendAgentsList(projectId)
+      connection.sendWorkflowsList(projectId)
     }
   }, [projectId, connectionStatus])
 
@@ -306,6 +308,10 @@ export function ProjectLanding({
   const [inputValue, setInputValue] = useState('')
   const [planFirst, setPlanFirst] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const projectWorkflows = useStore((s) => s.projectWorkflows)
+  const projectAgents = useStore((s) => s.projectAgents)
+  const activeWorkflow = projectWorkflows.find((w) => w.projectId === project.id)
+  const workflowAgent = activeWorkflow ? projectAgents.find((a) => a.sessionId === activeWorkflow.agentSessionId) : undefined
 
   const handleSubmit = () => {
     const raw = inputValue.trim()
@@ -355,6 +361,9 @@ export function ProjectLanding({
               </div>
             </div>
           </div>
+
+          {/* Workflow status banner (if this is a workflow project) */}
+          {activeWorkflow && <WorkflowStatusBanner workflow={activeWorkflow} agent={workflowAgent} />}
 
           {/* Chat input — Manus-style */}
           <div className="project-landing__input-wrap">

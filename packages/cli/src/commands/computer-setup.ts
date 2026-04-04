@@ -1,30 +1,31 @@
 /**
  * `anton computer setup` — set up the anton agent on this machine.
  *
- * Downloads the agent + sidecar binaries, creates a system user,
- * writes environment config, installs systemd services, and starts
- * everything. Works on any Linux machine (x64 or arm64).
+ * Clones the repo, installs dependencies, builds from source,
+ * creates a system user, writes environment config, installs
+ * systemd services, and starts everything.
  *
  * Interactive by default; pass --yes for non-interactive (cloud-init).
  */
 
 import { execSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { chmodSync, createWriteStream, existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { Readable } from 'node:stream'
-import { pipeline } from 'node:stream/promises'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { theme } from '../lib/theme.js'
-import { CLI_VERSION, UPDATE_MANIFEST_URL } from '../lib/version.js'
+import { CLI_VERSION } from '../lib/version.js'
 import {
-  AGENT_BIN,
+  AGENT_ENTRY,
   AGENT_SERVICE_PATH,
   ANTON_DIR,
   ANTON_USER,
   DEFAULT_PORT,
   DEFAULT_SIDECAR_PORT,
   ENV_FILE,
+  REPO_DIR,
+  REPO_URL,
   SIDECAR_BIN,
   SIDECAR_SERVICE_PATH,
+  // @ts-ignore — used in all imports
   done,
   exec,
   execSilent,
@@ -44,77 +45,10 @@ export interface ComputerSetupArgs {
   yes?: boolean
 }
 
-interface Manifest {
-  version: string
-  binaries: Record<string, string>
-  sidecar_binaries?: Record<string, string>
-}
-
 // ── Helpers ─────────────────────────────────────────────────────
 
 function generateToken(): string {
   return `ak_${randomBytes(24).toString('hex')}`
-}
-
-function detectArch(): string {
-  const arch = process.arch
-  if (arch === 'x64') return 'x64'
-  if (arch === 'arm64') return 'arm64'
-  throw new Error(`Unsupported architecture: ${arch}`)
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-// ── Download with progress ──────────────────────────────────────
-
-async function downloadBinary(url: string, dest: string, label: string): Promise<number> {
-  step(label)
-
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(300_000),
-    headers: { 'User-Agent': `anton-cli/${CLI_VERSION}` },
-  })
-
-  if (!res.ok || !res.body) {
-    throw new Error(`Download failed: HTTP ${res.status} from ${url}`)
-  }
-
-  const tempPath = `${dest}.download-${Date.now()}`
-  const fileStream = createWriteStream(tempPath)
-  // @ts-expect-error -- ReadableStream is compatible via fromWeb
-  const nodeReadable = Readable.fromWeb(res.body)
-
-  let totalBytes = 0
-  nodeReadable.on('data', (chunk: Buffer) => {
-    totalBytes += chunk.length
-  })
-
-  await pipeline(nodeReadable, fileStream)
-  chmodSync(tempPath, 0o755)
-
-  // Atomic move
-  execSync(`mv -f "${tempPath}" "${dest}"`, { stdio: 'pipe' })
-
-  return totalBytes
-}
-
-// ── Fetch manifest ──────────────────────────────────────────────
-
-async function fetchManifest(): Promise<Manifest> {
-  const res = await fetch(UPDATE_MANIFEST_URL, {
-    signal: AbortSignal.timeout(10_000),
-    headers: { 'User-Agent': `anton-cli/${CLI_VERSION}` },
-  })
-
-  if (!res.ok) {
-    throw new Error(`Failed to fetch manifest: HTTP ${res.status}`)
-  }
-
-  return (await res.json()) as Manifest
 }
 
 // ── Systemd templates ───────────────────────────────────────────
@@ -130,16 +64,10 @@ Type=simple
 User=${ANTON_USER}
 Group=${ANTON_USER}
 EnvironmentFile=${ENV_FILE}
-ExecStart=${AGENT_BIN} --port ${port}
+WorkingDirectory=${REPO_DIR}
+ExecStart=/usr/bin/node ${AGENT_ENTRY} --port ${port}
 Restart=always
 RestartSec=5
-
-# Hardening
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=false
-ReadWritePaths=${ANTON_DIR}
-PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
@@ -199,17 +127,8 @@ export async function computerSetupCommand(args: ComputerSetupArgs): Promise<voi
 
   // ── 1. Pre-flight checks ──
   requireLinuxRoot()
-
-  let arch: string
-  try {
-    arch = detectArch()
-  } catch (err) {
-    fail('Architecture', (err as Error).message)
-    process.exit(1)
-    return // unreachable but helps TS
-  }
-
-  console.log(`  ${theme.label('System')}:  Linux ${arch}`)
+  console.log(`  ${theme.label('System')}:  Linux ${process.arch}`)
+  console.log(`  ${theme.label('CLI')}:     v${CLI_VERSION}`)
 
   // ── 2. Configuration ──
   const port = args.port ?? DEFAULT_PORT
@@ -223,7 +142,6 @@ export async function computerSetupCommand(args: ComputerSetupArgs): Promise<voi
     if (portInput) {
       const parsed = Number.parseInt(portInput, 10)
       if (!Number.isNaN(parsed) && parsed > 0 && parsed < 65536) {
-        // Use the user's port — reassignment needed
         ;(args as { port: number }).port = parsed
       }
     }
@@ -255,7 +173,7 @@ export async function computerSetupCommand(args: ComputerSetupArgs): Promise<voi
     const userExists = execSilent(`id ${ANTON_USER}`)
     if (!userExists) {
       exec(
-        `useradd --system --create-home --home-dir /home/${ANTON_USER} --shell /usr/sbin/nologin ${ANTON_USER}`,
+        `useradd --system --create-home --home-dir /home/${ANTON_USER} --shell /bin/bash ${ANTON_USER}`,
       )
     }
     mkdirSync(ANTON_DIR, { recursive: true })
@@ -267,50 +185,97 @@ export async function computerSetupCommand(args: ComputerSetupArgs): Promise<voi
     process.exit(1)
   }
 
-  // ── 4. Fetch manifest + download binaries ──
-  let manifest: Manifest
+  // ── 4. Install Node.js + pnpm (if not present) ──
+  step('Checking Node.js')
   try {
-    step('Fetching manifest')
-    manifest = await fetchManifest()
-    done('Manifest fetched', `v${manifest.version}`)
-  } catch (err) {
-    fail('Manifest fetch', (err as Error).message)
-    process.exit(1)
-    return
-  }
-
-  const archKey = `linux-${arch}`
-
-  // Download agent
-  const agentUrl = manifest.binaries?.[archKey]
-  if (!agentUrl) {
-    fail('Agent binary', `No binary found for ${archKey} in manifest`)
-    process.exit(1)
-  }
-
-  try {
-    const bytes = await downloadBinary(agentUrl, AGENT_BIN, 'Downloading agent')
-    done(`Agent v${manifest.version} installed`, formatBytes(bytes))
-  } catch (err) {
-    fail('Agent download', (err as Error).message)
-    process.exit(1)
-  }
-
-  // Download sidecar
-  const sidecarUrl = manifest.sidecar_binaries?.[archKey]
-  if (sidecarUrl) {
-    try {
-      const bytes = await downloadBinary(sidecarUrl, SIDECAR_BIN, 'Downloading sidecar')
-      done(`Sidecar v${manifest.version} installed`, formatBytes(bytes))
-    } catch (err) {
-      fail('Sidecar download', (err as Error).message)
-      console.log(`  ${theme.dim('Continuing without sidecar...')}`)
+    const nodeVersion = exec('node --version')
+    const major = Number.parseInt(nodeVersion.replace('v', '').split('.')[0], 10)
+    if (major < 22) {
+      throw new Error(`Node.js ${nodeVersion} is too old, need v22+`)
     }
-  } else {
-    console.log(`  ${theme.dim('○ No sidecar binary in manifest, skipping')}`)
+    done('Node.js found', nodeVersion)
+  } catch {
+    step('Installing Node.js 22')
+    try {
+      exec('curl -fsSL https://deb.nodesource.com/setup_22.x | bash -')
+      exec('apt-get install -y nodejs')
+      done('Node.js 22 installed')
+    } catch (err) {
+      fail('Node.js install', (err as Error).message)
+      process.exit(1)
+    }
   }
 
-  // ── 5. Write environment file ──
+  step('Checking pnpm')
+  try {
+    exec('pnpm --version')
+    done('pnpm found')
+  } catch {
+    try {
+      exec('npm install -g pnpm')
+      done('pnpm installed')
+    } catch (err) {
+      fail('pnpm install', (err as Error).message)
+      process.exit(1)
+    }
+  }
+
+  // ── 5. Clone repo + build ──
+  step('Setting up repo')
+  try {
+    if (existsSync(`${REPO_DIR}/.git`)) {
+      // Repo already exists — pull latest
+      execSync(`sudo -u ${ANTON_USER} git -C ${REPO_DIR} fetch origin`, { stdio: 'pipe' })
+      execSync(`sudo -u ${ANTON_USER} git -C ${REPO_DIR} reset --hard origin/main`, {
+        stdio: 'pipe',
+      })
+      done('Repo updated', 'git pull')
+    } else {
+      // Fresh clone
+      mkdirSync(REPO_DIR, { recursive: true })
+      execSync(`chown ${ANTON_USER}:${ANTON_USER} ${REPO_DIR}`, { stdio: 'pipe' })
+      execSync(`sudo -u ${ANTON_USER} git clone ${REPO_URL} ${REPO_DIR}`, {
+        stdio: 'pipe',
+        timeout: 120_000,
+      })
+      done('Repo cloned')
+    }
+  } catch (err) {
+    fail('Repo setup', (err as Error).message)
+    process.exit(1)
+  }
+
+  step('Installing dependencies')
+  try {
+    execSync(`sudo -u ${ANTON_USER} bash -c "cd ${REPO_DIR} && pnpm install"`, {
+      stdio: 'pipe',
+      timeout: 300_000,
+    })
+    done('Dependencies installed')
+  } catch (err) {
+    fail('Dependencies', (err as Error).message)
+    process.exit(1)
+  }
+
+  step('Building')
+  try {
+    execSync(`sudo -u ${ANTON_USER} bash -c "cd ${REPO_DIR} && pnpm -r build"`, {
+      stdio: 'pipe',
+      timeout: 120_000,
+    })
+    done('Build complete')
+  } catch (err) {
+    fail('Build', (err as Error).message)
+    process.exit(1)
+  }
+
+  // Verify the entry point exists
+  if (!existsSync(AGENT_ENTRY)) {
+    fail('Build verification', `${AGENT_ENTRY} not found after build`)
+    process.exit(1)
+  }
+
+  // ── 6. Write environment file ──
   step('Writing environment config')
   try {
     const envContent = `${[
@@ -320,13 +285,14 @@ export async function computerSetupCommand(args: ComputerSetupArgs): Promise<voi
     ].join('\n')}\n`
 
     writeFileSync(ENV_FILE, envContent, { mode: 0o600 })
+    execSync(`chown ${ANTON_USER}:${ANTON_USER} ${ENV_FILE}`, { stdio: 'pipe' })
     done('Environment configured', ENV_FILE)
   } catch (err) {
     fail('Environment file', (err as Error).message)
     process.exit(1)
   }
 
-  // ── 6. Create systemd services ──
+  // ── 7. Create systemd services ──
   step('Creating systemd services')
   try {
     writeFileSync(AGENT_SERVICE_PATH, agentServiceUnit(effectivePort))
@@ -338,7 +304,7 @@ export async function computerSetupCommand(args: ComputerSetupArgs): Promise<voi
     process.exit(1)
   }
 
-  // ── 7. Start services ──
+  // ── 8. Start services ──
   step('Starting services')
   try {
     exec('systemctl enable --now anton-agent')
@@ -351,7 +317,7 @@ export async function computerSetupCommand(args: ComputerSetupArgs): Promise<voi
     process.exit(1)
   }
 
-  // ── 8. Health check ──
+  // ── 9. Health check ──
   step('Checking agent health')
   const healthy = await waitForHealthy(effectivePort)
   if (healthy) {
@@ -365,7 +331,23 @@ export async function computerSetupCommand(args: ComputerSetupArgs): Promise<voi
     console.log()
   }
 
-  // ── 9. Print connection info ──
+  // ── 10. Write version info ──
+  try {
+    const gitHash = execSilent(`sudo -u ${ANTON_USER} git -C ${REPO_DIR} rev-parse --short HEAD`)
+      ? exec(`sudo -u ${ANTON_USER} git -C ${REPO_DIR} rev-parse --short HEAD`)
+      : 'unknown'
+    const versionInfo = {
+      version: CLI_VERSION,
+      gitHash,
+      deployedAt: new Date().toISOString(),
+      deployedBy: 'setup',
+    }
+    writeFileSync(`${ANTON_DIR}/version.json`, JSON.stringify(versionInfo, null, 2))
+  } catch {
+    // non-critical
+  }
+
+  // ── 11. Print connection info ──
   console.log()
   console.log(`  ${theme.brand('──────────────────────────────────────')}`)
   console.log()
@@ -373,9 +355,12 @@ export async function computerSetupCommand(args: ComputerSetupArgs): Promise<voi
   console.log()
   console.log(`  ${theme.label('Token')}:   ${token}`)
   console.log(`  ${theme.label('Port')}:    ${effectivePort}`)
-  console.log(`  ${theme.label('Agent')}:   v${manifest.version}`)
+  console.log(`  ${theme.label('Repo')}:    ${REPO_DIR}`)
   console.log()
   console.log(`  ${theme.dim('Connect from anywhere:')}`)
   console.log(`    ${theme.brand('anton connect')} ${theme.dim('<your-ip>')} --token ${token}`)
+  console.log()
+  console.log(`  ${theme.dim('Update:')}`)
+  console.log(`    ${theme.brand('sudo anton computer update')}`)
   console.log()
 }

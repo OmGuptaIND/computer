@@ -210,7 +210,7 @@ export function updateStageLabel(stage: string | null): string {
   }
 }
 
-export type SidebarTab = 'history' | 'skills'
+export type SidebarTab = 'history'
 
 // ── Saved machines (localStorage) ───────────────────────────────────
 
@@ -295,6 +295,7 @@ interface AppState {
   currentProvider: string
   currentModel: string
   sessions: SessionMeta[]
+  sessionsLoaded: boolean
   providers: ProviderInfo[]
   defaults: { provider: string; model: string }
 
@@ -410,7 +411,30 @@ interface AppState {
   selectedAgentId: string | null
   agentRunLogs: import('@anton/protocol').AgentRunLogEntry[] | null
   agentRunLogsLoading: boolean
-  activeView: 'chat' | 'projects' | 'terminal'
+  activeMode: 'chat' | 'computer'
+  activeView: 'home' | 'chat' | 'memory' | 'agents' | 'terminal' | 'files' | 'connectors' | 'developer' | 'skills' | 'workflows' | 'projects'
+
+  // Workflows
+  workflowRegistry: import('@anton/protocol').WorkflowRegistryEntry[]
+  projectWorkflows: import('@anton/protocol').InstalledWorkflow[]
+  workflowConnectorCheck: {
+    workflowId: string
+    satisfied: string[]
+    missing: string[]
+    optional: { id: string; connected: boolean }[]
+  } | null
+
+  // Project context (fetched from server)
+  projectInstructions: string
+  projectInstructionsLoading: boolean
+  projectPreferences: { id: string; title: string; content: string; createdAt: number }[]
+  projectPreferencesLoading: boolean
+  memories: { name: string; content: string; scope: 'global' | 'conversation' | 'project' }[]
+  memoriesLoading: boolean
+
+  // All agents across all projects (for home/task list)
+  allAgents: import('@anton/protocol').AgentSession[]
+  allAgentsLoading: boolean
 
   // Usage stats (server-computed)
   usageStats: {
@@ -441,11 +465,20 @@ interface AppState {
   setDevMode: (enabled: boolean) => void
   devModeData: { systemPrompt: string | null; memories: { name: string; content: string; scope?: string }[]; lastFetched: number }
   setDevModeData: (data: { systemPrompt?: string | null; memories?: { name: string; content: string; scope?: string }[] }) => void
+  eventLog: { id: number; timestamp: number; type: string; summary: string }[]
+  appendEventLog: (type: string, summary: string) => void
 
   // Sidebar
   sidebarCollapsed: boolean
   setSidebarCollapsed: (collapsed: boolean) => void
   toggleSidebar: () => void
+  sidebarWidth: number
+  setSidebarWidth: (width: number) => void
+
+  // Tasks visibility
+  tasksHidden: boolean
+  setTasksHidden: (hidden: boolean) => void
+  toggleTasksHidden: () => void
 
   // Project actions
   setProjects: (projects: Project[]) => void
@@ -458,7 +491,13 @@ interface AppState {
   setProjectAgents: (agents: import('@anton/protocol').AgentSession[]) => void
   setSelectedAgent: (id: string | null) => void
   setActiveProjectSession: (sessionId: string | null) => void
-  setActiveView: (view: 'chat' | 'projects' | 'terminal') => void
+  setActiveView: (view: 'home' | 'chat' | 'memory' | 'agents' | 'terminal' | 'files' | 'connectors' | 'developer' | 'skills' | 'workflows') => void
+  setActiveMode: (mode: 'chat' | 'computer') => void
+  setProjectInstructions: (content: string) => void
+  setProjectPreferences: (prefs: { id: string; title: string; content: string; createdAt: number }[]) => void
+  setMemories: (memories: { name: string; content: string; scope: 'global' | 'conversation' | 'project' }[]) => void
+  setAllAgents: (agents: import('@anton/protocol').AgentSession[]) => void
+  fetchAllAgents: () => void
 
   // Connector actions
   setConnectors: (connectors: ConnectorStatusInfo[]) => void
@@ -590,6 +629,7 @@ export const useStore = create<AppState>((set, get) => {
     currentProvider: initProvider,
     currentModel: initModel,
     sessions: [],
+    sessionsLoaded: false,
     providers: [],
     defaults: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
     conversations: persisted,
@@ -652,7 +692,19 @@ export const useStore = create<AppState>((set, get) => {
     selectedAgentId: null,
     agentRunLogs: null,
     agentRunLogsLoading: false,
-    activeView: 'chat',
+    activeMode: (localStorage.getItem('anton-mode') as 'chat' | 'computer') || 'computer',
+    activeView: 'home',
+    workflowRegistry: [],
+    projectWorkflows: [],
+    workflowConnectorCheck: null,
+    projectInstructions: '',
+    projectInstructionsLoading: false,
+    projectPreferences: [],
+    projectPreferencesLoading: false,
+    memories: [],
+    memoriesLoading: false,
+    allAgents: [],
+    allAgentsLoading: false,
 
     // Usage stats
     usageStats: null,
@@ -714,14 +766,35 @@ export const useStore = create<AppState>((set, get) => {
         lastFetched: Date.now(),
       },
     })),
+    eventLog: [],
+    appendEventLog: (type, summary) => set((s) => {
+      const entry = { id: Date.now() + Math.random(), timestamp: Date.now(), type, summary }
+      const log = [entry, ...s.eventLog]
+      return { eventLog: log.length > 200 ? log.slice(0, 200) : log }
+    }),
 
     sidebarCollapsed: false,
     setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
     toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+    sidebarWidth: 240,
+    setSidebarWidth: (width) => set({ sidebarWidth: width }),
+
+    tasksHidden: false,
+    setTasksHidden: (hidden) => set({ tasksHidden: hidden }),
+    toggleTasksHidden: () => set((s) => ({ tasksHidden: !s.tasksHidden })),
 
     setProjects: (projects) => {
       savePersistedProjects(projects)
       set({ projects })
+
+      // Auto-select the default project if no project is active
+      const { activeProjectId } = get()
+      if (!activeProjectId) {
+        const defaultProject = projects.find((p) => p.isDefault)
+        if (defaultProject) {
+          get().setActiveProject(defaultProject.id)
+        }
+      }
     },
     setActiveProject: (id) => {
       saveActiveProjectId(id)
@@ -770,6 +843,26 @@ export const useStore = create<AppState>((set, get) => {
     setProjectAgents: (agents) => set({ projectAgents: agents, projectAgentsLoading: false }),
     setSelectedAgent: (id) => set({ selectedAgentId: id }),
     setActiveProjectSession: (sessionId) => set({ activeProjectSessionId: sessionId }),
+    setProjectInstructions: (content) => set({ projectInstructions: content, projectInstructionsLoading: false }),
+    setProjectPreferences: (prefs) => set({ projectPreferences: prefs, projectPreferencesLoading: false }),
+    setMemories: (memories) => set({ memories, memoriesLoading: false }),
+    setActiveMode: (mode) => {
+      localStorage.setItem('anton-mode', mode)
+      if (mode === 'computer') {
+        set({ activeMode: mode, activeView: 'home' })
+      } else {
+        set({ activeMode: mode, activeView: 'chat' })
+      }
+    },
+    setAllAgents: (agents) => set({ allAgents: agents, allAgentsLoading: false }),
+    fetchAllAgents: () => {
+      const state = get()
+      if (state.projects.length === 0) return
+      set({ allAgentsLoading: true })
+      for (const project of state.projects) {
+        connection.sendAgentsList(project.id)
+      }
+    },
     setActiveView: (view) => {
       if (view === 'chat') {
         // If the current active conversation belongs to a project, clear it
@@ -777,8 +870,11 @@ export const useStore = create<AppState>((set, get) => {
         const state = get()
         const activeConv = state.conversations.find((c) => c.id === state.activeConversationId)
         if (activeConv?.projectId) {
-          // Try to find an existing chat conversation to switch to
-          const chatConv = state.conversations.find((c) => !c.projectId)
+          // Try to find an existing chat conversation (default project or legacy)
+          const defaultProject = state.projects.find((p) => p.isDefault)
+          const chatConv = state.conversations.find(
+            (c) => !c.projectId || c.projectId === defaultProject?.id,
+          )
           if (chatConv) {
             localStorage.setItem(ACTIVE_CONV_KEY, chatConv.id)
             set({ activeView: view, activeConversationId: chatConv.id })
@@ -787,20 +883,6 @@ export const useStore = create<AppState>((set, get) => {
             set({ activeView: view, activeConversationId: null })
           }
           return
-        }
-      } else if (view === 'projects') {
-        // Restore the project conversation when switching back to projects view.
-        // If there's an active project session, ensure activeConversationId matches it.
-        const state = get()
-        if (state.activeProjectSessionId) {
-          const projConv = state.conversations.find(
-            (c) => c.sessionId === state.activeProjectSessionId,
-          )
-          if (projConv && projConv.id !== state.activeConversationId) {
-            localStorage.setItem(ACTIVE_CONV_KEY, projConv.id)
-            set({ activeView: view, activeConversationId: projConv.id })
-            return
-          }
         }
       }
       set({ activeView: view })
@@ -899,7 +981,7 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
-    setSessions: (sessions) => set({ sessions }),
+    setSessions: (sessions) => set({ sessions, sessionsLoaded: true }),
 
     setProviders: (providers, defaults) => {
       const saved = loadSelectedModel()
@@ -1460,6 +1542,7 @@ export const useStore = create<AppState>((set, get) => {
         // Clear transient session/connection state
         currentSessionId: null,
         sessions: [],
+        sessionsLoaded: false,
         agentStatus: 'idle',
         agentStatusDetail: null,
         workingSessionId: null,
@@ -1491,6 +1574,8 @@ export const useStore = create<AppState>((set, get) => {
         projectAgents: [],
         projectAgentsLoading: false,
         selectedAgentId: null,
+        allAgents: [],
+        allAgentsLoading: false,
         // Clear stale streaming/sync state so reconnection doesn't think
         // old sessions are still streaming (which would block history sync)
         _activeStreamingSessions: new Set(),
@@ -1512,9 +1597,10 @@ export const useStore = create<AppState>((set, get) => {
         activeConversationId: null,
         currentSessionId: null,
         sessions: [],
+        sessionsLoaded: false,
         projects: [],
         activeProjectId: null,
-        activeView: 'chat',
+        activeView: 'home',
         agentStatus: 'idle',
         agentStatusDetail: null,
         workingSessionId: null,
@@ -1546,6 +1632,8 @@ export const useStore = create<AppState>((set, get) => {
         projectAgents: [],
         projectAgentsLoading: false,
         selectedAgentId: null,
+        allAgents: [],
+        allAgentsLoading: false,
         _activeStreamingSessions: new Set(),
         _sessionsNeedingHistoryRefresh: new Set(),
         _syncingSessionIds: new Set(),
@@ -1613,7 +1701,9 @@ function handleWsMessage(channel: number, msg: WsPayload) {
       if (m.key === 'system_prompt' && typeof m.value === 'string') {
         store.setDevModeData({ systemPrompt: m.value })
       } else if (m.key === 'memories' && Array.isArray(m.value)) {
-        store.setDevModeData({ memories: m.value as { name: string; content: string; scope?: string }[] })
+        const memories = m.value as { name: string; content: string; scope: 'global' | 'conversation' | 'project' }[]
+        store.setDevModeData({ memories })
+        store.setMemories(memories)
       }
     }
     // Don't return — let other control messages fall through for ping/pong etc.
@@ -1645,6 +1735,7 @@ function handleWsMessage(channel: number, msg: WsPayload) {
   if (channel === Channel.EVENTS && msg.type === 'agent_status') {
     const m = msg as unknown as WsAgentStatusMsg
     console.log(`[WS] Agent status: ${m.status}`, m.detail || '', m.sessionId || '')
+    store.appendEventLog('status', `Agent ${m.status}${m.detail ? ` — ${m.detail}` : ''}${m.sessionId ? ` (${m.sessionId.slice(0, 12)})` : ''}`)
     const sid: string | undefined = m.sessionId
 
     // Update per-session status map
@@ -1724,6 +1815,17 @@ function handleWsMessage(channel: number, msg: WsPayload) {
     useStore.setState({ _pendingSyncMessages: pending })
     console.log(`[Sync] Queued ${msg.type} for ${msgSessionId} (syncing)`)
     return
+  }
+
+  // Log key AI events to the developer event log
+  if (['tool_call', 'done', 'error', 'thinking', 'session_created', 'session_destroyed'].includes(msg.type)) {
+    const summary = msg.type === 'tool_call' ? `Tool call: ${(msg as any).name || 'unknown'}`
+      : msg.type === 'done' ? `Turn complete${(msg as any).usage ? ` (${(msg as any).usage.totalTokens} tokens)` : ''}`
+      : msg.type === 'error' ? `Error: ${(msg as any).message || (msg as any).content || 'unknown'}`
+      : msg.type === 'thinking' ? 'Thinking...'
+      : msg.type === 'session_created' ? `Session created: ${(msg as any).sessionId?.slice(0, 12) || ''}`
+      : `Session destroyed: ${(msg as any).sessionId?.slice(0, 12) || ''}`
+    store.appendEventLog(msg.type, summary)
   }
 
   switch (msg.type) {
@@ -2558,12 +2660,31 @@ function handleWsMessage(channel: number, msg: WsPayload) {
       break
     }
 
+    case 'project_instructions_response': {
+      const m = msg as unknown as { projectId: string; content: string }
+      if (m.projectId === store.activeProjectId) {
+        store.setProjectInstructions(m.content)
+      }
+      break
+    }
+
+    case 'project_preferences_response': {
+      const m = msg as unknown as { projectId: string; preferences: { id: string; title: string; content: string; createdAt: number }[] }
+      if (m.projectId === store.activeProjectId) {
+        store.setProjectPreferences(m.preferences)
+      }
+      break
+    }
+
     // ── Agent responses ──────────────────────────────────────────
     case 'agents_list_response': {
       const m = msg as unknown as WsAgentsListResponse
       if (m.projectId === store.activeProjectId) {
         store.setProjectAgents(m.agents)
       }
+      // Also accumulate into allAgents (replace agents for this project, keep others)
+      const otherAgents = store.allAgents.filter((a) => a.projectId !== m.projectId)
+      useStore.setState({ allAgents: [...otherAgents, ...m.agents], allAgentsLoading: false })
       break
     }
 
@@ -2574,6 +2695,12 @@ function handleWsMessage(channel: number, msg: WsPayload) {
       if (idx >= 0) agents[idx] = m.agent
       else agents.push(m.agent)
       store.setProjectAgents(agents)
+      // Also update allAgents
+      const allIdx = store.allAgents.findIndex((a) => a.sessionId === m.agent.sessionId)
+      const allAgents = [...store.allAgents]
+      if (allIdx >= 0) allAgents[allIdx] = m.agent
+      else allAgents.push(m.agent)
+      useStore.setState({ allAgents })
       break
     }
 
@@ -2583,6 +2710,10 @@ function handleWsMessage(channel: number, msg: WsPayload) {
         a.sessionId === m.agent.sessionId ? m.agent : a,
       )
       store.setProjectAgents(agents)
+      // Also update allAgents
+      useStore.setState({
+        allAgents: store.allAgents.map((a) => a.sessionId === m.agent.sessionId ? m.agent : a),
+      })
       break
     }
 
@@ -2590,12 +2721,74 @@ function handleWsMessage(channel: number, msg: WsPayload) {
       const m = msg as unknown as WsAgentDeleted
       const agents = store.projectAgents.filter((a) => a.sessionId !== m.sessionId)
       store.setProjectAgents(agents)
+      // Also update allAgents
+      useStore.setState({
+        allAgents: store.allAgents.filter((a) => a.sessionId !== m.sessionId),
+      })
       break
     }
 
     case 'agent_run_logs_response': {
       const m = msg as unknown as WsAgentRunLogsResponse
       useStore.setState({ agentRunLogs: m.logs, agentRunLogsLoading: false })
+      break
+    }
+
+    // ── Workflow responses ──────────────────────────────────────
+    case 'workflow_registry_list_response': {
+      const m = msg as any
+      useStore.setState({ workflowRegistry: m.entries })
+      break
+    }
+
+    case 'workflow_check_connectors_response': {
+      const m = msg as any
+      useStore.setState({
+        workflowConnectorCheck: {
+          workflowId: m.workflowId,
+          satisfied: m.satisfied,
+          missing: m.missing,
+          optional: m.optional,
+        },
+      })
+      break
+    }
+
+    case 'workflow_installed': {
+      const m = msg as any
+      const existing = store.projectWorkflows
+      useStore.setState({ projectWorkflows: [...existing, m.workflow] })
+      // Refresh agents list since a new agent was created
+      if (store.activeProjectId) {
+        connection.sendAgentsList(store.activeProjectId)
+      }
+      // Navigate to the project and open a new conversation for bootstrap
+      if (m.workflow.projectId) {
+        store.setActiveProject(m.workflow.projectId)
+        store.setActiveView('chat')
+        // Small delay to let project switch complete, then create new conversation
+        setTimeout(() => {
+          store.newConversation(
+            `${m.workflow.manifest.name} Setup`,
+            undefined,
+            m.workflow.projectId,
+          )
+        }, 100)
+      }
+      break
+    }
+
+    case 'workflows_list_response': {
+      const m = msg as any
+      useStore.setState({ projectWorkflows: m.workflows })
+      break
+    }
+
+    case 'workflow_uninstalled': {
+      const m = msg as any
+      useStore.setState({
+        projectWorkflows: store.projectWorkflows.filter((w) => w.workflowId !== m.workflowId),
+      })
       break
     }
 

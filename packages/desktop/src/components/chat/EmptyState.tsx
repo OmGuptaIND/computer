@@ -66,7 +66,7 @@ export function EmptyState({ onSend, onSkillSelect }: Props) {
         const projects = useStore.getState().projects
         if (projects.some((p) => p.id === projectId)) {
           setActiveProject(projectId)
-          setActiveView('projects')
+          setActiveView('home')
           connection.sendProjectSessionsList(projectId)
           return
         }

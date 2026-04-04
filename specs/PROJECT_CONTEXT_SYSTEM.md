@@ -1,5 +1,7 @@
 # Project Context System
 
+> **Note:** This spec has been superseded by [project-context-and-memory.md](./project-context-and-memory.md) which covers the full three-layer system (Instructions + Preferences + Memory). The content below is kept for reference on the `update_project_context` tool mechanism.
+
 ## Overview
 
 Project memory gives each project persistent context that carries across sessions. When a user opens a new conversation within a project, the LLM receives the project summary, notes, and recent session history — so it doesn't start from zero.

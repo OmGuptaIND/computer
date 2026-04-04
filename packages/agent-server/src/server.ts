@@ -33,6 +33,12 @@ import {
   loadAgentMetadata,
   loadProject,
   loadProjects,
+  ensureDefaultProject,
+  loadProjectInstructions,
+  saveProjectInstructions,
+  loadProjectPreferences,
+  addProjectPreference,
+  deleteProjectPreference,
   saveConfig,
   saveProjectFile,
   setDefault,
@@ -44,8 +50,12 @@ import {
   getConversationMemoryDir,
   getGlobalMemoryDir,
   loadUserRules,
+  listProjectWorkflows,
 } from '@anton/agent-config'
 import { GIT_HASH, VERSION } from '@anton/agent-config'
+import { buildWorkflowAgentContext } from './workflows/workflow-context.js'
+import { WorkflowInstaller } from './workflows/workflow-installer.js'
+import { listBuiltinWorkflows, getBuiltinWorkflowPath, loadBuiltinManifest } from './workflows/builtin-registry.js'
 import {
   CONNECTOR_REGISTRY,
   type ConnectorConfig,
@@ -510,7 +520,7 @@ export class AgentServer {
         break
 
       case 'config_query':
-        this.handleConfigQuery(msg.key, msg.sessionId)
+        this.handleConfigQuery(msg.key, msg.sessionId, msg.projectId)
         break
 
       case 'config_update':
@@ -527,7 +537,7 @@ export class AgentServer {
     }
   }
 
-  private handleConfigQuery(key: string, sessionId?: string) {
+  private handleConfigQuery(key: string, sessionId?: string, projectId?: string) {
     let value: unknown
     switch (key) {
       case 'providers':
@@ -559,7 +569,7 @@ export class AgentServer {
       case 'memories': {
         // Global memories
         const globalDir = getGlobalMemoryDir()
-        const memories: { name: string; content: string; scope: 'global' | 'conversation' }[] = []
+        const memories: { name: string; content: string; scope: 'global' | 'conversation' | 'project' }[] = []
         try {
           const files = readdirSync(globalDir).filter((f) => f.endsWith('.md'))
           for (const f of files) {
@@ -584,6 +594,29 @@ export class AgentServer {
               })
             }
           } catch { /* no conversation memories */ }
+        }
+
+        // Project-scoped context (if projectId provided)
+        if (projectId) {
+          const project = loadProject(projectId)
+          if (project) {
+            // Project notes as a memory entry
+            if (project.context.notes) {
+              memories.push({
+                name: 'project-notes.md',
+                content: `# Project Notes\n\n${project.context.notes}`,
+                scope: 'project',
+              })
+            }
+            // Project summary as a memory entry
+            if (project.context.summary) {
+              memories.push({
+                name: 'project-summary.md',
+                content: `# Project Summary\n\n${project.context.summary}`,
+                scope: 'project',
+              })
+            }
+          }
         }
         value = memories
         break
@@ -686,7 +719,7 @@ export class AgentServer {
 
         const p = spawn(shell, ['-i'], {
           stdio: ['pipe', 'pipe', 'pipe'],
-          cwd: process.env.HOME || '/',
+          cwd: msg.cwd || process.env.HOME || '/',
           env: {
             ...process.env,
             TERM: 'xterm-256color',
@@ -896,6 +929,21 @@ export class AgentServer {
       case 'project_sessions_list':
         this.handleProjectSessionsList(msg)
         break
+      case 'project_instructions_get':
+        this.handleProjectInstructionsGet(msg)
+        break
+      case 'project_instructions_save':
+        this.handleProjectInstructionsSave(msg)
+        break
+      case 'project_preferences_get':
+        this.handleProjectPreferencesGet(msg)
+        break
+      case 'project_preference_add':
+        this.handleProjectPreferenceAdd(msg)
+        break
+      case 'project_preference_delete':
+        this.handleProjectPreferenceDelete(msg)
+        break
 
       // ── Agents ──
       case 'agent_create':
@@ -909,6 +957,23 @@ export class AgentServer {
         break
       case 'agent_run_logs':
         this.handleAgentRunLogs(msg)
+        break
+
+      // ── Workflows ──
+      case 'workflow_registry_list':
+        this.handleWorkflowRegistryList()
+        break
+      case 'workflow_check_connectors':
+        this.handleWorkflowCheckConnectors(msg)
+        break
+      case 'workflow_install':
+        this.handleWorkflowInstall(msg)
+        break
+      case 'workflows_list':
+        this.handleWorkflowsList(msg)
+        break
+      case 'workflow_uninstall':
+        this.handleWorkflowUninstall(msg)
         break
 
       // ── Connectors ──
@@ -1721,6 +1786,139 @@ export class AgentServer {
   }
 
   /** Wire autonomous handlers for agent sessions — auto-approve everything, no user interaction needed */
+  /**
+   * Build the available workflows catalog for system prompt injection.
+   * Loaded once from builtin registry, cached for the server lifetime.
+   */
+  private _workflowCatalog: { name: string; description: string; whenToUse: string }[] | null = null
+  private getAvailableWorkflowsForPrompt(): { name: string; description: string; whenToUse: string }[] {
+    if (!this._workflowCatalog) {
+      const entries = listBuiltinWorkflows()
+      this._workflowCatalog = entries
+        .map((e) => {
+          const manifest = loadBuiltinManifest(e.id)
+          return {
+            name: e.name,
+            description: e.description,
+            whenToUse: manifest?.whenToUse || e.description,
+          }
+        })
+        .filter((w) => w.whenToUse.length > 0)
+    }
+    return this._workflowCatalog
+  }
+
+  // ── Workflow handlers ──────────────────────────────────────────────
+
+  private handleWorkflowRegistryList() {
+    const entries = listBuiltinWorkflows()
+    this.sendToClient(Channel.AI, { type: 'workflow_registry_list_response', entries })
+  }
+
+  private handleWorkflowCheckConnectors(msg: { workflowId: string }) {
+    const manifest = loadBuiltinManifest(msg.workflowId)
+    if (!manifest) {
+      this.sendToClient(Channel.AI, {
+        type: 'error',
+        error: `Workflow "${msg.workflowId}" not found in registry`,
+      } as any)
+      return
+    }
+
+    // Get list of currently active connector IDs
+    const activeConnectors = this.connectorManager
+      ? this.connectorManager.getActiveIds()
+      : []
+
+    const satisfied = manifest.connectors.required.filter((c) => activeConnectors.includes(c))
+    const missing = manifest.connectors.required.filter((c) => !activeConnectors.includes(c))
+    const optional = manifest.connectors.optional.map((c) => ({
+      id: c,
+      connected: activeConnectors.includes(c),
+    }))
+
+    this.sendToClient(Channel.AI, {
+      type: 'workflow_check_connectors_response',
+      workflowId: msg.workflowId,
+      manifest,
+      satisfied,
+      missing,
+      optional,
+    })
+  }
+
+  private handleWorkflowInstall(msg: {
+    projectId: string
+    workflowId: string
+    userInputs: Record<string, unknown>
+  }) {
+    if (!this.agentManager) {
+      this.sendToClient(Channel.AI, {
+        type: 'error',
+        error: 'Agent manager not available',
+      } as any)
+      return
+    }
+
+    const sourcePath = getBuiltinWorkflowPath(msg.workflowId)
+    if (!sourcePath) {
+      this.sendToClient(Channel.AI, {
+        type: 'error',
+        error: `Workflow "${msg.workflowId}" not found`,
+      } as any)
+      return
+    }
+
+    const manifest = loadBuiltinManifest(msg.workflowId)
+    if (!manifest) {
+      this.sendToClient(Channel.AI, {
+        type: 'error',
+        error: `Cannot load manifest for "${msg.workflowId}"`,
+      } as any)
+      return
+    }
+
+    try {
+      const installer = new WorkflowInstaller(this.agentManager)
+      const installed = installer.install(
+        msg.projectId,
+        msg.workflowId,
+        sourcePath,
+        manifest,
+        msg.userInputs,
+      )
+      this.sendToClient(Channel.AI, { type: 'workflow_installed', workflow: installed })
+    } catch (err) {
+      this.sendToClient(Channel.AI, {
+        type: 'error',
+        error: `Install failed: ${err instanceof Error ? err.message : String(err)}`,
+      } as any)
+    }
+  }
+
+  private handleWorkflowsList(msg: { projectId: string }) {
+    const workflows = listProjectWorkflows(msg.projectId)
+    this.sendToClient(Channel.AI, {
+      type: 'workflows_list_response',
+      projectId: msg.projectId,
+      workflows,
+    })
+  }
+
+  private handleWorkflowUninstall(msg: { projectId: string; workflowId: string }) {
+    if (!this.agentManager) return
+
+    const installer = new WorkflowInstaller(this.agentManager)
+    const success = installer.uninstall(msg.projectId, msg.workflowId)
+    if (success) {
+      this.sendToClient(Channel.AI, {
+        type: 'workflow_uninstalled',
+        projectId: msg.projectId,
+        workflowId: msg.workflowId,
+      })
+    }
+  }
+
   private wireAgentAutoHandlers(session: Session) {
     session.setConfirmHandler(async (_command, _reason) => {
       console.log(`[${session.id}] Agent auto-approved confirm: ${_command}`)
@@ -1779,9 +1977,24 @@ export class AgentServer {
 
     // Load agent instructions from metadata unless explicitly provided
     let agentInstructions = extra?.agentInstructions
+    let agentMemory = extra?.agentMemory
     if (!agentInstructions && isAgent && projectId) {
       const meta = loadAgentMetadata(projectId, sessionId)
-      if (meta) agentInstructions = meta.instructions
+      if (meta) {
+        // If this is a workflow agent, build rich context from workflow files
+        if (meta.workflowId) {
+          const wfContext = buildWorkflowAgentContext(projectId, meta.workflowId)
+          if (wfContext) {
+            agentInstructions = wfContext.instructions
+            agentMemory = agentMemory || wfContext.memory || undefined
+          } else {
+            // Fallback to flat instructions if workflow context build fails
+            agentInstructions = meta.instructions
+          }
+        } else {
+          agentInstructions = meta.instructions
+        }
+      }
     }
 
     return {
@@ -1800,7 +2013,8 @@ export class AgentServer {
       onDeliverResult:
         isAgent && projectId ? this.buildDeliverResultHandler(sessionId, projectId) : undefined,
       agentInstructions,
-      agentMemory: extra?.agentMemory,
+      agentMemory,
+      availableWorkflows: this.getAvailableWorkflowsForPrompt(),
     }
   }
 
@@ -1929,7 +2143,7 @@ export class AgentServer {
   // ── Project handlers ──────────────────────────────────────────
 
   private handleProjectCreate(msg: {
-    project: { name: string; description?: string; icon?: string; color?: string }
+    project: { name: string; description?: string; icon?: string; color?: string; workspacePath?: string }
   }) {
     try {
       const project = createProject({ ...msg.project, config: this.config })
@@ -1943,6 +2157,7 @@ export class AgentServer {
   }
 
   private handleProjectsList() {
+    ensureDefaultProject(this.config)
     const projects = loadProjects()
     this.sendToClient(Channel.AI, { type: 'projects_list_response', projects })
   }
@@ -2017,6 +2232,54 @@ export class AgentServer {
     } else {
       this.sendToClient(Channel.AI, { type: 'error', message: `Project not found: ${msg.id}` })
     }
+  }
+
+  private handleProjectInstructionsGet(msg: { projectId: string }) {
+    const content = loadProjectInstructions(msg.projectId)
+    this.sendToClient(Channel.AI, {
+      type: 'project_instructions_response',
+      projectId: msg.projectId,
+      content,
+    })
+  }
+
+  private handleProjectInstructionsSave(msg: { projectId: string; content: string }) {
+    saveProjectInstructions(msg.projectId, msg.content)
+    this.sendToClient(Channel.AI, {
+      type: 'project_instructions_response',
+      projectId: msg.projectId,
+      content: msg.content,
+    })
+  }
+
+  private handleProjectPreferencesGet(msg: { projectId: string }) {
+    const preferences = loadProjectPreferences(msg.projectId)
+    this.sendToClient(Channel.AI, {
+      type: 'project_preferences_response',
+      projectId: msg.projectId,
+      preferences,
+    })
+  }
+
+  private handleProjectPreferenceAdd(msg: { projectId: string; title: string; content: string }) {
+    const pref = addProjectPreference(msg.projectId, msg.title, msg.content)
+    // Send back the full list
+    const preferences = loadProjectPreferences(msg.projectId)
+    this.sendToClient(Channel.AI, {
+      type: 'project_preferences_response',
+      projectId: msg.projectId,
+      preferences,
+    })
+  }
+
+  private handleProjectPreferenceDelete(msg: { projectId: string; preferenceId: string }) {
+    deleteProjectPreference(msg.projectId, msg.preferenceId)
+    const preferences = loadProjectPreferences(msg.projectId)
+    this.sendToClient(Channel.AI, {
+      type: 'project_preferences_response',
+      projectId: msg.projectId,
+      preferences,
+    })
   }
 
   private handleProjectFileUpload(msg: {

@@ -35,6 +35,9 @@ export interface Project {
   workspacePath?: string // absolute path to ~/Anton/{name}/
   source?: ProjectSource // how the project was created
   sourceConversationId?: string // the conversation that triggered creation
+
+  // Default project — auto-created, cannot be deleted
+  isDefault?: boolean
 }
 
 // ── Agent types ──────────────────────────────────────────────────────
@@ -64,6 +67,8 @@ export interface AgentMetadata {
   description: string
   /** The prompt/instructions the agent executes on each run */
   instructions: string
+  /** If this agent was created from a workflow, the workflow ID */
+  workflowId?: string
   /** Cron schedule — null means manual-only */
   schedule?: { cron: string }
   /** Which conversation created this agent (for result delivery) */

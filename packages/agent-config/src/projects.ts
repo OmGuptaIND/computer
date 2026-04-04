@@ -109,6 +109,7 @@ export function createProject(input: {
   type?: ProjectType
   source?: ProjectSource
   sourceConversationId?: string
+  workspacePath?: string // custom location — if not provided, auto-generates
   config?: AgentConfig
 }): Project {
   ensureProjectsDir()
@@ -116,16 +117,21 @@ export function createProject(input: {
   const id = `proj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
   const now = Date.now()
 
-  // Determine workspace path in ~/Anton/{dir-name}/
-  const dirName = toDirectoryName(input.name)
-  const workspaceRoot = ensureWorkspaceRoot(input.config)
-  let workspacePath = join(workspaceRoot, dirName)
+  // Determine workspace path — use custom if provided, otherwise auto-generate
+  let workspacePath: string
+  if (input.workspacePath) {
+    workspacePath = input.workspacePath
+  } else {
+    const dirName = toDirectoryName(input.name)
+    const workspaceRoot = ensureWorkspaceRoot(input.config)
+    workspacePath = join(workspaceRoot, dirName)
 
-  // Handle name collisions by appending a suffix
-  if (existsSync(workspacePath)) {
-    let suffix = 2
-    while (existsSync(`${workspacePath}-${suffix}`)) suffix++
-    workspacePath = `${workspacePath}-${suffix}`
+    // Handle name collisions by appending a suffix
+    if (existsSync(workspacePath)) {
+      let suffix = 2
+      while (existsSync(`${workspacePath}-${suffix}`)) suffix++
+      workspacePath = `${workspacePath}-${suffix}`
+    }
   }
 
   const project: Project = {
@@ -153,13 +159,12 @@ export function createProject(input: {
   }
 
   // Create internal project directory structure (~/.anton/projects/{id}/)
+  // Note: files/ no longer created here — uploads go directly to workspacePath
   const dir = getProjectDir(id)
   mkdirSync(dir, { recursive: true })
   mkdirSync(join(dir, 'conversations'), { recursive: true })
   mkdirSync(join(dir, 'jobs'), { recursive: true })
-  // notifications dir removed — agent results flow through conversations
   mkdirSync(join(dir, 'context'), { recursive: true })
-  mkdirSync(join(dir, 'files'), { recursive: true })
 
   // Create user-visible workspace directory (~/Anton/{name}/)
   mkdirSync(workspacePath, { recursive: true })
@@ -271,10 +276,25 @@ export function updateProjectContext(
   return project
 }
 
-/** Save a file to a project's files directory */
+/** Get the workspace path for file operations (uploaded files live in the workspace) */
+function getProjectFilesDir(projectId: string): string | null {
+  const project = loadProject(projectId)
+  if (!project?.workspacePath) return null
+  return project.workspacePath
+}
+
+/** Save a file to the project's workspace directory */
 export function saveProjectFile(projectId: string, filename: string, content: Buffer): string {
-  const dir = getProjectDir(projectId)
-  const filesDir = join(dir, 'files')
+  const filesDir = getProjectFilesDir(projectId)
+  if (!filesDir) {
+    // Fallback to internal storage if no workspace
+    const dir = join(getProjectDir(projectId), 'files')
+    mkdirSync(dir, { recursive: true })
+    const filePath = join(dir, filename)
+    writeFileSync(filePath, content)
+    return filePath
+  }
+
   if (!existsSync(filesDir)) {
     mkdirSync(filesDir, { recursive: true })
   }
@@ -282,38 +302,40 @@ export function saveProjectFile(projectId: string, filename: string, content: Bu
   const filePath = join(filesDir, filename)
   writeFileSync(filePath, content)
 
-  // Update project context.files
+  // Update project context.files tracking
   const project = loadProject(projectId)
-  if (project) {
-    if (!project.context.files.includes(filename)) {
-      project.context.files.push(filename)
-      project.updatedAt = Date.now()
-      writeFileSync(join(dir, 'project.json'), JSON.stringify(project, null, 2), 'utf-8')
-      const index = loadIndex()
-      const idx = index.findIndex((p) => p.id === projectId)
-      if (idx !== -1) {
-        index[idx] = project
-        saveIndex(index)
-      }
+  if (project && !project.context.files.includes(filename)) {
+    project.context.files.push(filename)
+    project.updatedAt = Date.now()
+    const dir = getProjectDir(projectId)
+    writeFileSync(join(dir, 'project.json'), JSON.stringify(project, null, 2), 'utf-8')
+    const index = loadIndex()
+    const idx = index.findIndex((p) => p.id === projectId)
+    if (idx !== -1) {
+      index[idx] = project
+      saveIndex(index)
     }
   }
 
   return filePath
 }
 
-/** Delete a file from a project's files directory */
+/** Delete a file from the project's workspace directory */
 export function deleteProjectFile(projectId: string, filename: string): boolean {
-  const dir = getProjectDir(projectId)
-  const filePath = join(dir, 'files', filename)
-  if (!existsSync(filePath)) return false
+  const filesDir = getProjectFilesDir(projectId)
+  const filePath = filesDir
+    ? join(filesDir, filename)
+    : join(getProjectDir(projectId), 'files', filename)
 
+  if (!existsSync(filePath)) return false
   rmSync(filePath)
 
-  // Update project context.files
+  // Update project context.files tracking
   const project = loadProject(projectId)
   if (project) {
     project.context.files = project.context.files.filter((f) => f !== filename)
     project.updatedAt = Date.now()
+    const dir = getProjectDir(projectId)
     writeFileSync(join(dir, 'project.json'), JSON.stringify(project, null, 2), 'utf-8')
     const index = loadIndex()
     const idx = index.findIndex((p) => p.id === projectId)
@@ -326,53 +348,64 @@ export function deleteProjectFile(projectId: string, filename: string): boolean 
   return true
 }
 
-/** List files in a project's files directory */
+const MIME_MAP: Record<string, string> = {
+  txt: 'text/plain',
+  md: 'text/markdown',
+  json: 'application/json',
+  csv: 'text/csv',
+  js: 'text/javascript',
+  ts: 'text/typescript',
+  py: 'text/x-python',
+  html: 'text/html',
+  css: 'text/css',
+  pdf: 'application/pdf',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  svg: 'image/svg+xml',
+}
+
+/** List files in the project's workspace directory */
 export function listProjectFiles(
   projectId: string,
 ): { name: string; size: number; mimeType: string }[] {
-  const filesDir = join(getProjectDir(projectId), 'files')
-  if (!existsSync(filesDir)) return []
-
-  const entries = readdirSync(filesDir, { withFileTypes: true })
-
-  const mimeMap: Record<string, string> = {
-    txt: 'text/plain',
-    md: 'text/markdown',
-    json: 'application/json',
-    csv: 'text/csv',
-    js: 'text/javascript',
-    ts: 'text/typescript',
-    py: 'text/x-python',
-    html: 'text/html',
-    css: 'text/css',
-    pdf: 'application/pdf',
-    png: 'image/png',
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    gif: 'image/gif',
-    svg: 'image/svg+xml',
+  const filesDir = getProjectFilesDir(projectId)
+  if (!filesDir || !existsSync(filesDir)) {
+    // Fallback: check internal files/ directory for legacy projects
+    const legacyDir = join(getProjectDir(projectId), 'files')
+    if (!existsSync(legacyDir)) return []
+    return listFilesFromDir(legacyDir)
   }
 
+  return listFilesFromDir(filesDir)
+}
+
+function listFilesFromDir(dir: string): { name: string; size: number; mimeType: string }[] {
+  const entries = readdirSync(dir, { withFileTypes: true })
   return entries
-    .filter((e) => e.isFile())
+    .filter((e) => e.isFile() && e.name !== '.anton.json')
     .map((e) => {
       const ext = e.name.split('.').pop()?.toLowerCase() || ''
-      const stat = statSync(join(filesDir, e.name))
+      const stat = statSync(join(dir, e.name))
       return {
         name: e.name,
         size: stat.size,
-        mimeType: mimeMap[ext] || 'application/octet-stream',
+        mimeType: MIME_MAP[ext] || 'application/octet-stream',
       }
     })
 }
 
-/** Delete a project and all its data */
+/** Delete a project and all its data. Cannot delete the default project. */
 export function deleteProject(id: string): boolean {
   const dir = getProjectDir(id)
   if (!existsSync(dir)) return false
 
   // Load project to get workspace path before deleting
   const project = loadProject(id)
+
+  // Prevent deletion of the default project
+  if (project?.isDefault) return false
 
   rmSync(dir, { recursive: true, force: true })
 
@@ -431,10 +464,25 @@ export function buildProjectContext(project: Project, projectId: string): string
     )
   }
 
+  // Load project instructions (instructions.md)
+  const instructions = loadProjectInstructions(projectId)
+  if (instructions) {
+    lines.push(`\n## Project Instructions\n${instructions}`)
+  }
+
+  // Load user preferences (preferences.json)
+  const preferences = loadProjectPreferences(projectId)
+  if (preferences.length > 0) {
+    const prefLines = preferences.map((p) => `- **${p.title}**: ${p.content}`)
+    lines.push(`\n## User Preferences\n${prefLines.join('\n')}`)
+  }
+
   if (project.context.summary) {
     lines.push(`\n## Project Summary\n${project.context.summary}`)
   }
-  if (project.context.notes) {
+
+  // Legacy notes — kept for backward compat
+  if (project.context.notes && !instructions) {
     lines.push(`\n## Project Notes\n${project.context.notes}`)
   }
 
@@ -478,6 +526,147 @@ export function appendSessionHistory(
   }
   const historyPath = join(contextDir, 'session-history.jsonl')
   appendFileSync(historyPath, `${JSON.stringify(entry)}\n`, 'utf-8')
+}
+
+// ── Project instructions ─────────────────────────────────────────────
+
+/** Load project instructions (instructions.md) */
+export function loadProjectInstructions(projectId: string): string {
+  const filePath = join(getProjectDir(projectId), 'instructions.md')
+  if (!existsSync(filePath)) return ''
+  return readFileSync(filePath, 'utf-8')
+}
+
+/** Save project instructions (instructions.md) */
+export function saveProjectInstructions(projectId: string, content: string): void {
+  const dir = getProjectDir(projectId)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'instructions.md'), content, 'utf-8')
+}
+
+// ── User preferences (per-project) ──────────────────────────────────
+
+export interface Preference {
+  id: string
+  title: string
+  content: string
+  createdAt: number
+}
+
+function getPreferencesPath(projectId: string): string {
+  return join(getProjectDir(projectId), 'preferences.json')
+}
+
+/** Load preferences for a project */
+export function loadProjectPreferences(projectId: string): Preference[] {
+  const filePath = getPreferencesPath(projectId)
+  if (!existsSync(filePath)) return []
+  try {
+    return JSON.parse(readFileSync(filePath, 'utf-8'))
+  } catch {
+    return []
+  }
+}
+
+/** Save preferences for a project */
+function saveProjectPreferences(projectId: string, prefs: Preference[]): void {
+  const dir = getProjectDir(projectId)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  writeFileSync(getPreferencesPath(projectId), JSON.stringify(prefs, null, 2), 'utf-8')
+}
+
+/** Add a preference to a project */
+export function addProjectPreference(
+  projectId: string,
+  title: string,
+  content: string,
+): Preference {
+  const prefs = loadProjectPreferences(projectId)
+  const pref: Preference = {
+    id: `pref_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    title,
+    content,
+    createdAt: Date.now(),
+  }
+  prefs.push(pref)
+  saveProjectPreferences(projectId, prefs)
+  return pref
+}
+
+/** Delete a preference from a project */
+export function deleteProjectPreference(projectId: string, preferenceId: string): boolean {
+  const prefs = loadProjectPreferences(projectId)
+  const filtered = prefs.filter((p) => p.id !== preferenceId)
+  if (filtered.length === prefs.length) return false
+  saveProjectPreferences(projectId, filtered)
+  return true
+}
+
+// ── Default project ──────────────────────────────────────────────────
+
+/** Ensure the default "My Computer" project exists. Creates it if missing. */
+export function ensureDefaultProject(config?: AgentConfig): Project {
+  const projects = loadIndex()
+  const existing = projects.find((p) => p.isDefault)
+  if (existing) return existing
+
+  // Create the default project with standard directory structure
+  ensureProjectsDir()
+
+  const id = `proj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
+  const now = Date.now()
+
+  const dirName = 'my-computer'
+  const workspaceRoot = ensureWorkspaceRoot(config)
+  const workspacePath = join(workspaceRoot, dirName)
+
+  const project: Project = {
+    id,
+    name: 'My Computer',
+    description: 'Your default workspace for all tasks',
+    icon: '💻',
+    color: '#6366f1',
+    createdAt: now,
+    updatedAt: now,
+    type: 'mixed',
+    workspacePath,
+    source: 'manual',
+    isDefault: true,
+    context: {
+      summary: '',
+      files: [],
+      notes: '',
+    },
+    stats: {
+      sessionCount: 0,
+      activeAgents: 0,
+      lastActive: now,
+    },
+  }
+
+  // Create internal project directory structure
+  const dir = getProjectDir(id)
+  mkdirSync(dir, { recursive: true })
+  mkdirSync(join(dir, 'conversations'), { recursive: true })
+  mkdirSync(join(dir, 'jobs'), { recursive: true })
+  mkdirSync(join(dir, 'context'), { recursive: true })
+  mkdirSync(join(dir, 'files'), { recursive: true })
+
+  // Create user-visible workspace directory
+  if (!existsSync(workspacePath)) {
+    mkdirSync(workspacePath, { recursive: true })
+  }
+  writeAntonLink(workspacePath, project)
+
+  // Write project.json
+  writeFileSync(join(dir, 'project.json'), JSON.stringify(project, null, 2), 'utf-8')
+
+  // Update index — default project goes first
+  const index = loadIndex()
+  index.unshift(project)
+  saveIndex(index)
+
+  return project
 }
 
 // ── Agent persistence (agent.json in conversation directory) ─────────

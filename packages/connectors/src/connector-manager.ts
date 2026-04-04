@@ -60,6 +60,11 @@ export class ConnectorManager {
     return this.connectors.has(providerId)
   }
 
+  /** Get IDs of all currently active connectors. */
+  getActiveIds(): string[] {
+    return Array.from(this.connectors.keys())
+  }
+
   /** Get all tools from all active connectors. */
   getAllTools(): AgentTool[] {
     const tools: AgentTool[] = []

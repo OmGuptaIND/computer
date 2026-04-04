@@ -45,14 +45,22 @@ export function AgentChat() {
   // When used inside ProjectView, the active conversation will have a projectId —
   // in that case we should NOT switch away from it (the project view manages its own sessions).
   const activeView = useStore((s) => s.activeView)
+  const sessionsLoaded = useStore((s) => s.sessionsLoaded)
   useEffect(() => {
+    // Don't create sessions until the server sessions list has been loaded.
+    // Otherwise we race with App.tsx's session sync and create duplicates.
+    if (!sessionsLoaded) return
+
     const store = useStore.getState()
 
     if (!activeConvId) {
       // If there are existing conversations (from localStorage or sync), switch to one
       // instead of creating a new one. This prevents duplicates on reconnect/re-render.
-      // Only consider non-project conversations — project ones belong in ProjectView.
-      const chatConvs = store.conversations.filter((c) => !c.projectId)
+      // Consider conversations from the default project (or legacy ones without projectId).
+      const defaultProject = store.projects.find((p) => p.isDefault)
+      const chatConvs = store.conversations.filter(
+        (c) => !c.projectId || c.projectId === defaultProject?.id,
+      )
       const emptyConv = chatConvs.find((c) => c.messages.length === 0)
       if (emptyConv) {
         store.switchConversation(emptyConv.id)
@@ -65,30 +73,37 @@ export function AgentChat() {
 
       // No conversations at all — create a fresh one
       const sessionId = `sess_${Date.now().toString(36)}`
-      store.newConversation(undefined, sessionId)
+      const projectId = store.activeProjectId ?? undefined
+      store.newConversation(undefined, sessionId, projectId)
       store.registerPendingSession(sessionId)
       connection.sendSessionCreate(sessionId, {
         provider: store.currentProvider,
         model: store.currentModel,
+        projectId,
       })
     } else if (activeConvProjectId && activeView === 'chat') {
-      // Active conversation belongs to a project but we're in chat mode —
-      // switch to a non-project conversation. Only do this in chat mode;
+      // Active conversation belongs to a non-default project but we're in chat mode —
+      // switch to a default-project conversation. Only do this in chat mode;
       // in projects mode, ProjectView manages the active conversation.
-      const chatConvs = store.conversations.filter((c) => !c.projectId)
+      const defaultProject = store.projects.find((p) => p.isDefault)
+      const chatConvs = store.conversations.filter(
+        (c) => !c.projectId || c.projectId === defaultProject?.id,
+      )
       if (chatConvs.length > 0) {
         store.switchConversation(chatConvs[0].id)
       } else {
         const sessionId = `sess_${Date.now().toString(36)}`
-        store.newConversation(undefined, sessionId)
+        const projectId = store.activeProjectId ?? undefined
+        store.newConversation(undefined, sessionId, projectId)
         store.registerPendingSession(sessionId)
         connection.sendSessionCreate(sessionId, {
           provider: store.currentProvider,
           model: store.currentModel,
+          projectId,
         })
       }
     }
-  }, [activeConvId, activeConvProjectId, activeView])
+  }, [activeConvId, activeConvProjectId, activeView, sessionsLoaded])
 
   const handleSend = useCallback(
     async (text: string, attachments: ChatImageAttachment[] = []) => {
@@ -112,11 +127,13 @@ export function AgentChat() {
       if (!conv) {
         // No conversation at all — create one
         sessionId = `sess_${Date.now().toString(36)}`
-        newConversation(undefined, sessionId)
+        const projectId = store.activeProjectId ?? undefined
+        newConversation(undefined, sessionId, projectId)
         const waitPromise = store.registerPendingSession(sessionId)
         connection.sendSessionCreate(sessionId, {
           provider: store.currentProvider,
           model: store.currentModel,
+          projectId,
         })
         await waitPromise
       } else if (sessionId && !store.currentSessionId) {
@@ -271,6 +288,7 @@ export function AgentChat() {
           onSteer={handleSteer}
           onCancelTurn={handleCancelTurn}
           onSkillSelect={setSelectedSkill}
+          variant="hero"
           pendingAskUser={pendingAskUser}
           onAskUserSubmit={handleAskUserSubmit}
         />

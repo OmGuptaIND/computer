@@ -1,0 +1,9 @@
+{
+  "score_threshold": 70,
+  "max_outreach_per_run": 10,
+  "email_send_delay_seconds": 30,
+  "follow_up_days": 3,
+  "research_depth": "standard",
+  "lookback_days_first_run": 7,
+  "lookback_hours_normal": 4
+}

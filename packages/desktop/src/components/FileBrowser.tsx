@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { connection } from '../lib/connection.js'
+import { useStore } from '../lib/store.js'
 
 interface FileEntry {
   name: string
@@ -24,12 +25,17 @@ interface DirState {
   error: string | null
 }
 
-// Start in home directory — server will resolve ~ to actual path
-const HOME_DIR = '/root'
+// Fallback if no workspace path is available
+const FALLBACK_DIR = '/root'
 
 export function FileBrowser() {
-  const [cwd, setCwd] = useState(HOME_DIR)
-  const [pathParts, setPathParts] = useState<string[]>([HOME_DIR])
+  const activeProjectId = useStore((s) => s.activeProjectId)
+  const projects = useStore((s) => s.projects)
+  const activeProject = projects.find((p) => p.id === activeProjectId)
+  const startDir = activeProject?.workspacePath || FALLBACK_DIR
+
+  const [cwd, setCwd] = useState(startDir)
+  const [pathParts, setPathParts] = useState<string[]>([startDir])
   const [dirState, setDirState] = useState<DirState>({ entries: [], loading: true, error: null })
   const [_expandedDirs, _setExpandedDirs] = useState<Set<string>>(new Set())
 
@@ -37,21 +43,23 @@ export function FileBrowser() {
     setDirState({ entries: [], loading: true, error: null })
     setCwd(path)
 
-    // Build breadcrumb parts — show ~ for home
-    const isHome = path === HOME_DIR
-    const isUnderHome = path.startsWith(`${HOME_DIR}/`)
-    if (isHome) {
-      setPathParts(['~'])
-    } else if (isUnderHome) {
-      const rel = path.slice(HOME_DIR.length + 1)
-      setPathParts(['~', ...rel.split('/').filter(Boolean)])
+    // Build breadcrumb parts — show project name for workspace root
+    const isWorkspaceRoot = path === startDir
+    const isUnderWorkspace = path.startsWith(`${startDir}/`)
+    const projectLabel = activeProject?.name || '~'
+
+    if (isWorkspaceRoot) {
+      setPathParts([projectLabel])
+    } else if (isUnderWorkspace) {
+      const rel = path.slice(startDir.length + 1)
+      setPathParts([projectLabel, ...rel.split('/').filter(Boolean)])
     } else {
       setPathParts(path === '/' ? ['/'] : ['/', ...path.split('/').filter(Boolean)])
     }
 
     // Send filesystem list on the FILESYNC channel (session-independent)
     connection.sendFilesystemList(path)
-  }, [])
+  }, [startDir, activeProject?.name])
 
   // Listen for filesystem list responses
   useEffect(() => {
@@ -82,10 +90,10 @@ export function FileBrowser() {
     return () => clearTimeout(timer)
   }, [dirState.loading])
 
-  // Initial load — start in home dir
+  // Load workspace directory on mount and project switch
   useEffect(() => {
-    listDir(HOME_DIR)
-  }, [listDir])
+    listDir(startDir)
+  }, [listDir, startDir])
 
   const navigateTo = (path: string) => {
     listDir(path)
@@ -93,10 +101,12 @@ export function FileBrowser() {
 
   const navigateToBreadcrumb = (index: number) => {
     if (index === 0) {
-      // First part is either ~ or /
-      navigateTo(pathParts[0] === '~' ? HOME_DIR : '/')
+      // First part is project name or /
+      const isAbsRoot = pathParts[0] === '/'
+      navigateTo(isAbsRoot ? '/' : startDir)
     } else {
-      const base = pathParts[0] === '~' ? HOME_DIR : ''
+      const isAbsRoot = pathParts[0] === '/'
+      const base = isAbsRoot ? '' : startDir
       const path = `${base}/${pathParts.slice(1, index + 1).join('/')}`
       navigateTo(path)
     }

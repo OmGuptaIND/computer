@@ -13,9 +13,14 @@ export const DEFAULT_PORT = 9876
 export const DEFAULT_SIDECAR_PORT = 9878
 export const ANTON_USER = 'anton'
 export const ANTON_DIR = `/home/${ANTON_USER}/.anton`
-export const AGENT_BIN = '/usr/local/bin/anton-agent'
+export const REPO_DIR = '/opt/anton'
+export const AGENT_ENTRY = `${REPO_DIR}/packages/agent-server/dist/index.js`
 export const SIDECAR_BIN = '/usr/local/bin/anton-sidecar'
 export const AGENT_SERVICE_PATH = '/etc/systemd/system/anton-agent.service'
+export const REPO_URL = 'https://github.com/OmGuptaIND/computer.git'
+
+/** @deprecated Use AGENT_ENTRY instead — kept for migration from SEA binary */
+export const AGENT_BIN = '/usr/local/bin/anton-agent'
 
 /**
  * Detect the env file path used by the running agent service.

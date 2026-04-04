@@ -131,8 +131,8 @@ export class Connection {
     this.send(Channel.TERMINAL, { type: 'pty_data', id: sessionId, data })
   }
 
-  sendTerminalSpawn(sessionId: string, cols: number, rows: number) {
-    this.send(Channel.TERMINAL, { type: 'pty_spawn', id: sessionId, cols, rows })
+  sendTerminalSpawn(sessionId: string, cols: number, rows: number, cwd?: string) {
+    this.send(Channel.TERMINAL, { type: 'pty_spawn', id: sessionId, cols, rows, ...(cwd && { cwd }) })
   }
 
   sendTerminalResize(sessionId: string, cols: number, rows: number) {
@@ -208,8 +208,8 @@ export class Connection {
 
   // ── Config management ───────────────────────────────────────────
 
-  sendConfigQuery(key: 'providers' | 'defaults' | 'security' | 'system_prompt' | 'memories', sessionId?: string) {
-    this.send(Channel.CONTROL, { type: 'config_query', key, ...(sessionId && { sessionId }) })
+  sendConfigQuery(key: 'providers' | 'defaults' | 'security' | 'system_prompt' | 'memories', sessionId?: string, projectId?: string) {
+    this.send(Channel.CONTROL, { type: 'config_query', key, ...(sessionId && { sessionId }), ...(projectId && { projectId }) })
   }
 
   // ── Update management ──────────────────────────────────────────
@@ -247,6 +247,26 @@ export class Connection {
 
   sendProjectContextUpdate(id: string, field: 'notes' | 'summary', value: string) {
     this.send(Channel.AI, { type: 'project_context_update', id, field, value })
+  }
+
+  sendProjectInstructionsGet(projectId: string) {
+    this.send(Channel.AI, { type: 'project_instructions_get', projectId })
+  }
+
+  sendProjectInstructionsSave(projectId: string, content: string) {
+    this.send(Channel.AI, { type: 'project_instructions_save', projectId, content })
+  }
+
+  sendProjectPreferencesGet(projectId: string) {
+    this.send(Channel.AI, { type: 'project_preferences_get', projectId })
+  }
+
+  sendProjectPreferenceAdd(projectId: string, title: string, content: string) {
+    this.send(Channel.AI, { type: 'project_preference_add', projectId, title, content })
+  }
+
+  sendProjectPreferenceDelete(projectId: string, preferenceId: string) {
+    this.send(Channel.AI, { type: 'project_preference_delete', projectId, preferenceId })
   }
 
   sendProjectFileUpload(
@@ -324,6 +344,28 @@ export class Connection {
       completedAt,
       runSessionId,
     })
+  }
+
+  // ── Workflows ──────────────────────────────────────────────────
+
+  sendWorkflowRegistryList() {
+    this.send(Channel.AI, { type: 'workflow_registry_list' })
+  }
+
+  sendWorkflowCheckConnectors(workflowId: string) {
+    this.send(Channel.AI, { type: 'workflow_check_connectors', workflowId })
+  }
+
+  sendWorkflowInstall(projectId: string, workflowId: string, userInputs: Record<string, unknown>) {
+    this.send(Channel.AI, { type: 'workflow_install', projectId, workflowId, userInputs })
+  }
+
+  sendWorkflowsList(projectId: string) {
+    this.send(Channel.AI, { type: 'workflows_list', projectId })
+  }
+
+  sendWorkflowUninstall(projectId: string, workflowId: string) {
+    this.send(Channel.AI, { type: 'workflow_uninstall', projectId, workflowId })
   }
 
   // ── Connectors ─────────────────────────────────────────────────

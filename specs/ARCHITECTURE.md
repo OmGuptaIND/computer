@@ -2,525 +2,307 @@
 
 ## One-Liner
 
-A TypeScript agent daemon on your VPS + Go sidecar for health/status + native desktop app + CLI on your machine, connected by WebSocket pipes. The agent uses pi SDK to think and act. Sessions live on the server. The sidecar reports VM health to antoncomputer.in.
+A TypeScript agent server on your VPS + Go sidecar for health/status + desktop app + CLI, connected by multiplexed WebSocket. Projects are the core primitive — every task, file, agent, and memory is scoped to a project.
 
 ## System Diagram
 
 ```
-YOUR DESKTOP                                          YOUR VPS / CLOUD SERVER
-┌────────────────────────┐                             ┌──────────────────────────────┐
-│  Desktop App (Tauri)   │      WebSocket (TLS)        │  Caddy (:443 TLS)            │
-│  or CLI (Ink TUI)      │◄──────────────────────────►│  ├── /* → Agent (:9876)      │
-│                        │   Single multiplexed conn   │  └── /_anton/* → Sidecar     │
-│  ┌──────────────────┐  │                             │                              │
-│  │ Terminal (xterm)  │──┼─── PTY channel ──────────►│  ┌────────────────────────┐  │
-│  │ AI Agent Chat     │──┼─── AI channel ───────────►│  │  Agent (Node.js :9876) │  │
-│  │ Model Selector    │──┼─── AI channel ───────────►│  │  ├── WebSocket Server  │  │
-│  │ Session Sidebar   │──┼─── AI channel ───────────►│  │  ├── Session Router    │  │
-│  │ Notifications     │◄─┼─── Event channel ────────┤  │  └── Tool Execution    │  │
-│  └──────────────────┘  │                             │  └────────────────────────┘  │
-│                        │                             │                              │
-│  Zustand state store   │                             │  ┌────────────────────────┐  │
-│  localStorage cache    │                             │  │  Sidecar (Go :9878)    │  │
-│                        │                             │  │  ├── /health           │  │
-│  Rust: shell, notify   │                             │  │  ├── /status           │  │
-└────────────────────────┘                             │  │  └── System checks     │  │
-                                                       │  └────────────────────────┘  │
-antoncomputer.in                                       │                              │
-┌────────────────────────┐    /_anton/status            │  ~/.anton/                    │
-│  Polls sidecar for     │◄──────────────────────────►│  ├── config.yaml             │
-│  provisioning status   │    every 3s during deploy   │  ├── sessions/               │
-└────────────────────────┘                             │  └── certs/                  │
-                                                       └──────────────────────────────┘
+YOUR BROWSER / DESKTOP                                YOUR VPS / CLOUD SERVER
+┌────────────────────────────┐                        ┌──────────────────────────────┐
+│  Desktop App (Tauri)       │    WebSocket (TLS)     │  Caddy (:443 TLS)            │
+│  or CLI (Ink TUI)          │◄─────────────────────►│  ├── /* → Agent (:9876)      │
+│                            │  Single multiplexed    │  └── /_anton/* → Sidecar     │
+│  ┌──────────────────────┐  │                        │                              │
+│  │ Project Selector     │  │                        │  ┌────────────────────────┐  │
+│  │ Tasks (project-scoped)│──┼── AI channel ───────►│  │  Agent (Node.js :9876) │  │
+│  │ Memory Page          │──┼── AI channel ───────►│  │  ├── WebSocket Server  │  │
+│  │ Files Page           │──┼── AI channel ───────►│  │  ├── Session Router    │  │
+│  │ Agents Page          │──┼── AI channel ───────►│  │  ├── Project Manager   │  │
+│  │ Terminal             │──┼── PTY channel ──────►│  │  └── Tool Execution    │  │
+│  │ Agent Chat           │──┼── AI channel ───────►│  │                        │  │
+│  └──────────────────────┘  │                        │  └────────────────────────┘  │
+│                            │                        │                              │
+│  Zustand store             │                        │  ~/.anton/                    │
+│  localStorage cache        │                        │  ├── config.yaml             │
+│                            │                        │  ├── projects/               │
+└────────────────────────────┘                        │  ├── conversations/          │
+                                                      │  └── memory/                 │
+antoncomputer.in                                      │                              │
+┌────────────────────────┐                            │  ~/Anton/                     │
+│  Polls sidecar for     │◄─────────────────────────►│  ├── my-computer/  (default) │
+│  provisioning status   │                            │  ├── seo-analyser/           │
+└────────────────────────┘                            │  └── my-scraper/             │
+                                                      └──────────────────────────────┘
 ```
 
-## Project Structure
+## Core Concepts
+
+### Projects
+
+Everything lives in a project. Projects are the scope boundary for tasks, files, agents, memory, and context.
 
 ```
-anton.computer/
-├── package.json              # pnpm workspace root
-├── pnpm-workspace.yaml
-├── SPEC.md                   # Wire protocol spec (v0.3.0)
-├── SESSIONS.md               # Session persistence & compaction spec
-├── ARCHITECTURE.md           # This file
-├── PROVIDERS.md              # Supported AI providers
-├── GOALS.md                  # Product vision & roadmap
-│
-├── sidecar/                     # Health & status service (Go)
-│   ├── main.go
-│   ├── Makefile
-│   └── internal/                # config, server, middleware, handlers, checks
-│
-├── packages/
-│   ├── agent/                # The daemon (runs on VPS)
-│   │   └── src/
-│   │       ├── index.ts      # Entry point — start server
-│   │       ├── config.ts     # Load config, session persistence, provider registry
-│   │       ├── server.ts     # WebSocket server + pipe multiplexer + session routing
-│   │       ├── session.ts    # pi SDK agent wrapper, streaming, confirmation
-│   │       ├── compaction.ts # Two-layer context compaction engine
-│   │       ├── compaction-prompt.ts  # LLM prompts for summarization
-│   │       ├── agent.ts      # System prompt + tool definitions
-│   │       └── tools/        # Shell, filesystem, browser, process, network
-│   │
-│   ├── protocol/             # Shared types & wire format
-│   │   └── src/
-│   │       ├── messages.ts   # All message type definitions (control, AI, terminal, events)
-│   │       ├── pipes.ts      # Channel enum (CONTROL, TERMINAL, AI, FILESYNC, EVENTS)
-│   │       └── codec.ts      # Binary frame encode/decode
-│   │
-│   ├── desktop/              # Tauri v2 native app
-│   │   ├── src-tauri/        # Rust backend (shell, notification plugins)
-│   │   └── src/              # React 19 + Tailwind 4 + Zustand 5
-│   │       ├── App.tsx       # Root — connection gate + workspace shell
-│   │       ├── components/
-│   │       │   ├── Connect.tsx       # Connection form + saved machines
-│   │       │   ├── Sidebar.tsx       # Session list + skills library
-│   │       │   ├── AgentChat.tsx     # Chat orchestrator
-│   │       │   ├── Terminal.tsx      # xterm.js remote terminal
-│   │       │   └── chat/
-│   │       │       ├── ChatInput.tsx      # Message input + slash commands
-│   │       │       ├── MessageList.tsx    # Auto-scrolling message view
-│   │       │       ├── MessageBubble.tsx  # Per-message rendering
-│   │       │       ├── ModelSelector.tsx  # Provider/model dropdown
-│   │       │       ├── ToolCallBlock.tsx  # Expandable tool call display
-│   │       │       ├── ConfirmDialog.tsx  # Dangerous command approval
-│   │       │       └── MarkdownRenderer.tsx  # GFM markdown + syntax highlighting
-│   │       └── lib/
-│   │           ├── connection.ts    # WebSocket client + binary codec
-│   │           ├── store.ts         # Zustand store + message handler wiring
-│   │           ├── conversations.ts # Local conversation cache (linked to server sessions)
-│   │           └── skills.ts        # Skill definitions
-│   │
-│   └── cli/                  # Terminal client (Ink-based TUI)
-│       └── src/
-│           ├── lib/
-│           │   └── connection.ts    # WebSocket client (ws package)
-│           ├── ui/
-│           │   ├── App.tsx          # Main TUI with keybindings
-│           │   ├── MessageList.tsx  # Chat display
-│           │   ├── ChatInput.tsx    # Text input
-│           │   ├── SessionList.tsx  # Session picker (Ctrl+S)
-│           │   ├── ModelPicker.tsx  # Model selector (Ctrl+M)
-│           │   ├── ProviderPanel.tsx # API key manager (Ctrl+P)
-│           │   └── StatusBar.tsx    # Connection + model info
-│           └── commands/
-│               ├── connect.ts
-│               ├── chat.ts
-│               ├── shell.ts
-│               └── status.ts
+Project: "SEO Analyser"
+├── Tasks        → conversations scoped to this project
+├── Memory       → instructions + preferences + auto-memories
+├── Files        → workspace files (uploads + AI-created)
+├── Agents       → background jobs running on cron
+└── Context      → auto-maintained project summary + session history
 ```
 
-## Agent Architecture
+**Default project:** "My Computer" — auto-created on first connect, `isDefault: true`, cannot be deleted. All tasks go here unless user switches to another project.
 
-### Server (server.ts)
+**Storage (dual):**
 
-The WebSocket server is the hub that connects clients to sessions:
+| Location | Purpose | Contents |
+|----------|---------|----------|
+| `~/.anton/projects/{projectId}/` | Internal metadata | project.json, instructions.md, preferences.json, conversations/, context/ |
+| `~/Anton/{project-name}/` | Workspace (user-visible) | All files — uploaded by user AND created by AI |
 
-```
-Client WebSocket → Auth → Message Router
-                            │
-                  ┌─────────┼──────────┐
-                  │         │          │
-            CONTROL    AI Channel   TERMINAL
-            (ping,     (messages,   (PTY I/O)
-             config)    sessions,
-                        providers)
-                            │
-                  ┌─────────┼──────────┐
-                  │         │          │
-              Session A  Session B  Session C
-              (Claude)   (GPT-4o)   (Gemini)
-```
+### Sessions
 
-Key behaviors:
-- **One client at a time** — new connections replace old ones
-- **Session map** — routes messages to the correct `Session` instance by `sessionId`
-- **Lazy loading** — sessions are loaded from disk on first access, not on server start
-- **Confirmation wiring** — each session gets a confirm handler that sends requests to the client and awaits response (60s timeout)
-
-### Session (session.ts)
-
-Each session is an independent pi SDK Agent:
+Each task/conversation is a Session on the server. Sessions are scoped to a project.
 
 ```
 Session "sess_abc123"
-├── pi SDK Agent
-│   ├── Model: claude-sonnet-4-6 (Anthropic)
-│   ├── System Prompt: CORE_SYSTEM_PROMPT + <system-reminder> layers
-│   ├── Tools: shell, filesystem, browser, process, network
-│   └── Messages: [user, assistant, tool, ...] (in memory)
-│
-├── Compaction Engine
-│   ├── Config: { threshold: 0.8, preserveRecent: 20, toolOutputMax: 4000 }
-│   ├── State: { summary: "...", compactedCount: 42, compactionCount: 3 }
-│   └── Runs via transformContext hook on every LLM call
-│
-├── Persistence
-│   ├── Saves after each turn: messages + meta + compaction state
-│   └── Format: pi SDK message array (standard LLM format)
-│
-└── Streaming
-    ├── processMessage() is an async generator
-    ├── Yields: thinking → text (deltas) → tool_call → tool_result → done
-    └── Text deltas: tracks lastEmittedTextLength, emits only new chars
+├── pi SDK Agent (Claude, GPT-4o, Gemini, etc.)
+├── System Prompt: core + project context + instructions + preferences + memory
+├── Tools: shell, filesystem, browser, process, network, memory
+├── Messages: stored in ~/.anton/projects/{projectId}/conversations/{sessionId}/
+└── Compaction Engine (auto-summarizes at 80% context usage)
 ```
 
-### Compaction (compaction.ts)
+**Every session gets project context injected:**
+1. Project name, description, type, workspace path
+2. Project instructions (`instructions.md`)
+3. User preferences (`preferences.json`)
+4. Project summary (auto-maintained by LLM)
+5. Recent session history (last 5 sessions)
+6. Global + conversation memories
 
-Two-layer context management, inspired by Claude Code:
-
-```
-Layer 1: Tool Output Trimming
-  - Runs on every LLM call (transformContext hook)
-  - Preserves last 20 messages verbatim
-  - Truncates older tool results > 4000 tokens
-  - Silent — no events emitted
-
-Layer 2: LLM Summarization
-  - Triggers at 80% context window usage
-  - Splits: older messages | recent 20 messages
-  - Sends older to LLM for summarization
-  - Replaces older with a conversation summary message
-  - Emits compaction_start + compaction_complete events
-
-Token estimation: ~4 chars/token heuristic
-Threshold: configurable per config.yaml
-Manual trigger: /compact command
-```
-
-### Message Flow (end to end)
+## Storage Layout
 
 ```
-1. User types in desktop chat input
-2. Desktop: addMessage(user) to store → sendAiMessageToSession(text, sessionId)
-3. Connection: encodes [AI channel byte][JSON] → WebSocket.send()
-4. Server: decodes frame → routes to Session by sessionId
-5. Session: piAgent.processMessage(text)
-6. pi SDK: calls LLM → gets response → may call tools → loops
+~/.anton/                                    # Agent configuration root
+├── config.yaml                              # Providers, security, workspace root
+├── memory/                                  # Global cross-project memories
+│   └── *.md                                 # Memory files (saved by LLM)
+├── conversations/                           # Legacy global sessions
+│   └── {sessionId}/
+│       ├── meta.json
+│       └── messages.jsonl
+└── projects/
+    ├── index.json                           # Master index of all projects
+    └── {projectId}/
+        ├── project.json                     # Metadata + context.summary
+        ├── instructions.md                  # User-written project instructions
+        ├── preferences.json                 # User preferences (title + content pairs)
+        ├── conversations/                   # Project-scoped sessions
+        │   └── {sessionId}/
+        │       ├── meta.json
+        │       ├── messages.jsonl
+        │       ├── agent.json               # (if this session is an agent)
+        │       └── memory/                  # Session-scoped memories
+        ├── context/
+        │   ├── session-history.jsonl        # Summaries of completed sessions
+        │   └── notes.md                     # Legacy notes (superseded by instructions.md)
+        └── jobs/                            # Agent/job definitions
 
-   For each event:
-   7. Session: translateEvent(piEvent) → yields SessionEvent
-   8. Server: sends event to client as [AI channel][JSON]
-   9. Connection: decodes → dispatches to store handler
-   10. Store:
-       - text → appendAssistantText() (append to last assistant message)
-       - tool_call → addMessage(tool)
-       - tool_result → addMessage(tool)
-       - done → setAgentStatus('idle')
-
-11. Session: persist() after turn completes
+~/Anton/                                     # Default workspace root (configurable)
+├── my-computer/                             # Default project workspace
+│   ├── .anton.json                          # Links back to project metadata
+│   └── (files created by AI + uploaded)
+├── seo-analyser/
+│   ├── .anton.json
+│   ├── scraper.py                           # AI created
+│   └── keywords.csv                         # User uploaded
+└── my-scraper/
+    └── ...
 ```
 
-### Tool Confirmation Flow
+## Project-First Architecture
+
+### How projects work
+
+1. **Always in a project** — user is always inside a project (default = "My Computer")
+2. **Project selector** — dropdown in sidebar, shows all projects
+3. **Everything scoped** — Tasks, Memory, Files, Agents pages show data for the active project only
+4. **Context injection** — every session gets project instructions, preferences, and memory
+5. **Workspace** — each project has a real directory where files live
+
+### Project creation flow
 
 ```
-1. Session calls shell tool with "sudo rm -rf /var/log"
-2. Tool checks against security.confirmPatterns → match!
-3. Session calls confirmHandler(command, reason)
-4. Server sends: { type: "confirm", id: "c_1", command, reason }
-5. Client shows ConfirmDialog
-6. User clicks Approve/Deny
-7. Client sends: { type: "confirm_response", id: "c_1", approved: true/false }
-8. Server resolves the Promise in confirmHandler
-9. If approved: tool executes. If denied: tool returns error.
-10. 60-second timeout: auto-denies
+User clicks "+ New project"
+  → CreateProjectModal (name, description, optional workspace path)
+  → Client sends project_create message
+  → Server: createProject() → creates internal dir + workspace dir
+  → Default workspace: ~/Anton/{sanitized-name}/
+  → Custom workspace: user-provided path (any directory)
+  → Returns project to client → appears in dropdown
 ```
+
+### Default project lifecycle
+
+```
+Client connects → sends projects_list
+  → Server: ensureDefaultProject() — creates "My Computer" if missing
+  → Server returns projects list (always includes default)
+  → Client: setProjects() → auto-selects default if activeProjectId is null
+  → User always has a project active
+```
+
+## Memory Page (3 sections)
+
+### 1. Instructions
+
+Per-project rules that guide AI behavior. Stored as `instructions.md`. Editable textarea in UI. Injected into every session's system prompt as highest-priority project context.
+
+### 2. Preferences
+
+User-defined preferences stored as `preferences.json` (array of `{id, title, content, createdAt}`). Add/delete via UI. Injected into system prompt as bullet points.
+
+### 3. Chat Memories
+
+Auto-generated by the LLM's `memory` tool during conversations. Stored as `.md` files in `~/.anton/memory/` (global) or `~/.anton/conversations/{id}/memory/` (session-scoped). Fetched via `config_query` with `projectId`. Displayed with scope badges (Global / Conversation) and filter tabs.
+
+## Files Page
+
+Visual file grid showing workspace files (`project.workspacePath`). Perplexity-style cards with type icons, color coding, and file type filter.
+
+**Upload flow:**
+1. Drag-drop or click Upload
+2. Browser reads file as base64 → sends `project_file_upload` over WebSocket
+3. Server decodes → writes to `project.workspacePath/`
+4. File list refreshes
+
+**AI file access:**
+- Shell tool runs with `cwd: project.workspacePath`
+- AI can `cat`, `ls`, `python script.py` etc. — all in the workspace
+- Uploaded files and AI-created files are in the same directory
 
 ## Protocol
 
-See [SPEC.md](./SPEC.md) for the full wire protocol specification.
+### Channels
 
-Key design choices:
-- **Single WebSocket** — multiplexed via 1-byte channel prefix
-- **JSON payloads** — human-readable, debuggable, good enough for chat
-- **Base64 for PTY** — binary safety over JSON transport
-- **Stateless frames** — each frame is self-contained, no sequence numbers at the wire level
+| Byte | Channel | Purpose |
+|------|---------|---------|
+| 0x00 | CONTROL | Ping/pong, config queries, updates |
+| 0x01 | TERMINAL | PTY spawn/data/resize/close |
+| 0x02 | AI | Sessions, messages, projects, agents |
+| 0x03 | FILESYNC | Filesystem listing (for FileBrowser) |
+| 0x04 | EVENTS | Agent status, update notifications |
+
+### Key Message Types
+
+**Session management:** session_create, session_created, sessions_list, session_destroy, session_history
+
+**Project management:** project_create, projects_list, project_update, project_delete
+
+**Project context:** project_instructions_get/save, project_preferences_get/add/delete, project_context_update
+
+**Project files:** project_file_upload, project_file_text_create, project_file_delete, project_files_list
+
+**Agents:** agent_create, agents_list, agent_action (start/stop/delete/pause/resume)
+
+**Config:** config_query (providers, defaults, security, system_prompt, memories)
+
+## Context Injection (System Prompt Layers)
+
+```
+Layer 1: Core system prompt (personality, capabilities, safety)
+Layer 2: Workspace rules (user-configured in config.yaml)
+Layer 3: Project context (buildProjectContext)
+         ├── Project name, description, type, workspace path
+         ├── instructions.md content
+         ├── preferences (as bullet list)
+         ├── Project summary (auto-maintained)
+         ├── Legacy notes (if no instructions.md)
+         └── Recent session history (last 5)
+Layer 4: Memory (global + conversation-scoped memories)
+Layer 5: Agent instructions (if agent session)
+Layer 6: Project type guidelines (code/data/document prompts)
+Layer 7: Current date, model info
+```
 
 ## Security Model
 
 1. **Auth**: Shared secret token (`ak_<hex>`) generated on agent install
 2. **TLS**: Self-signed cert at `~/.anton/certs/`, port 9877
-3. **Confirmation**: Dangerous patterns require client approval (60s timeout)
+3. **Confirmation**: Dangerous shell patterns require client approval (60s timeout)
 4. **Forbidden paths**: Agent cannot read/write sensitive files
-5. **Network allowlist**: Sandboxed commands restricted to approved domains
-6. **One client**: Only one active connection at a time — prevents conflicts
-7. **API key isolation**: Client-provided keys are session-scoped and never persisted
+5. **One client**: Only one active connection at a time
+6. **Default project delete protection**: `isDefault` projects cannot be deleted
 
 ## Client Architecture
 
-### Desktop (Tauri v2)
-
 ```
-React 19 + Tailwind 4 + Zustand 5
+React 19 + Zustand + WebSocket
 
 App.tsx
 ├── Connect screen (if not connected)
-│   ├── New connection form (host, token, name, TLS toggle)
-│   └── Saved machines list (from localStorage)
+│   ├── Username/password auth
+│   └── Direct IP connection
 │
 ├── Connected workspace
-│   ├── Sidebar
-│   │   ├── New task button (creates session on server)
-│   │   ├── Conversation list (linked to server sessions via sessionId)
-│   │   └── Skills library
+│   ├── Mode toggle: [Chat] [Computer]
 │   │
-│   ├── AgentChat
-│   │   ├── ModelSelector dropdown (providers with API keys)
-│   │   ├── MessageList (auto-scroll, scroll button)
-│   │   ├── ChatInput (auto-expanding, slash commands)
-│   │   └── ConfirmDialog (for dangerous commands)
+│   ├── Sidebar (Computer mode)
+│   │   ├── Project selector dropdown
+│   │   ├── + New task button
+│   │   ├── Tasks (project-scoped conversation list)
+│   │   ├── Memory (instructions + preferences + memories)
+│   │   ├── Agents (project-scoped agent list)
+│   │   ├── Files (workspace file grid with upload)
+│   │   ├── Terminal (PTY in project workspace)
+│   │   ├── Connectors (opens settings)
+│   │   └── Skills
 │   │
-│   └── Terminal (xterm.js, base64 PTY data)
-│
-└── Connection events → Zustand store → React re-renders
+│   ├── Views
+│   │   ├── HomeView (TaskListView — project-scoped)
+│   │   ├── AgentChat (conversation with AI)
+│   │   ├── MemoryView (instructions + preferences + memories)
+│   │   ├── AgentsView (agent list + detail + run logs)
+│   │   ├── ProjectFilesView (visual file grid)
+│   │   ├── Terminal + FileBrowser (scoped to workspace)
+│   │   └── DeveloperView (system prompt viewer)
+│   │
+│   └── Store (Zustand)
+│       ├── projects, activeProjectId
+│       ├── conversations (filtered by project)
+│       ├── projectInstructions, projectPreferences
+│       ├── memories, memoriesLoading
+│       ├── projectFiles, projectFilesLoading
+│       ├── projectAgents, projectAgentsLoading
+│       └── sessions, currentSessionId
 ```
 
-### CLI (Ink)
+## Package Structure
 
 ```
-Keybindings:
-  Ctrl+P  Provider panel (manage API keys)
-  Ctrl+M  Model picker (switch model)
-  Ctrl+S  Session list (view/switch/create)
-  Ctrl+Q  Quit
-
-Same protocol, same session management, text-only interface.
-Auto-resumes most recent session on connect.
+packages/
+├── protocol/          # Shared types, message definitions, codec
+├── agent-config/      # Project/session persistence, config loading
+├── agent-core/        # Session runtime, tools, context, memory
+├── agent-server/      # WebSocket server, message routing, PTY
+├── desktop/           # Tauri v2 desktop app (React + Zustand)
+└── cli/               # Terminal client (Ink TUI)
 ```
 
-## Tool Calling
+## Key Files
 
-### How the Agent Loop Works
-
-The agent uses pi SDK's agentic loop. When a user sends a message, pi SDK handles the entire think → act → observe cycle:
-
-```
-User message
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  pi SDK Agent Loop                                              │
-│                                                                 │
-│  1. Build prompt: system prompt + message history + user msg    │
-│  2. Call LLM (Claude/GPT/Gemini/etc)                           │
-│  3. LLM responds with text AND/OR tool_use blocks              │
-│                                                                 │
-│  If tool_use in response:                                       │
-│    4. beforeToolCall hook → confirmation check                  │
-│    5. tool.execute(toolCallId, params) → run the tool           │
-│    6. Feed tool result back to LLM as tool_result message       │
-│    7. GOTO step 2 (LLM may call more tools or produce text)    │
-│                                                                 │
-│  If no tool_use (just text):                                    │
-│    8. Turn complete → yield done event                          │
-│                                                                 │
-│  Events emitted at each step:                                   │
-│    message_update → text deltas                                 │
-│    tool_execution_start → tool_call event                       │
-│    tool_execution_end → tool_result event                       │
-│    turn_end → token usage                                       │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-The LLM decides when and which tools to call. pi SDK handles parsing the response, executing tools, and feeding results back. The session just translates events and manages persistence.
-
-### Tool Definitions
-
-Tools are defined in `packages/agent-core/src/agent.ts` using pi SDK's schema system:
-
-```typescript
-{
-  name: 'shell',
-  label: 'Shell',
-  description: 'Execute a shell command on the server',
-  parameters: Type.Object({
-    command: Type.String({ description: 'Command to execute' }),
-    timeout_seconds: Type.Optional(Type.Number()),
-    working_directory: Type.Optional(Type.String()),
-  }),
-  async execute(toolCallId, params) {
-    const output = await executeShell(params, config)
-    return { content: [{ type: 'text', text: output }] }
-  },
-}
-```
-
-Each tool has a name, description, typed parameter schema, and an async `execute` function. pi SDK passes these to the LLM as function definitions and calls `execute` when the LLM requests a tool.
-
-### Available Tools
-
-| Tool | Operations | What it does |
-|------|-----------|-------------|
-| **shell** | execute | Run any shell command with timeout, streaming output |
-| **filesystem** | read, write, list, search, tree | Full file operations on the server |
-| **browser** | fetch, screenshot, extract | HTTP requests, web scraping (curl-based) |
-| **process** | list, kill, info | View and manage running processes |
-| **network** | ports, curl, dns, ping | Port scanning, HTTP calls, DNS lookups |
-
-### Tool Results in the LLM Context
-
-Tool results become part of the message history in the standard LLM format:
-
-```json
-[
-  { "role": "user", "content": [{ "type": "text", "text": "install nginx" }] },
-  { "role": "assistant", "content": [
-    { "type": "text", "text": "I'll install nginx for you." },
-    { "type": "tool_use", "id": "tc_1", "name": "shell", "input": { "command": "apt install -y nginx" } }
-  ]},
-  { "role": "tool", "tool_use_id": "tc_1", "content": [
-    { "type": "text", "text": "Reading package lists... Done\nSetting up nginx..." }
-  ]},
-  { "role": "assistant", "content": [
-    { "type": "text", "text": "Nginx is installed and running." }
-  ]}
-]
-```
-
-This history is:
-- Kept in memory by pi SDK during the session
-- Persisted to disk after each turn (the full array)
-- Subject to compaction when it gets too long (tool outputs are trimmed first)
-
-### Confirmation Flow (Dangerous Commands)
-
-Only shell commands are subject to confirmation. The flow:
-
-```
-pi SDK: beforeToolCall(shell, { command: "sudo rm -rf /tmp" })
-    │
-    ▼
-Session: Does "sudo rm -rf /tmp" match any confirmPattern?
-    │    Patterns: ["rm -rf", "sudo", "shutdown", "reboot", "mkfs", "dd if="]
-    │
-    ├─ NO match → tool executes immediately
-    │
-    ├─ YES match → call confirmHandler(command, reason)
-    │    │
-    │    ▼
-    │  Server: send { type: "confirm", id: "c_1", command, reason } to client
-    │    │
-    │    ▼
-    │  Client: shows ConfirmDialog ("Agent wants to run: sudo rm -rf /tmp")
-    │    │
-    │    ├─ User clicks Approve → { type: "confirm_response", id: "c_1", approved: true }
-    │    │    → tool executes
-    │    │
-    │    ├─ User clicks Deny → { type: "confirm_response", id: "c_1", approved: false }
-    │    │    → tool blocked, LLM told "Command denied by user"
-    │    │
-    │    └─ 60s timeout → auto-deny
-    │         → tool blocked
-```
-
-The confirmation is a blocking `Promise` — the entire agent loop pauses until the user responds or the timeout fires.
-
-### Tools Are Stateless
-
-All tools receive the `AgentConfig` at creation time (for security rules) but hold no state between calls. The pi SDK manages the conversation state and tool results.
-
-## Sidecar (Health & Status Service)
-
-A lightweight Go binary running as a systemd service on each VM. Provides health checks, status, and system telemetry. Exposed via Caddy at `/_anton/*`.
-
-### Architecture
-
-```
-Internet → Caddy (:443 TLS)
-              ├── /_anton/* → sidecar (127.0.0.1:9878)
-              └── /*        → agent   (127.0.0.1:9876)
-```
-
-The sidecar is the single source of truth for VM status. antoncomputer.in polls it directly instead of relying on callbacks.
-
-### Endpoints
-
-| Endpoint | Auth | Purpose |
-|----------|------|---------|
-| `GET /_anton/health` | None (rate limited) | Liveness probe: `{ status, uptime }` |
-| `GET /_anton/status` | None (rate limited) | Full VM status: agent, caddy, DNS, TLS, system metrics |
-| `* /_anton/*` (future) | Bearer ANTON_TOKEN | Reserved for control endpoints (restart, logs, exec) |
-
-### Status Response
-
-```json
-{
-  "status": "ready | provisioning | error",
-  "agent": { "healthy": true },
-  "caddy": { "running": true },
-  "dns": { "resolved": true, "ip": "103.x.x.x" },
-  "tls": { "valid": true },
-  "system": {
-    "cpuPercent": 12,
-    "memUsedMB": 512,
-    "memTotalMB": 4096,
-    "diskUsedGB": 3,
-    "diskTotalGB": 10,
-    "uptimeSeconds": 3600
-  },
-  "domain": "username.antoncomputer.in",
-  "version": "1.0.0"
-}
-```
-
-Top-level `status` is derived: `"ready"` only when agent healthy + caddy running + DNS resolved + TLS valid.
-
-### Security
-
-- Sidecar listens on `127.0.0.1:9878` only (never directly exposed)
-- Caddy provides TLS for all `/_anton/*` traffic
-- Public endpoints rate-limited (60/min health, 30/min status)
-- Protected endpoints (future) require Bearer token (ANTON_TOKEN)
-- No sensitive data exposed on public endpoints
-
-### Provisioning Flow
-
-```
-1. VM boots → cloud-init installs agent + sidecar + Caddy
-2. Sidecar starts first (reports "provisioning")
-3. Caddy starts → TLS provisioned → sidecar becomes reachable via HTTPS
-4. Agent starts → sidecar reports "ready"
-5. antoncomputer.in polls https://{domain}/_anton/status every 3s
-6. Frontend shows status progression: provisioning → dns → caddy → agent → running
-```
-
-### Project Structure
-
-```
-sidecar/
-├── main.go                     # Entry point
-├── go.mod
-├── Makefile                    # Cross-compile targets
-└── internal/
-    ├── config/config.go        # Env: ANTON_TOKEN, AGENT_PORT, DOMAIN
-    ├── server/server.go        # Fiber HTTP server
-    ├── middleware/
-    │   ├── auth.go             # Bearer token auth
-    │   └── ratelimit.go        # Token bucket rate limiter
-    ├── handlers/
-    │   ├── health.go           # GET /health
-    │   └── status.go           # GET /status
-    └── checks/
-        ├── agent.go            # Agent health check (localhost:9876/health)
-        ├── caddy.go            # systemctl is-active caddy
-        ├── dns.go              # net.LookupHost
-        ├── tls.go              # TLS handshake check
-        └── system.go           # CPU, RAM, disk, uptime
-```
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Agent runtime | Node.js 22 + TypeScript |
-| Sidecar | Go + Fiber (health, status, telemetry) |
-| AI engine | pi SDK (`@mariozechner/pi-agent-core` + `pi-ai`) |
-| Desktop app | Tauri v2 (Rust) + React 19 |
-| Desktop UI | Tailwind 4 + Framer Motion + Shiki + react-markdown |
-| CLI | Ink (React for terminals) |
-| Terminal | xterm.js 5.5 |
-| State | Zustand 5 (desktop), in-memory (CLI) |
-| Protocol | Custom binary framing over WebSocket |
-| Config | YAML (`~/.anton/config.yaml`) |
-| Sessions | JSON + pi SDK message format on disk |
+| Purpose | File |
+|---------|------|
+| Project types | `packages/protocol/src/projects.ts` |
+| Message types | `packages/protocol/src/messages.ts` |
+| Project CRUD + instructions + preferences | `packages/agent-config/src/projects.ts` |
+| Context injection | `packages/agent-config/src/projects.ts` → `buildProjectContext()` |
+| Memory tool | `packages/agent-core/src/tools/memory.ts` |
+| System prompt assembly | `packages/agent-core/src/session.ts` → `getSystemPrompt()` |
+| Server message routing | `packages/agent-server/src/server.ts` |
+| Client store | `packages/desktop/src/lib/store.ts` |
+| Connection layer | `packages/desktop/src/lib/connection.ts` |
+| Memory page | `packages/desktop/src/components/memory/MemoryView.tsx` |
+| Files page | `packages/desktop/src/components/files/ProjectFilesView.tsx` |
+| Sidebar + project selector | `packages/desktop/src/components/Sidebar.tsx` |
+| Task list (project-scoped) | `packages/desktop/src/components/home/TaskListView.tsx` |

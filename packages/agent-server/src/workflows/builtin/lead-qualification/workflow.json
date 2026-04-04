@@ -1,0 +1,120 @@
+{
+  "id": "lead-qualification",
+  "name": "LinkedIn Lead Qualification",
+  "description": "Score incoming leads from email and web forms, research prospects deeply, route qualified leads to your tracking sheet, and auto-send personalized outreach.",
+  "version": "1.0.0",
+  "author": "anton",
+  "category": "SMB",
+
+  "whenToUse": "Use when the user mentions: lead qualification, lead scoring, outreach automation, qualifying leads, finding leads, lead management, SDR automation, cold outreach, sales pipeline, ICP scoring, scoring prospects, automating email outreach, tracking leads, lead enrichment, sales automation, prospecting, B2B outreach, inbound leads, form submissions, contact scoring. Also suggest when user asks about automating their sales process, managing incoming inquiries, or sending personalized cold emails at scale.",
+
+  "connectors": {
+    "required": ["gmail", "google-sheets"],
+    "optional": ["slack", "exa-search"]
+  },
+
+  "runtime": {
+    "python": true,
+    "packages": ["requests"]
+  },
+
+  "inputs": [
+    {
+      "id": "target_sheet",
+      "type": "text",
+      "label": "Google Sheets URL for lead tracking",
+      "description": "We'll set up columns for name, email, company, score, status, and more",
+      "required": true
+    },
+    {
+      "id": "icp_description",
+      "type": "textarea",
+      "label": "Describe your ideal customer",
+      "description": "Industry, company size, role, pain points — the more specific, the better the scoring",
+      "required": true
+    },
+    {
+      "id": "lead_sources",
+      "type": "textarea",
+      "label": "Where do your leads come from?",
+      "description": "e.g. Typeform submissions, website contact form, Webflow forms. Include sender emails if known.",
+      "required": true
+    },
+    {
+      "id": "score_threshold",
+      "type": "number",
+      "label": "Minimum score to auto-send outreach (1-100)",
+      "description": "Leads scoring above this get personalized outreach. Default: 70",
+      "default": 70,
+      "required": false
+    },
+    {
+      "id": "your_name",
+      "type": "text",
+      "label": "Your name (for outreach emails)",
+      "required": true
+    },
+    {
+      "id": "your_company",
+      "type": "text",
+      "label": "Your company name",
+      "required": true
+    },
+    {
+      "id": "your_value_prop",
+      "type": "textarea",
+      "label": "What does your company do? (one paragraph)",
+      "description": "Used to personalize outreach — explain what you offer and who benefits",
+      "required": true
+    },
+    {
+      "id": "apollo_api_key",
+      "type": "secret",
+      "label": "Apollo.io API key (optional, for richer lead enrichment)",
+      "description": "Free tier works. Get yours at app.apollo.io/settings/integrations/api",
+      "required": false
+    },
+    {
+      "id": "notification_channel",
+      "type": "text",
+      "label": "Slack channel for qualified lead alerts (optional)",
+      "description": "e.g. #leads or #sales — leave empty to skip Slack notifications",
+      "required": false
+    }
+  ],
+
+  "trigger": {
+    "type": "schedule",
+    "schedule": "0 */2 * * *",
+    "description": "Checks for new leads every 2 hours"
+  },
+
+  "bootstrap": {
+    "file": "agents/bootstrap.md",
+    "description": "Interactive setup: I'll help you configure lead scoring, test your connections, and do a dry run."
+  },
+
+  "agents": {
+    "orchestrator": {
+      "file": "agents/orchestrator.md",
+      "role": "main",
+      "connectors": ["gmail", "google-sheets", "slack", "exa-search"],
+      "scripts": ["scripts/enrich-lead.py", "scripts/compute-score.py", "scripts/validate-email.py"]
+    },
+    "lead-scorer": {
+      "file": "agents/lead-scorer.md",
+      "role": "sub"
+    },
+    "outreach-writer": {
+      "file": "agents/outreach-writer.md",
+      "role": "sub"
+    }
+  },
+
+  "resources": [
+    "templates/scoring-rubric.md",
+    "templates/email-patterns.md",
+    "templates/research-checklist.md",
+    "templates/crm-field-mapping.md"
+  ]
+}

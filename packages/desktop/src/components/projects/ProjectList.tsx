@@ -1,26 +1,19 @@
 import { motion } from 'framer-motion'
 import { FolderOpen, MessageSquare, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { connection } from '../../lib/connection.js'
 import { useStore } from '../../lib/store.js'
-import { CreateProjectModal } from './CreateProjectModal.js'
 
 export function ProjectList() {
   const projects = useStore((s) => s.projects)
   const setActiveProject = useStore((s) => s.setActiveProject)
-  const [showCreate, setShowCreate] = useState(false)
+  const setActiveView = useStore((s) => s.setActiveView)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
-
-  // Listen for sidebar "New project" button
-  useEffect(() => {
-    const handler = () => setShowCreate(true)
-    window.addEventListener('anton:create-project', handler)
-    return () => window.removeEventListener('anton:create-project', handler)
-  }, [])
 
   const handleOpenProject = (id: string) => {
     setActiveProject(id)
     connection.sendProjectSessionsList(id)
+    setActiveView('home')
   }
 
   const handleDeleteProject = () => {
@@ -59,12 +52,11 @@ export function ProjectList() {
             Organize your work into projects. Each project has its own sessions, agents, and
             context.
           </p>
-          <button type="button" className="projects-empty__cta" onClick={() => setShowCreate(true)}>
+          <button type="button" className="projects-empty__cta" onClick={() => window.dispatchEvent(new CustomEvent('anton:create-project'))}>
             <Plus size={16} strokeWidth={1.5} />
             <span>Create a project</span>
           </button>
         </motion.div>
-        {showCreate && <CreateProjectModal onClose={() => setShowCreate(false)} />}
       </div>
     )
   }
@@ -83,7 +75,7 @@ export function ProjectList() {
           <button
             type="button"
             className="projects-page__new-btn"
-            onClick={() => setShowCreate(true)}
+            onClick={() => window.dispatchEvent(new CustomEvent('anton:create-project'))}
           >
             <Plus size={14} strokeWidth={1.5} />
             <span>New Project</span>
@@ -92,7 +84,7 @@ export function ProjectList() {
 
         {/* Project grid */}
         <div className="projects-page__grid">
-          {projects.map((project, i) => (
+          {[...projects].sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0)).map((project, i) => (
             <motion.button
               key={project.id}
               type="button"
@@ -106,17 +98,19 @@ export function ProjectList() {
                 <div className="project-card__icon" style={{ backgroundColor: project.color }}>
                   {project.icon}
                 </div>
-                <button
-                  type="button"
-                  className="project-card__delete"
-                  data-tooltip="Delete project"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setDeleteTarget(project.id)
-                  }}
-                >
-                  <Trash2 size={13} strokeWidth={1.5} />
-                </button>
+                {!project.isDefault && (
+                  <button
+                    type="button"
+                    className="project-card__delete"
+                    data-tooltip="Delete project"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDeleteTarget(project.id)
+                    }}
+                  >
+                    <Trash2 size={13} strokeWidth={1.5} />
+                  </button>
+                )}
               </div>
               <div className="project-card__body">
                 <span className="project-card__name">{project.name}</span>
@@ -138,15 +132,13 @@ export function ProjectList() {
           <button
             type="button"
             className="project-card project-card--new"
-            onClick={() => setShowCreate(true)}
+            onClick={() => window.dispatchEvent(new CustomEvent('anton:create-project'))}
           >
             <Plus size={20} strokeWidth={1.5} />
             <span>New Project</span>
           </button>
         </div>
       </motion.div>
-
-      {showCreate && <CreateProjectModal onClose={() => setShowCreate(false)} />}
 
       {deleteProject && (
         <div

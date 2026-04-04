@@ -49,7 +49,8 @@ function TurnStats() {
 
 function TaskChecklistInline() {
   const currentTasks = useStore((s) => s.currentTasks)
-  if (currentTasks.length === 0) return null
+  const tasksHidden = useStore((s) => s.tasksHidden)
+  if (currentTasks.length === 0 || tasksHidden) return null
   return <TaskChecklist tasks={currentTasks} />
 }
 

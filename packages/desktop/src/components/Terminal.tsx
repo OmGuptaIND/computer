@@ -4,6 +4,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { useEffect, useRef } from 'react'
 import { connection } from '../lib/connection.js'
+import { useStore } from '../lib/store.js'
 import '@xterm/xterm/css/xterm.css'
 
 const TERMINAL_ID = 't1'
@@ -12,6 +13,9 @@ export function Terminal() {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<XTerm | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const activeProjectId = useStore((s) => s.activeProjectId)
+  const projects = useStore((s) => s.projects)
+  const activeProject = projects.find((p) => p.id === activeProjectId)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -60,7 +64,7 @@ export function Terminal() {
     fitRef.current = fitAddon
 
     const { cols, rows } = term
-    connection.sendTerminalSpawn(TERMINAL_ID, cols, rows)
+    connection.sendTerminalSpawn(TERMINAL_ID, cols, rows, activeProject?.workspacePath)
 
     term.onData((data) => {
       connection.sendTerminalData(TERMINAL_ID, btoa(data))

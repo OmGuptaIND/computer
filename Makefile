@@ -1,5 +1,8 @@
 # ──────────────────────────────────────────────────────────────────
-# Anton Agent - Deployment Makefile
+# Anton Agent - Deployment (repo-clone model)
+#
+# All deployment uses the same model: the full repo lives on the
+# server at /opt/anton. The agent runs via `node dist/index.js`.
 # ──────────────────────────────────────────────────────────────────
 
 ANSIBLE_DIR := deploy/ansible
@@ -7,10 +10,8 @@ PLAYBOOK   := $(ANSIBLE_DIR)/playbook.yml
 INVENTORY  := $(ANSIBLE_DIR)/inventory.ini
 EXTRA_ARGS ?=
 REPO_ROOT  := $(shell pwd)
+REMOTE_REPO := /opt/anton
 
-# Pass API key:        make deploy API_KEY=sk-ant-...
-# Deploy a branch:     make deploy BRANCH=dev
-# Target one host:     make deploy HOST=agent1
 ifdef API_KEY
   EXTRA_ARGS += -e "anthropic_api_key=$(API_KEY)"
 endif
@@ -23,7 +24,7 @@ endif
 
 # ── Commands ─────────────────────────────────────────────────────
 
-.PHONY: deploy update sync release preflight install-version verify status logs restart stop ping check setup help
+.PHONY: sync deploy update verify status logs restart stop ping check setup release preflight help
 
 ## preflight: Verify all CI build steps pass locally before releasing
 preflight:
@@ -49,132 +50,79 @@ release:
 	echo ""; \
 	./scripts/release.sh "$$VERSION" --push
 
-## deploy: Full deploy to all hosts in inventory (or HOST=name for one)
+## deploy: Full deploy to all hosts via Ansible playbook
 deploy: _check-ansible
 	ansible-playbook $(PLAYBOOK) -i $(INVENTORY) $(LIMIT) $(EXTRA_ARGS) -v
 
-## update: Pull latest from remote repo, rebuild, and restart on all hosts
+## update: Pull latest + rebuild on all hosts (via Ansible)
 update: _check-ansible
 	ansible-playbook $(PLAYBOOK) -i $(INVENTORY) $(LIMIT) $(EXTRA_ARGS) --tags build -v
 
-## sync: Build locally (Docker for linux binary) → deploy agent + sidecar + CLI to VPS → restart
+## sync: Build locally → rsync to VPS → restart (fast dev deploy, no git push needed)
 sync: _check-ansible
-	@echo ""
-	@echo "  Building and deploying to VPS..."
-	@echo "  ────────────────────────────────"
-	@echo ""
 	@GIT_HASH=$$(git rev-parse --short HEAD 2>/dev/null || echo "dev"); \
 	PKG_VERSION=$$(node -e "console.log(JSON.parse(require('fs').readFileSync('$(REPO_ROOT)/package.json','utf8')).version)" 2>/dev/null || echo "0.1.0"); \
-	echo "  Version: $$PKG_VERSION ($$GIT_HASH)"; \
 	echo ""; \
-	echo "  [1/4] Building agent bundle..."; \
-	./scripts/bundle.sh; \
+	echo "  ┌─────────────────────────────────────┐"; \
+	echo "  │  sync → v$$PKG_VERSION ($$GIT_HASH)"; \
+	echo "  └─────────────────────────────────────┘"; \
 	echo ""; \
-	echo "  [2/4] Building SEA binary via Docker (linux-x64)..."; \
-	echo "    Bundling CJS for SEA..."; \
-	AGENT_EXTERNALS=$$(node scripts/esbuild.config.js agent-externals); \
-	npx esbuild packages/agent-server/dist/index.js \
-		--bundle --platform=node --target=node22 --format=cjs \
-		--outfile=dist/agent-sea-bundle.js \
-		$$AGENT_EXTERNALS \
-		--define:__AGENT_VERSION__=\"$$PKG_VERSION\" 2>&1 | tail -3; \
-	docker run --rm --platform linux/amd64 \
-		-v "$(REPO_ROOT)/dist:/build" \
-		node:22-slim bash -c '\
-			set -e && \
-			cd /build && \
-			echo "    Creating SEA blob..." && \
-			printf "{\"main\":\"/build/agent-sea-bundle.js\",\"output\":\"/build/sea-prep.blob\",\"disableExperimentalSEAWarning\":true,\"useSnapshot\":false,\"useCodeCache\":true}" > sea-config.json && \
-			node --experimental-sea-config sea-config.json && \
-			echo "    Copying node binary..." && \
-			cp $$(which node) anton-agent-linux-x64 && \
-			echo "    Injecting SEA blob (this takes a moment)..." && \
-			npx -y postject@1.0.0-alpha.6 anton-agent-linux-x64 NODE_SEA_BLOB sea-prep.blob \
-				--sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 2>&1 && \
-			chmod +x anton-agent-linux-x64 && \
-			rm -f sea-config.json sea-prep.blob agent-sea-bundle.js && \
-			ls -lh anton-agent-linux-x64 && \
-			echo "    SEA binary built ✓"'; \
+	echo "  ○ Building locally..."; \
+	pnpm -r build 2>&1 | tail -3; \
+	echo "  ✓ Build complete"; \
 	echo ""; \
-	echo "  [3/4] Building CLI bundle..."; \
-	./scripts/build-cli.sh; \
-	echo ""; \
-	echo "  [4/4] Building sidecar (linux-amd64)..."; \
-	cd "$(REPO_ROOT)/sidecar" && GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.version=$$PKG_VERSION" -o /tmp/anton-sidecar . && cd "$(REPO_ROOT)"; \
-	echo ""; \
-	ansible all -i $(INVENTORY) $(LIMIT) --list-hosts 2>/dev/null | tail -n +2 | sed 's/^ *//' | while read host; do \
-		IP=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_host','$$host'))" 2>/dev/null || echo "$$host"); \
-		USER=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_user','anton'))" 2>/dev/null || echo "anton"); \
-		KEY=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_ssh_private_key_file',''))" 2>/dev/null || echo ""); \
-		SSH_OPTS="-o StrictHostKeyChecking=no"; \
-		SCP_OPTS="-o StrictHostKeyChecking=no"; \
-		if [ -n "$$KEY" ]; then SSH_OPTS="$$SSH_OPTS -i $$KEY"; SCP_OPTS="$$SCP_OPTS -i $$KEY"; fi; \
-		echo "  → $$host ($$IP)"; \
-		echo "    Uploading agent binary..."; \
-		scp $$SCP_OPTS dist/anton-agent-linux-x64 "$$USER@$$IP:/tmp/anton-agent-new"; \
-		echo "    Uploading sidecar..."; \
-		scp $$SCP_OPTS /tmp/anton-sidecar "$$USER@$$IP:/tmp/anton-sidecar"; \
-		echo "    Uploading CLI..."; \
-		scp $$SCP_OPTS dist/anton-cli.mjs "$$USER@$$IP:/tmp/anton-cli.mjs"; \
-		echo "    Installing..."; \
-		ssh $$SSH_OPTS "$$USER@$$IP" "\
-			sudo mv /tmp/anton-agent-new /usr/local/bin/anton-agent && \
-			sudo chmod +x /usr/local/bin/anton-agent && \
-			sudo mv /tmp/anton-sidecar /usr/local/bin/anton-sidecar && \
-			sudo chmod +x /usr/local/bin/anton-sidecar && \
-			sudo mv /tmp/anton-cli.mjs /home/anton/.anton/anton-cli.mjs && \
-			sudo chmod +x /home/anton/.anton/anton-cli.mjs && \
-			sudo chown anton:anton /home/anton/.anton/anton-cli.mjs && \
-			sudo -u anton bash -c \"echo '{\\\"version\\\": \\\"$$PKG_VERSION\\\", \\\"gitHash\\\": \\\"$$GIT_HASH\\\", \\\"deployedAt\\\": \\\"$$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\", \\\"deployedBy\\\": \\\"sync\\\"}' > /home/anton/.anton/version.json\" && \
-			sudo systemctl restart anton-agent 2>/dev/null || true && \
-			sudo systemctl restart anton-sidecar 2>/dev/null || true"; \
-		echo "  → $$host done ✓"; \
+	grep -E '^\w+\s+ansible_host=' $(INVENTORY) | while read line; do \
+		host=$$(echo "$$line" | awk '{print $$1}'); \
+		IP=$$(echo "$$line" | sed -n 's/.*ansible_host=\([^ ]*\).*/\1/p'); \
+		USER=$$(echo "$$line" | sed -n 's/.*ansible_user=\([^ ]*\).*/\1/p'); \
+		USER=$${USER:-anton}; \
+		KEY=$$(echo "$$line" | sed -n 's/.*ansible_ssh_private_key_file=\([^ ]*\).*/\1/p'); \
+		KEY=$$(eval echo "$$KEY"); \
+		SSH_KEY_OPT=""; if [ -n "$$KEY" ]; then SSH_KEY_OPT="-i $$KEY"; fi; \
+		SSH_OPTS="-o StrictHostKeyChecking=no $$SSH_KEY_OPT"; \
+		echo "  ── $$host ($$IP) ──"; \
+		echo "  ○ Preparing remote directory..."; \
+		ssh $$SSH_OPTS "$$USER@$$IP" "sudo mkdir -p $(REMOTE_REPO) && sudo chown -R anton:anton $(REMOTE_REPO)" 2>&1; \
+		echo "  ○ Rsyncing code + dependencies..."; \
+		rsync -az --delete \
+			--exclude='.git' \
+			--exclude='.DS_Store' \
+			--exclude='.turbo' \
+			--exclude='packages/desktop' \
+			--rsync-path="sudo -u anton rsync" \
+			-e "ssh $$SSH_OPTS" \
+			"$(REPO_ROOT)/" "$$USER@$$IP:$(REMOTE_REPO)/" 2>&1; \
+		echo "  ○ Writing systemd service..."; \
+		ssh $$SSH_OPTS "$$USER@$$IP" "printf '[Unit]\nDescription=Anton Agent\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nUser=anton\nGroup=anton\nEnvironmentFile=/home/anton/.anton/agent.env\nWorkingDirectory=$(REMOTE_REPO)\nExecStart=/usr/bin/node $(REMOTE_REPO)/packages/agent-server/dist/index.js\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n' | sudo tee /etc/systemd/system/anton-agent.service > /dev/null"; \
+		echo "  ○ Writing version info..."; \
+		ssh $$SSH_OPTS "$$USER@$$IP" "sudo -u anton bash -c \"echo '{\\\"version\\\": \\\"$$PKG_VERSION\\\", \\\"gitHash\\\": \\\"$$GIT_HASH\\\", \\\"deployedAt\\\": \\\"$$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\", \\\"deployedBy\\\": \\\"sync\\\"}' > /home/anton/.anton/version.json\""; \
+		echo "  ○ Restarting service..."; \
+		ssh $$SSH_OPTS "$$USER@$$IP" "sudo systemctl daemon-reload && sudo systemctl restart anton-agent"; \
+		sleep 2; \
+		RUNNING=$$(ssh $$SSH_OPTS "$$USER@$$IP" "systemctl is-active anton-agent 2>/dev/null" || echo "failed"); \
+		if [ "$$RUNNING" = "active" ]; then \
+			echo "  ✓ anton-agent is running"; \
+		else \
+			echo "  ✗ anton-agent FAILED to start"; \
+			ssh $$SSH_OPTS "$$USER@$$IP" "sudo journalctl -u anton-agent --no-pager -n 15" 2>/dev/null; \
+		fi; \
 		echo ""; \
 	done
-	@rm -f /tmp/anton-sidecar
-	@echo "  Sync complete. Run 'make verify' to check."
+	@echo "  Done. Run 'make verify' to check."
 	@echo ""
 
-## install-version: Install a specific release version on VPS to test auto-updates (VERSION=1.0.28)
-install-version: _check-ansible
-ifndef VERSION
-	$(error VERSION is required. Usage: make install-version VERSION=1.0.28)
-endif
-	@echo ""
-	@echo "  Installing anton-agent v$(VERSION) on VPS..."
-	@echo "  ─────────────────────────────────────────────"
-	@echo ""
-	@DOWNLOAD_URL="https://github.com/OmGuptaIND/computer/releases/download/v$(VERSION)/anton-agent-linux-x64" && \
-	echo "  → Download URL: $$DOWNLOAD_URL" && \
-	ansible all -i $(INVENTORY) $(LIMIT) --list-hosts 2>/dev/null | tail -n +2 | sed 's/^ *//' | while read host; do \
-		IP=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_host','$$host'))" 2>/dev/null || echo "$$host"); \
-		USER=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_user','anton'))" 2>/dev/null || echo "anton"); \
-		KEY=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_ssh_private_key_file',''))" 2>/dev/null || echo ""); \
-		SSH_OPTS="-o StrictHostKeyChecking=no"; \
-		if [ -n "$$KEY" ]; then SSH_OPTS="$$SSH_OPTS -i $$KEY"; fi; \
-		echo "  → Downloading v$(VERSION) on $$host ($$IP)..."; \
-		ssh $$SSH_OPTS "$$USER@$$IP" "\
-			curl -fSL '$$DOWNLOAD_URL' -o /tmp/anton-agent-new && \
-			sudo mv /tmp/anton-agent-new /usr/local/bin/anton-agent && \
-			sudo chmod +x /usr/local/bin/anton-agent && \
-			sudo -u anton bash -c \"echo '{\\\"version\\\": \\\"$(VERSION)\\\", \\\"gitHash\\\": \\\"downgraded\\\", \\\"deployedAt\\\": \\\"$$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)\\\", \\\"deployedBy\\\": \\\"install-version\\\"}' > /home/anton/.anton/version.json\" && \
-			sudo systemctl restart anton-agent && \
-			echo 'Installed and restarted.'"; \
-		echo "  → $$host done ✓ (v$(VERSION))"; \
-		echo ""; \
-	done
-	@echo "  Done. Run 'make verify' to confirm version."
-	@echo ""
-
-## verify: Health check across all hosts (or HOST=name for one)
+## verify: Health check across all hosts
 verify: _check-ansible
 	@echo ""
-	@ansible all -i $(INVENTORY) $(LIMIT) --list-hosts 2>/dev/null | tail -n +2 | sed 's/^ *//' | while read host; do \
-		IP=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('ansible_host','$$host'))" 2>/dev/null || echo "$$host"); \
-		USER=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_user','anton'))" 2>/dev/null || echo "anton"); \
-		KEY=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_ssh_private_key_file',''))" 2>/dev/null || echo ""); \
-		SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=5"; \
-		if [ -n "$$KEY" ]; then SSH_OPTS="$$SSH_OPTS -i $$KEY"; fi; \
+	@grep -E '^\w+\s+ansible_host=' $(INVENTORY) | while read line; do \
+		host=$$(echo "$$line" | awk '{print $$1}'); \
+		IP=$$(echo "$$line" | sed -n 's/.*ansible_host=\([^ ]*\).*/\1/p'); \
+		USER=$$(echo "$$line" | sed -n 's/.*ansible_user=\([^ ]*\).*/\1/p'); \
+		USER=$${USER:-anton}; \
+		KEY=$$(echo "$$line" | sed -n 's/.*ansible_ssh_private_key_file=\([^ ]*\).*/\1/p'); \
+		KEY=$$(eval echo "$$KEY"); \
+		SSH_KEY_OPT=""; if [ -n "$$KEY" ]; then SSH_KEY_OPT="-i $$KEY"; fi; \
+		SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=5 $$SSH_KEY_OPT"; \
 		echo "  ┌──────────────────────────────────────────────────────────────┐"; \
 		printf "  │  %-60s│\n" "$$host ($$IP)"; \
 		echo "  ├──────────────────────────────────────────────────────────────┤"; \
@@ -199,11 +147,10 @@ verify: _check-ansible
 			ss -tlnp 2>/dev/null | grep -q ":9876" && PORT9876="✓"; \
 			ss -tlnp 2>/dev/null | grep -q ":9877" && PORT9877="✓"; \
 			if systemctl is-active anton-sidecar >/dev/null 2>&1; then SIDECAR="✓ RUNNING"; fi; \
-			VER="-"; HASH="-"; BRANCH="-"; DEPLOYED="-"; VIA="-"; \
+			VER="-"; HASH="-"; DEPLOYED="-"; VIA="-"; \
 			if [ -f /home/anton/.anton/version.json ] && command -v jq >/dev/null 2>&1; then \
 				VER=$$(jq -r ".version // \"-\"" /home/anton/.anton/version.json); \
 				HASH=$$(jq -r ".gitHash // \"-\"" /home/anton/.anton/version.json); \
-				BRANCH=$$(jq -r ".branch // \"-\"" /home/anton/.anton/version.json); \
 				DEPLOYED=$$(jq -r ".deployedAt // \"-\"" /home/anton/.anton/version.json); \
 				VIA=$$(jq -r ".deployedBy // \"-\"" /home/anton/.anton/version.json); \
 			fi; \
@@ -213,18 +160,19 @@ verify: _check-ansible
 				TOKEN=$$(grep "^token:" /home/anton/.anton/config.yaml | awk "{print \$$2}"); \
 			fi; \
 			NODE_VER=$$(node --version 2>/dev/null || echo "missing"); \
-			echo "$$STATUS|$$PID|$$MEM|$$UPTIME|$$PORT9876|$$PORT9877|$$SIDECAR|$$VER|$$HASH|$$BRANCH|$$DEPLOYED|$$VIA|$$AGENTID|$$TOKEN|$$NODE_VER" \
+			REPO_EXISTS="✗"; [ -d /opt/anton/packages ] && REPO_EXISTS="✓"; \
+			echo "$$STATUS|$$PID|$$MEM|$$UPTIME|$$PORT9876|$$PORT9877|$$SIDECAR|$$VER|$$HASH|$$DEPLOYED|$$VIA|$$AGENTID|$$TOKEN|$$NODE_VER|$$REPO_EXISTS" \
 		' 2>/dev/null) || REMOTE="? UNREACHABLE via SSH||||||||||||||"; \
-		IFS="|" read -r R_STATUS R_PID R_MEM R_UPTIME R_P9876 R_P9877 R_SIDECAR R_VER R_HASH R_BRANCH R_DEPLOYED R_VIA R_AID R_TOKEN R_NODE <<< "$$REMOTE"; \
+		IFS="|" read -r R_STATUS R_PID R_MEM R_UPTIME R_P9876 R_P9877 R_SIDECAR R_VER R_HASH R_DEPLOYED R_VIA R_AID R_TOKEN R_NODE R_REPO <<< "$$REMOTE"; \
 		printf "  │  %-18s %-40s│\n" "Service:" "$$R_STATUS"; \
 		printf "  │  %-18s %-40s│\n" "PID / Memory:" "$$R_PID / $$R_MEM"; \
 		printf "  │  %-18s %-40s│\n" "Uptime:" "$$R_UPTIME"; \
 		printf "  │  %-18s %-40s│\n" "Ports:" "9876 $$R_P9876  9877 $$R_P9877"; \
 		printf "  │  %-18s %-40s│\n" "Sidecar:" "$$R_SIDECAR"; \
 		printf "  │  %-18s %-40s│\n" "Node.js:" "$$R_NODE"; \
+		printf "  │  %-18s %-40s│\n" "Repo:" "/opt/anton $$R_REPO"; \
 		echo "  │                                                              │"; \
 		printf "  │  %-18s %-40s│\n" "Version:" "$$R_VER ($$R_HASH)"; \
-		printf "  │  %-18s %-40s│\n" "Branch:" "$$R_BRANCH"; \
 		printf "  │  %-18s %-40s│\n" "Deployed:" "$$R_DEPLOYED via $$R_VIA"; \
 		echo "  │                                                              │"; \
 		printf "  │  %-18s %-40s│\n" "Agent ID:" "$$R_AID"; \
@@ -259,12 +207,15 @@ stop: _check-ansible
 ## env: Show agent.env contents on all hosts (redacts token values)
 env: _check-ansible
 	@echo ""
-	@ansible all -i $(INVENTORY) $(LIMIT) --list-hosts 2>/dev/null | tail -n +2 | sed 's/^ *//' | while read host; do \
-		IP=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_host','$$host'))" 2>/dev/null || echo "$$host"); \
-		USER=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_user','anton'))" 2>/dev/null || echo "anton"); \
-		KEY=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_ssh_private_key_file',''))" 2>/dev/null || echo ""); \
-		SSH_OPTS="-o StrictHostKeyChecking=no"; \
-		if [ -n "$$KEY" ]; then SSH_OPTS="$$SSH_OPTS -i $$KEY"; fi; \
+	@grep -E '^\w+\s+ansible_host=' $(INVENTORY) | while read line; do \
+		host=$$(echo "$$line" | awk '{print $$1}'); \
+		IP=$$(echo "$$line" | sed -n 's/.*ansible_host=\([^ ]*\).*/\1/p'); \
+		USER=$$(echo "$$line" | sed -n 's/.*ansible_user=\([^ ]*\).*/\1/p'); \
+		USER=$${USER:-anton}; \
+		KEY=$$(echo "$$line" | sed -n 's/.*ansible_ssh_private_key_file=\([^ ]*\).*/\1/p'); \
+		KEY=$$(eval echo "$$KEY"); \
+		SSH_KEY_OPT=""; if [ -n "$$KEY" ]; then SSH_KEY_OPT="-i $$KEY"; fi; \
+		SSH_OPTS="-o StrictHostKeyChecking=no $$SSH_KEY_OPT"; \
 		echo "  ── $$host ($$IP) ──────────────────────────────────────────"; \
 		ssh $$SSH_OPTS "$$USER@$$IP" "\
 			ENV_PATH=\$$(grep EnvironmentFile /etc/systemd/system/anton-agent.service 2>/dev/null | cut -d= -f2 || echo '/home/anton/.anton/agent.env'); \
@@ -319,34 +270,19 @@ setup:
 ## help: Show this help
 help:
 	@echo ""
-	@echo "  Anton Agent - Deployment"
-	@echo "  ────────────────────────"
+	@echo "  Anton Agent - Deployment (repo-clone model)"
+	@echo "  ────────────────────────────────────────────"
 	@echo ""
-	@echo "  Setup:"
-	@echo "    1. Edit inventory.ini with your VPS IPs and SSH key"
-	@echo "    2. make deploy"
+	@echo "  All hosts run from /opt/anton (git repo clone)."
+	@echo "  Agent runs via: node packages/agent-server/dist/index.js"
 	@echo ""
-	@echo "  Targets:"
+	@echo "  Quick start:"
+	@echo "    make sync                  Build locally + rsync to VPS + restart"
+	@echo "    make sync HOST=agent1      Sync to one host only"
+	@echo "    make verify                Health check all hosts"
+	@echo ""
+	@echo "  All targets:"
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## /  /' | column -t -s ':'
-	@echo ""
-	@echo "  Options:"
-	@echo "    HOST=agent1           Target a single host from inventory"
-	@echo "    API_KEY=sk-ant-...    Pass Anthropic API key"
-	@echo "    BRANCH=dev            Deploy a specific git branch"
-	@echo ""
-	@echo "  Examples:"
-	@echo "    make deploy"
-	@echo "    make deploy HOST=agent1 API_KEY=sk-ant-api03-xxxxx"
-	@echo "    make deploy BRANCH=staging"
-	@echo "    make release                 # ship new version (interactive)"
-	@echo "    make sync                    # build locally (Docker) + deploy to VPS"
-	@echo "    make sync HOST=agent1        # sync to one host"
-	@echo "    make install-version VERSION=1.0.28  # downgrade to test auto-updates"
-	@echo "    make sync                    # rsync source code → VPS (legacy)"
-	@echo "    make sync HOST=agent1        # sync to one host"
-	@echo "    make status"
-	@echo "    make logs HOST=agent2"
-	@echo "    make restart"
 	@echo ""
 
 # ── Internal ─────────────────────────────────────────────────────

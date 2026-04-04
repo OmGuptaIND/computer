@@ -169,6 +169,7 @@ export class Session {
   private workspacePath?: string
   private memoryData?: MemoryData
   private agentInstructions?: string
+  private availableWorkflows?: { name: string; description: string; whenToUse: string }[]
   private agentMemory?: string
   private firstMessage?: string
   public contextInfo?: ContextInfo
@@ -207,6 +208,7 @@ export class Session {
     projectType?: string // project type for prompt module loading
     agentInstructions?: string // standing instructions for scheduled agents (injected into system prompt)
     agentMemory?: string // persistent memory from previous runs (injected into system prompt)
+    availableWorkflows?: { name: string; description: string; whenToUse: string }[] // workflow catalog for auto-suggestion
     lastTasks?: PersistedTaskItem[] // restored task state from persistence
     // Safety limits
     maxTokenBudget?: number // max total tokens before aborting (0 = unlimited)
@@ -228,6 +230,7 @@ export class Session {
     this.projectType = opts.projectType
     this.agentInstructions = opts.agentInstructions
     this.agentMemory = opts.agentMemory
+    this.availableWorkflows = opts.availableWorkflows
     this._lastTasks = opts.lastTasks || []
     // If resuming with incomplete tasks, flag for context injection on next message
     this._needsTaskResumeHint = this._lastTasks.some((t) => t.status !== 'completed')
@@ -1713,6 +1716,19 @@ Do not call this on every turn — only once per session when there is something
       prompt += Session.systemReminder('Active Skills', skillBlock)
     }
 
+    // Layer 10: Available workflows (for auto-suggestion)
+    if (this.availableWorkflows && this.availableWorkflows.length > 0) {
+      let workflowBlock =
+        'The following automation workflows are available for the user to install. ' +
+        'If the user\'s request matches a workflow, suggest it naturally in your response. ' +
+        'Don\'t force it — only suggest when genuinely relevant. ' +
+        'Mention the workflow by name and briefly describe what it does.\n\n'
+      for (const wf of this.availableWorkflows) {
+        workflowBlock += `### ${wf.name}\n${wf.description}\n${wf.whenToUse}\n\n`
+      }
+      prompt += Session.systemReminder('Available Workflows', workflowBlock)
+    }
+
     // Compute prompt version hash for tracing
     this._promptVersion = hashPromptVersion(prompt)
 
@@ -1769,6 +1785,8 @@ export function createSession(
     agentInstructions?: string
     /** Persistent memory from previous agent runs */
     agentMemory?: string
+    /** Available workflow catalog for auto-suggestion in system prompt */
+    availableWorkflows?: { name: string; description: string; whenToUse: string }[]
   },
 ): Session {
   const provider = opts?.provider || config.defaults.provider
@@ -1815,6 +1833,7 @@ export function createSession(
     projectType: opts?.projectType,
     agentInstructions: opts?.agentInstructions,
     agentMemory: opts?.agentMemory,
+    availableWorkflows: opts?.availableWorkflows,
     maxDurationMs: opts?.maxDurationMs,
   })
   sessionRef.session = session

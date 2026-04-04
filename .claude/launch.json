@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "desktop",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@anton/desktop", "dev"],
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-c", "export PATH=/Users/omg/.nvm/versions/node/v20.18.1/bin:$PATH && pnpm --filter @anton/desktop dev"],
       "port": 1420
     },
     {

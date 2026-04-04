@@ -1,0 +1,575 @@
+import { MoreHorizontal, Pencil, Pin, Search, Trash2 } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { connection } from '../../lib/connection.js'
+import type { Skill } from '../../lib/skills.js'
+import type { ChatImageAttachment } from '../../lib/store.js'
+import { useStore } from '../../lib/store.js'
+import { ChatInput } from '../chat/ChatInput.js'
+import { EmptyState } from '../chat/EmptyState.js'
+
+function formatRelativeTime(timestamp: number): string {
+  const now = Date.now()
+  const diff = now - timestamp
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days === 1) return 'yesterday'
+  if (days < 7) return `${days}d ago`
+  return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+type TaskStatus = 'working' | 'completed' | 'error' | 'idle'
+
+function getTaskStatus(
+  sessionId: string | undefined,
+  sessionStatuses: Map<string, { status: string; detail?: string }>,
+  messages: { role: string; isError?: boolean }[],
+): TaskStatus {
+  if (!sessionId) return 'idle'
+  const status = sessionStatuses.get(sessionId)
+  if (status?.status === 'working') return 'working'
+  if (messages.length === 0) return 'idle'
+  const lastMsg = [...messages].reverse().find((m) => m.role === 'assistant' || m.role === 'system')
+  if (lastMsg?.isError) return 'error'
+  return 'completed'
+}
+
+const STATUS_LABELS: Record<TaskStatus, string> = {
+  working: 'Working',
+  completed: 'Completed',
+  error: 'Error',
+  idle: 'Idle',
+}
+
+function StatusIcon({ status }: { status: TaskStatus }) {
+  if (status === 'completed') {
+    return (
+      <svg className="status-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="7" fill="var(--success)" opacity="0.15" />
+        <circle cx="8" cy="8" r="7" stroke="var(--success)" strokeWidth="1" />
+        <path d="M5 8.5L7 10.5L11 5.5" stroke="var(--success)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (status === 'working') {
+    return <span className="status-icon status-icon--working" />
+  }
+  if (status === 'error') {
+    return (
+      <svg className="status-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="7" fill="var(--danger)" opacity="0.15" />
+        <circle cx="8" cy="8" r="7" stroke="var(--danger)" strokeWidth="1" />
+        <path d="M6 6L10 10M10 6L6 10" stroke="var(--danger)" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  // idle
+  return (
+    <svg className="status-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="6.5" stroke="var(--text-subtle)" strokeWidth="1.2" opacity="0.6" />
+    </svg>
+  )
+}
+
+function StatusDot({ status }: { status: TaskStatus }) {
+  return <span className={`task-row__dot task-row__dot--${status}`} />
+}
+
+function getStatusDetail(
+  sessionId: string | undefined,
+  sessionStatuses: Map<string, { status: string; detail?: string }>,
+  status: TaskStatus,
+): string | null {
+  if (!sessionId) return null
+  const s = sessionStatuses.get(sessionId)
+  if (s?.detail) return s.detail
+  if (status === 'working') return 'Working...'
+  if (status === 'error') return 'Error'
+  return null
+}
+
+// ── Task context menu (three-dot) ──
+
+function TaskMenu({
+  onDelete,
+  onRename,
+  onPin,
+}: {
+  onDelete: (e: React.MouseEvent) => void
+  onRename: (e: React.MouseEvent) => void
+  onPin: (e: React.MouseEvent) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [pos, setPos] = useState({ top: 0, right: 0 })
+
+  const handleOpen = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect()
+      setPos({
+        top: rect.bottom + 2,
+        right: window.innerWidth - rect.right,
+      })
+    }
+    setOpen(!open)
+  }
+
+  return (
+    <div className="task-menu-wrap">
+      <button
+        ref={triggerRef}
+        type="button"
+        className="task-menu__trigger"
+        onClick={handleOpen}
+        aria-label="Task options"
+      >
+        <MoreHorizontal size={16} strokeWidth={1.5} />
+      </button>
+      {open && (
+        <>
+          <div
+            className="task-menu__backdrop"
+            onClick={(e) => {
+              e.stopPropagation()
+              setOpen(false)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setOpen(false)
+            }}
+          />
+          <div
+            className="task-menu"
+            style={{ top: pos.top, right: pos.right }}
+          >
+            <button
+              type="button"
+              className="task-menu__item"
+              onClick={(e) => {
+                e.stopPropagation()
+                onPin(e)
+                setOpen(false)
+              }}
+            >
+              <Pin size={14} strokeWidth={1.5} />
+              <span>Pin task</span>
+            </button>
+            <button
+              type="button"
+              className="task-menu__item"
+              onClick={(e) => {
+                e.stopPropagation()
+                onRename(e)
+                setOpen(false)
+              }}
+            >
+              <Pencil size={14} strokeWidth={1.5} />
+              <span>Rename task</span>
+            </button>
+            <button
+              type="button"
+              className="task-menu__item task-menu__item--danger"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete(e)
+                setOpen(false)
+              }}
+            >
+              <Trash2 size={14} strokeWidth={1.5} />
+              <span>Delete task</span>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Bulk selection bar ──
+
+function SelectionBar({
+  count,
+  onDelete,
+  onCancel,
+}: {
+  count: number
+  onDelete: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="task-selection-bar">
+      <span className="task-selection-bar__count">
+        {count} task{count !== 1 ? 's' : ''} selected
+      </span>
+      <div className="task-selection-bar__actions">
+        <button
+          type="button"
+          className="task-selection-bar__btn task-selection-bar__btn--danger"
+          onClick={onDelete}
+        >
+          <Trash2 size={14} strokeWidth={1.5} />
+          Delete
+        </button>
+        <button
+          type="button"
+          className="task-selection-bar__btn"
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Selection checkbox ──
+
+function SelectionCheckbox({
+  checked,
+  onChange,
+}: {
+  checked: boolean
+  onChange: (e: React.MouseEvent) => void
+}) {
+  return (
+    <button
+      type="button"
+      className={`task-select-check${checked ? ' task-select-check--active' : ''}`}
+      onClick={onChange}
+      aria-label={checked ? 'Deselect task' : 'Select task'}
+    >
+      {checked && (
+        <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+          <path
+            d="M1 4L3.5 6.5L9 1"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </button>
+  )
+}
+
+interface Props {
+  mode: 'full' | 'compact'
+}
+
+export function TaskListView({ mode }: Props) {
+  const allConversations = useStore((s) => s.conversations)
+  const sessionStatuses = useStore((s) => s.sessionStatuses)
+  const activeConversationId = useStore((s) => s.activeConversationId)
+  const activeProjectId = useStore((s) => s.activeProjectId)
+  const projects = useStore((s) => s.projects)
+  const switchConversation = useStore((s) => s.switchConversation)
+  const deleteConversation = useStore((s) => s.deleteConversation)
+  const newConversation = useStore((s) => s.newConversation)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const selectionMode = selectedIds.size > 0
+
+  // Filter conversations to the active project
+  const defaultProjectId = projects.find((p) => p.isDefault)?.id
+  const conversations = useMemo(() => {
+    if (!activeProjectId) return allConversations
+    return allConversations.filter((c) => {
+      // For the default project, also include legacy conversations without projectId
+      if (activeProjectId === defaultProjectId) {
+        return !c.projectId || c.projectId === activeProjectId
+      }
+      return c.projectId === activeProjectId
+    })
+  }, [allConversations, activeProjectId, defaultProjectId])
+
+  const tasks = useMemo(() => {
+    const sorted = [...conversations].sort(
+      (a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt),
+    )
+    if (!searchQuery.trim()) return sorted
+    const q = searchQuery.toLowerCase()
+    return sorted.filter((c) => c.title.toLowerCase().includes(q))
+  }, [conversations, searchQuery])
+
+  const handleTaskClick = (conv: (typeof conversations)[0]) => {
+    if (selectionMode) {
+      toggleSelection(conv.id)
+      return
+    }
+    switchConversation(conv.id)
+    if (conv.sessionId) {
+      useStore.getState().requestSessionHistory(conv.sessionId)
+    }
+  }
+
+  const toggleSelection = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const handleBulkDelete = useCallback(() => {
+    for (const id of selectedIds) {
+      deleteConversation(id)
+    }
+    setSelectedIds(new Set())
+  }, [selectedIds, deleteConversation])
+
+  const handleCancelSelection = useCallback(() => {
+    setSelectedIds(new Set())
+  }, [])
+
+  const handleDeleteTask = useCallback(
+    (id: string) => {
+      deleteConversation(id)
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+    },
+    [deleteConversation],
+  )
+
+  const handleNewTask = (text: string, _attachments?: ChatImageAttachment[]) => {
+    const store = useStore.getState()
+    const sessionId = `sess_${Date.now().toString(36)}`
+    const projectId = store.activeProjectId ?? undefined
+    newConversation(undefined, sessionId, projectId)
+    connection.sendSessionCreate(sessionId, {
+      provider: store.currentProvider,
+      model: store.currentModel,
+      projectId,
+    })
+    const conv = store.findConversationBySession(sessionId)
+    if (conv) {
+      switchConversation(conv.id)
+    }
+    requestAnimationFrame(() => {
+      const conv = useStore.getState().findConversationBySession(sessionId)
+      if (conv) {
+        useStore.getState().switchConversation(conv.id)
+        useStore.getState().addMessage({
+          id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          role: 'user',
+          content: text,
+          timestamp: Date.now(),
+        })
+        connection.sendAiMessageToSession(text, sessionId)
+      }
+    })
+  }
+
+  const handleSkillSelect = (_skill: Skill) => {}
+
+  // ── Full mode: Perplexity-style table (no task selected) ──
+  if (mode === 'full') {
+    // No tasks → show centered empty state (like chat)
+    if (tasks.length === 0) {
+      return <EmptyState onSend={handleNewTask} onSkillSelect={handleSkillSelect} />
+    }
+
+    return (
+      <div className="task-list-full">
+        {/* Fixed top bar */}
+        {selectionMode ? (
+          <SelectionBar
+            count={selectedIds.size}
+            onDelete={handleBulkDelete}
+            onCancel={handleCancelSelection}
+          />
+        ) : (
+          <div className="task-panel__header">
+            <h2 className="task-panel__title">All tasks</h2>
+            <div className="task-panel__header-actions">
+              <button
+                type="button"
+                className="task-panel__icon-btn"
+                onClick={() => {
+                  setSearchOpen(!searchOpen)
+                  if (!searchOpen) requestAnimationFrame(() => inputRef.current?.focus())
+                }}
+              >
+                <Search size={16} strokeWidth={1.5} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {searchOpen && !selectionMode && (
+          <div className="task-panel__search">
+            <Search size={14} strokeWidth={1.5} className="task-panel__search-icon" />
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Filter tasks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="task-panel__search-input"
+            />
+          </div>
+        )}
+
+        <div className="task-list-full__inner">
+          {/* Hero input */}
+          <div className="task-list-full__hero">
+            <ChatInput onSend={handleNewTask} onSkillSelect={handleSkillSelect} variant="hero" />
+          </div>
+
+          {/* Task table */}
+          <div className="task-table">
+            <div className="task-table__header">
+              <div className="task-table__col task-table__col--check" />
+              <div className="task-table__col task-table__col--status">Status</div>
+              <div className="task-table__col task-table__col--name">Task</div>
+              <div className="task-table__col task-table__col--updated">Updated</div>
+              <div className="task-table__col task-table__col--actions" />
+            </div>
+            <div className="task-table__body">
+              {tasks.map((conv) => {
+                const status = getTaskStatus(conv.sessionId, sessionStatuses, conv.messages)
+                const isSelected = selectedIds.has(conv.id)
+                return (
+                  <div
+                    key={conv.id}
+                    className={`task-table__row${isSelected ? ' task-table__row--selected' : ''}`}
+                    onClick={() => handleTaskClick(conv)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <div className="task-table__col task-table__col--check">
+                      <SelectionCheckbox
+                        checked={isSelected}
+                        onChange={(e) => {
+                          e.stopPropagation()
+                          toggleSelection(conv.id)
+                        }}
+                      />
+                    </div>
+                    <div className="task-table__col task-table__col--status">
+                      <StatusIcon status={status} />
+                      <span className={`task-table__status-label task-table__status-label--${status}`}>
+                        {STATUS_LABELS[status]}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="task-table__col task-table__col--name task-table__col--clickable"
+                      onClick={() => handleTaskClick(conv)}
+                    >
+                      <span className="task-table__task-title">
+                        {conv.title || 'New task'}
+                      </span>
+                    </button>
+                    <div className="task-table__col task-table__col--updated">
+                      {formatRelativeTime(conv.updatedAt || conv.createdAt)}
+                    </div>
+                    <div className="task-table__col task-table__col--actions">
+                      <TaskMenu
+                        onDelete={() => handleDeleteTask(conv.id)}
+                        onRename={() => {}}
+                        onPin={() => {}}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Compact mode: sidebar-style list (task is open on right) ──
+  return (
+    <div className="task-panel">
+      {selectionMode ? (
+        <SelectionBar
+          count={selectedIds.size}
+          onDelete={handleBulkDelete}
+          onCancel={handleCancelSelection}
+        />
+      ) : (
+        <div className="task-panel__header">
+          <h2 className="task-panel__title">All tasks</h2>
+          <div className="task-panel__header-actions">
+            <button
+              type="button"
+              className="task-panel__icon-btn"
+              onClick={() => {
+                setSearchOpen(!searchOpen)
+                if (!searchOpen) requestAnimationFrame(() => inputRef.current?.focus())
+              }}
+            >
+              <Search size={16} strokeWidth={1.5} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {searchOpen && !selectionMode && (
+        <div className="task-panel__search">
+          <Search size={14} strokeWidth={1.5} className="task-panel__search-icon" />
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Filter tasks..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="task-panel__search-input"
+          />
+        </div>
+      )}
+
+      <div className="task-panel__input">
+        <ChatInput onSend={handleNewTask} onSkillSelect={handleSkillSelect} variant="hero" />
+      </div>
+
+      <div className="task-panel__list">
+        {tasks.map((conv) => {
+          const status = getTaskStatus(conv.sessionId, sessionStatuses, conv.messages)
+          const detail = getStatusDetail(conv.sessionId, sessionStatuses, status)
+          const isActive = conv.id === activeConversationId
+          const isSelected = selectedIds.has(conv.id)
+          return (
+            <div
+              key={conv.id}
+              className={`task-row${isActive ? ' task-row--active' : ''}${isSelected ? ' task-row--selected' : ''}`}
+            >
+              <button
+                type="button"
+                className="task-row__clickable"
+                onClick={() => handleTaskClick(conv)}
+              >
+                <StatusIcon status={status} />
+                <div className="task-row__content">
+                  <span className="task-row__name">{conv.title || 'New task'}</span>
+                  {detail && <span className="task-row__detail">{detail}</span>}
+                </div>
+                <span className="task-row__time">
+                  {formatRelativeTime(conv.updatedAt || conv.createdAt)}
+                </span>
+              </button>
+              <TaskMenu
+                onDelete={() => handleDeleteTask(conv.id)}
+                onRename={() => {}}
+                onPin={() => {}}
+              />
+            </div>
+          )
+        })}
+        {tasks.length === 0 && <div className="task-panel__empty">No tasks yet</div>}
+      </div>
+    </div>
+  )
+}
