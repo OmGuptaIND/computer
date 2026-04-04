@@ -1,0 +1,79 @@
+packages/desktop/src/components/chat/MessageList.tsx
+  b86c1b79f0b75756 5,34-36,38,53,68-69,71-72
+packages/desktop/src/App.tsx
+  b86c1b79f0b75756 28,47,66,124-125,127-129,131,134,152-153,162,172-173
+packages/desktop/src/components/SidePanel.tsx
+  b86c1b79f0b75756 28
+packages/desktop/src/components/chat/ThinkingIndicator.tsx
+  b86c1b79f0b75756 3,60-63
+packages/desktop/src/lib/store/handlers/eventsHandler.ts
+  b86c1b79f0b75756 1-70
+packages/desktop/src/components/PlanPanel.tsx
+  b86c1b79f0b75756 3,32-33,81,91
+packages/desktop/src/components/AgentChat.tsx
+  b86c1b79f0b75756 8,26-31,42,44,46,75-78,96-99,104,110,131-134,138,140-141,143-148,155,190,198,201-202,204-205,207,213,230,247-249
+packages/desktop/src/components/Sidebar.tsx
+  b86c1b79f0b75756 54-58,127,134,136-138,153,385,409,436
+packages/desktop/src/lib/store/handlers/shared.ts
+  b86c1b79f0b75756 1-20
+packages/desktop/src/components/chat/PlanReviewOverlay.tsx
+  b86c1b79f0b75756 3,29-30,65,71
+packages/desktop/src/components/chat/ProviderSettingsModal.tsx
+  b86c1b79f0b75756 4,39,43,80,83
+packages/desktop/src/lib/store/sessionStore.ts
+  b86c1b79f0b75756 1-9,11-137,139-180,182-474
+packages/desktop/src/components/chat/ModelSelector.tsx
+  b86c1b79f0b75756 3-4,31-33
+packages/desktop/src/lib/store.ts
+  b86c1b79f0b75756 278,321,348,352,419,433,438-439,451-454,459-464,466,483-489,492-493,495-497,499-500,508-512,515-516,522-526,738-739,754-755,767,769,774-776,778-781,806-808,812-813,815-816,818,831,847,851,863,866-868,872,887-889,893,908-921,958-959,1023-1024,1026,1033-1034,1036,1040-1041,1043,1092,1096-1098,1147-1150,1164,1179,1184-1185,1198,1213,1222,1228,1230-1231,1235,1245,1258,1335,1346,1357,1367,1369-1370,1401,1403,1406,1441,1444,1448,1486,1493,1499,1526-1533,1539-1541,1566,1573,1576,1584-1587,1615-1616,1729-1730,1732-1733,1827-1828,1840-1841,1855,1859,1865-1868,1907,2071,2120,2125-2130
+packages/desktop/src/components/projects/ProjectView.tsx
+  b86c1b79f0b75756 24,54,58-60,70-71,139-142,152
+packages/desktop/src/components/chat/TaskProgressBar.tsx
+  b86c1b79f0b75756 4,51-52
+specs/architecture/project-scoped-pages.md
+  b86c1b79f0b75756 312-423
+packages/desktop/src/lib/store/handlers/controlHandler.ts
+  b86c1b79f0b75756 1-68
+packages/desktop/src/components/chat/DebugOverlay.tsx
+  b86c1b79f0b75756 3,30-31,34-36,108-113,116,119,123
+packages/desktop/src/components/agents/AgentListView.tsx
+  b86c1b79f0b75756 22,194-197
+packages/desktop/src/components/context/ContextPanelContent.tsx
+  b86c1b79f0b75756 13,17-20,22,24,26,193,197
+packages/desktop/src/components/home/TaskDetailView.tsx
+  b86c1b79f0b75756 8,18,21-23,25-26,29,39,64,72,74,80,97
+packages/desktop/src/components/settings/SettingsModal.tsx
+  b86c1b79f0b75756 20,227,230,261,263,439-441,445-447
+packages/desktop/src/components/home/TaskListView.tsx
+  b86c1b79f0b75756 8,31,35-36,97,101-102,315,319,397,401-403,497,602-603
+specs/README.md
+  b86c1b79f0b75756 1-64
+packages/desktop/src/lib/store/connectionStore.ts
+  b86c1b79f0b75756 1-88
+packages/desktop/src/lib/store/handlers/chatHandler.ts
+  b86c1b79f0b75756 1-109
+packages/desktop/src/components/developer/DeveloperView.tsx
+  b86c1b79f0b75756 18,50-52,113-117,119,121,139,158
+packages/desktop/src/lib/store/index.ts
+  b86c1b79f0b75756 20-21,24-25,49-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "4d5de7006c3e052a5aef9c26499c238fb19730a4",
+  "prompts": {
+    "b86c1b79f0b75756": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9ea7e932-7812-4d56-8f40-5115d6521554",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 1434,
+      "total_deletions": 763,
+      "accepted_lines": 1402,
+      "overriden_lines": 5
+    }
+  }
+}
