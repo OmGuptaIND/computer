@@ -1,4 +1,5 @@
 import { execSync, execFile } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -139,7 +140,8 @@ async function ensureBrowser(): Promise<BrowserSession> {
       console.log('[browser] Chromium not found, installing...')
       chromiumJustInstalled = true
       // Use playwright's CLI from the installed package (not npx)
-      const playwrightCli = require.resolve('playwright/cli')
+      const esmRequire = createRequire(import.meta.url)
+      const playwrightCli = esmRequire.resolve('playwright/cli')
       await execFileAsync(process.execPath, [playwrightCli, 'install', 'chromium'], {
         timeout: 120_000,
       })

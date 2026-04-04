@@ -1532,4 +1532,25 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
       urlLabel: 'LinkedIn',
     },
   },
+  {
+    id: 'reddit',
+    name: 'Reddit',
+    description:
+      'Browse subreddits, search posts, submit content, comment, and vote on Reddit.',
+    icon: '🔴',
+    category: 'social',
+    type: 'oauth',
+    oauthProvider: 'reddit',
+    oauthScopes: ['identity', 'read', 'submit', 'vote', 'mysubreddits'],
+    requiredEnv: [],
+    featured: true,
+    setupGuide: {
+      steps: [
+        'Click Connect to authorize with your Reddit account',
+        'Anton will request access to browse, post, comment, and vote',
+      ],
+      url: 'https://www.reddit.com/prefs/apps',
+      urlLabel: 'Reddit Apps',
+    },
+  },
 ]
