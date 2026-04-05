@@ -119,7 +119,8 @@ export const uiStore = create<UIState>((set, get) => ({
       set({ activeMode: mode, activeView: 'chat' })
     }
   },
-  activeView: 'home',
+  
+  activeView: (localStorage.getItem('anton-mode') || 'computer') === 'chat' ? 'chat' : 'home',
   setActiveView: (view) => set({ activeView: view }),
 
   // Side panel
