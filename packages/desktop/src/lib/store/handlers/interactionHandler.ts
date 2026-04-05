@@ -186,13 +186,18 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
       }
 
       if (doneSessionId) {
+        // If the session already started a new turn (status is 'working'),
+        // don't override it back to idle — this done event is from the previous turn.
+        const currentState = ss.getSessionState(doneSessionId)
+        const alreadyWorking = currentState.status === 'working'
+
         // Update all per-session state in one call
         const updates: Partial<import('../sessionStore.js').SessionState> = {
-          status: 'idle',
-          statusDetail: null,
+          status: alreadyWorking ? 'working' : 'idle',
+          statusDetail: alreadyWorking ? currentState.statusDetail : null,
           isStreaming: false,
           assistantMsgId: null,
-          agentSteps: [],
+          agentSteps: alreadyWorking ? currentState.agentSteps : [],
           needsHistoryRefresh: !ctx.isForActiveSession,
         }
         if (msg.usage) {

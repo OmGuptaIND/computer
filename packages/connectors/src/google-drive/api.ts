@@ -19,16 +19,22 @@ export interface DriveFile {
 
 export class GoogleDriveAPI {
   private token = ''
+  private tokenProvider?: () => Promise<string>
 
   setToken(token: string): void {
     this.token = token
   }
 
+  setTokenProvider(fn: () => Promise<string>): void {
+    this.tokenProvider = fn
+  }
+
   private async request<T>(path: string, options: RequestInit = {}, baseUrl = BASE): Promise<T> {
+    const token = this.tokenProvider ? await this.tokenProvider() : this.token
     const res = await fetch(`${baseUrl}${path}`, {
       ...options,
       headers: {
-        Authorization: `Bearer ${this.token}`,
+        Authorization: `Bearer ${token}`,
         ...options.headers,
       },
     })
@@ -66,17 +72,19 @@ export class GoogleDriveAPI {
   }
 
   async readFile(fileId: string): Promise<string> {
+    const token = this.tokenProvider ? await this.tokenProvider() : this.token
     const res = await fetch(`${BASE}/files/${fileId}?alt=media`, {
-      headers: { Authorization: `Bearer ${this.token}` },
+      headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error(`Google Drive API ${res.status}: ${await res.text()}`)
     return res.text()
   }
 
   async exportFile(fileId: string, mimeType: string): Promise<string> {
+    const token = this.tokenProvider ? await this.tokenProvider() : this.token
     const params = new URLSearchParams({ mimeType })
     const res = await fetch(`${BASE}/files/${fileId}/export?${params}`, {
-      headers: { Authorization: `Bearer ${this.token}` },
+      headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error(`Google Drive API ${res.status}: ${await res.text()}`)
     return res.text()

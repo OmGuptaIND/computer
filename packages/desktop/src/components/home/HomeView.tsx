@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '../../lib/store.js'
+import { artifactStore } from '../../lib/store/artifactStore.js'
 import { TaskDetailView } from './TaskDetailView.js'
 import { TaskListView } from './TaskListView.js'
 
 export function HomeView() {
   const activeConv = useStore((s) => s.getActiveConversation())
   const hasOpenTask = !!activeConv
+  const artifactPanelOpen = artifactStore((s) => s.artifactPanelOpen)
   const [leftWidth, setLeftWidth] = useState(() =>
     Math.max(400, Math.floor(window.innerWidth * 0.32)),
   )
@@ -46,19 +48,26 @@ export function HomeView() {
     }
   }, [isDragging])
 
+  // When artifact panel is open and a task is active, hide TaskListView
+  // so the layout becomes: chat (flex:1) | artifact panel (from App.tsx SidePanel)
+  const showTaskList = !artifactPanelOpen
+
   return (
     <div className="home-layout">
-      <div
-        className="home-layout__left"
-        style={{
-          width: hasOpenTask ? leftWidth : '100%',
-          flexShrink: hasOpenTask ? 0 : 1,
-        }}
-      >
-        <TaskListView mode={hasOpenTask ? 'compact' : 'full'} />
-      </div>
+      {showTaskList && (
+        <div
+          className="home-layout__left"
+          style={{
+            width: hasOpenTask ? leftWidth : '100%',
+            maxWidth: hasOpenTask ? leftWidth : undefined,
+            flexShrink: hasOpenTask ? 0 : 1,
+          }}
+        >
+          <TaskListView mode={hasOpenTask ? 'compact' : 'full'} />
+        </div>
+      )}
 
-      {hasOpenTask && (
+      {showTaskList && hasOpenTask && (
         <div
           className={`home-layout__divider${isDragging ? ' home-layout__divider--active' : ''}`}
           onMouseDown={handleDragStart}

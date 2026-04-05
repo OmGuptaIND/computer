@@ -15,6 +15,10 @@ export class GoogleDocsConnector implements DirectConnector {
     this.tools = createGoogleDocsTools(this.api)
   }
 
+  setTokenProvider(getToken: () => Promise<string>): void {
+    this.api.setTokenProvider(getToken)
+  }
+
   getTools(): AgentTool[] {
     return this.tools
   }

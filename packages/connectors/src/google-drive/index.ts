@@ -15,6 +15,10 @@ export class GoogleDriveConnector implements DirectConnector {
     this.tools = createGoogleDriveTools(this.api)
   }
 
+  setTokenProvider(getToken: () => Promise<string>): void {
+    this.api.setTokenProvider(getToken)
+  }
+
   getTools(): AgentTool[] {
     return this.tools
   }

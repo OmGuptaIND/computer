@@ -147,7 +147,7 @@ export function MemoryView() {
     <div className="memory-view">
       <div className="memory-view__inner">
         {/* ── Instructions Section ── */}
-        <section className="memory-section">
+        <div className="memory-section-card">
           <div className="memory-section__header">
             <h3 className="memory-section__title">Instructions</h3>
             {!editingInstructions && (
@@ -215,14 +215,14 @@ export function MemoryView() {
             </div>
           ) : (
             <div className="memory-section__empty">
-              <BookOpen size={20} strokeWidth={1.5} />
+              <BookOpen size={24} strokeWidth={1.5} />
               <span>No instructions yet. Add rules to guide the AI in this project.</span>
             </div>
           )}
-        </section>
+        </div>
 
         {/* ── Preferences Section ── */}
-        <section className="memory-section">
+        <div className="memory-section-card">
           <div className="memory-section__header">
             <h3 className="memory-section__title">Preferences</h3>
             <button
@@ -311,15 +311,15 @@ export function MemoryView() {
 
             {projectPreferences.length === 0 && !addingPreference && (
               <div className="memory-section__empty">
-                <BookOpen size={20} strokeWidth={1.5} />
+                <BookOpen size={24} strokeWidth={1.5} />
                 <span>No preferences yet</span>
               </div>
             )}
           </div>
-        </section>
+        </div>
 
         {/* ── Chat Memories Section ── */}
-        <section className="memory-section">
+        <div className="memory-section-card">
           <div className="memory-section__header">
             <h3 className="memory-section__title">Chat Memories</h3>
             <span className="memory-section__count">{parsed.length}</span>
@@ -345,14 +345,14 @@ export function MemoryView() {
           <div className="memory-section__list">
             {memoriesLoading && parsed.length === 0 && (
               <div className="memory-section__empty">
-                <Loader2 size={20} strokeWidth={1.5} className="spin" />
+                <Loader2 size={24} strokeWidth={1.5} className="spin" />
                 <span>Loading memories...</span>
               </div>
             )}
 
             {!memoriesLoading && filtered.length === 0 && (
               <div className="memory-section__empty">
-                <BookOpen size={20} strokeWidth={1.5} />
+                <BookOpen size={24} strokeWidth={1.5} />
                 <span>No memories yet</span>
               </div>
             )}
@@ -390,7 +390,7 @@ export function MemoryView() {
               )
             })}
           </div>
-        </section>
+        </div>
       </div>
     </div>
   )

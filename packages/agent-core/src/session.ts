@@ -158,12 +158,13 @@ export class Session {
   private title = ''
   private lastActiveAt: number
   private clientApiKey?: string // client-provided, never persisted
-  private lastEmittedTextLength = 0 // track delta for streaming
-  private lastEmittedThinkingLength = 0 // track delta for thinking streaming
   // Pending tool calls for artifact detection
   private pendingToolCalls = new Map<string, { name: string; input: Record<string, unknown> }>()
   // Injected event push — set during processMessage so tools can emit events
   private pushEvent?: (event: SessionEvent) => void
+  // Max-tokens recovery: auto-continue when LLM hits output length limit
+  private _maxTokensRecoveryCount = 0
+  private readonly MAX_TOKENS_RECOVERY_LIMIT = 3
 
   // Token usage tracking
   private lastTurnUsage: TokenUsage | undefined
@@ -532,9 +533,8 @@ export class Session {
     attachments: ChatImageAttachmentInput[] = [],
   ): AsyncGenerator<SessionEvent> {
     this.lastActiveAt = Date.now()
-    this.lastEmittedTextLength = 0 // reset delta tracking for new turn
-    this.lastEmittedThinkingLength = 0
     this._turnCount = 0
+    this._maxTokensRecoveryCount = 0
     this._processStartedAt = Date.now()
     let trimmedMessage = userMessage.trim()
     const hasAttachments = attachments.length > 0
@@ -742,6 +742,7 @@ export class Session {
       }
     } finally {
       unsub()
+      this.pushEvent = undefined
     }
 
     // Helper: close the trace span safely — called in normal flow AND finally block
@@ -935,6 +936,8 @@ export class Session {
   /** Cancel any running work and persist current state. */
   cancel() {
     this.piAgent.abort()
+    this.pendingToolCalls.clear()
+    this.pushEvent = undefined
     this.persist()
   }
 
@@ -1080,13 +1083,9 @@ export class Session {
         if (!Array.isArray(msg.content)) continue
 
         // Extract thinking content blocks
-        const thinkingParts = msg.content.filter(
-          (c): c is ThinkingContent => c.type === 'thinking',
-        )
+        const thinkingParts = msg.content.filter((c): c is ThinkingContent => c.type === 'thinking')
         if (thinkingParts.length > 0) {
-          const thinkingText = thinkingParts
-            .map((c) => c.thinking)
-            .join('')
+          const thinkingText = thinkingParts.map((c) => c.thinking).join('')
           if (thinkingText) {
             entries.push({
               seq: ++seq,
@@ -1312,35 +1311,17 @@ export class Session {
   private translateEvent(piEvent: PiAgentEvent): SessionEvent[] {
     switch (piEvent.type) {
       case 'message_update': {
-        const msg = piEvent.message
-        if (msg.role === 'assistant') {
-          const events: SessionEvent[] = []
+        // Use the raw SDK delta directly instead of computing deltas from accumulated state.
+        // This avoids bugs where lastEmittedTextLength gets out of sync across turn boundaries.
+        const innerEvent = (piEvent as { assistantMessageEvent?: { type: string; delta?: string } })
+          .assistantMessageEvent
+        if (!innerEvent) return []
 
-          // Extract thinking content
-          const thinkingParts = msg.content.filter(
-            (c): c is ThinkingContent => c.type === 'thinking',
-          )
-          if (thinkingParts.length > 0) {
-            const fullThinking = thinkingParts.map((c) => c.thinking).join('')
-            if (fullThinking.length > this.lastEmittedThinkingLength) {
-              const delta = fullThinking.slice(this.lastEmittedThinkingLength)
-              this.lastEmittedThinkingLength = fullThinking.length
-              events.push({ type: 'thinking', text: delta })
-            }
-          }
-
-          // Extract text content
-          const textParts = msg.content.filter((c): c is TextContent => c.type === 'text')
-          if (textParts.length > 0) {
-            const fullText = textParts.map((c) => c.text).join('')
-            if (fullText.length > this.lastEmittedTextLength) {
-              const delta = fullText.slice(this.lastEmittedTextLength)
-              this.lastEmittedTextLength = fullText.length
-              events.push({ type: 'text', content: delta })
-            }
-          }
-
-          return events
+        if (innerEvent.type === 'text_delta' && innerEvent.delta) {
+          return [{ type: 'text', content: innerEvent.delta }]
+        }
+        if (innerEvent.type === 'thinking_delta' && innerEvent.delta) {
+          return [{ type: 'thinking', text: innerEvent.delta }]
         }
         return []
       }
@@ -1428,6 +1409,37 @@ export class Session {
             type: 'error',
             message: msg.errorMessage || 'The LLM call failed with an unknown error.',
           })
+        }
+
+        // Max-tokens recovery: auto-continue when LLM hits output length limit
+        if (msg?.stopReason === 'length') {
+          this._maxTokensRecoveryCount++
+          if (this._maxTokensRecoveryCount <= this.MAX_TOKENS_RECOVERY_LIMIT) {
+            this.log.info(
+              { attempt: this._maxTokensRecoveryCount },
+              'max tokens hit, queuing follow-up to continue',
+            )
+            this.piAgent.followUp({
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: '[System: Your response was cut off due to length limits. Continue your response exactly from where you left off. Do not repeat what you already said.]',
+                },
+              ],
+              timestamp: Date.now(),
+            })
+          } else {
+            this.log.warn('max tokens recovery limit reached, giving up')
+            events.push({
+              type: 'error',
+              message:
+                'Response was truncated due to output length limits after multiple continuation attempts.',
+            })
+          }
+        } else {
+          // Successful turn — reset recovery counter
+          this._maxTokensRecoveryCount = 0
         }
 
         // Track turns for limit enforcement

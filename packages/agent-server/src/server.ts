@@ -2633,6 +2633,18 @@ export class AgentServer {
       }
     }
 
+    // Guard: if this session is already processing, steer instead of starting a second turn
+    if (this.activeTurns.has(sessionId)) {
+      log.warn({ sessionId }, 'Session already processing — converting message to steer')
+      session.steer(msg.content)
+      this.sendToClient(Channel.AI, {
+        type: 'steer_ack',
+        content: msg.content,
+        sessionId,
+      })
+      return 0
+    }
+
     this.activeTurns.add(sessionId)
     let eventCount = 0
 

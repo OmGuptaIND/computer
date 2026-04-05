@@ -20,6 +20,7 @@ interface PendingFlow {
 
 export class OAuthFlow {
   private pending = new Map<string, PendingFlow>()
+  private refreshing = new Map<string, Promise<string>>()
   private tokenStore: TokenStore
   private config: AgentConfig
 
@@ -139,45 +140,61 @@ export class OAuthFlow {
 
     // If token has an expiry and is within 5 minutes of expiring, refresh
     if (stored.expiresAt && stored.expiresAt < Date.now() / 1000 + 300) {
-      if (!stored.refreshToken) {
-        throw new Error(`Token expired and no refresh token available for ${provider}`)
+      // Deduplicate concurrent refresh calls — if already refreshing, wait for that result
+      const inflight = this.refreshing.get(provider)
+      if (inflight) return inflight
+
+      const refreshPromise = this.doRefresh(provider, stored)
+      this.refreshing.set(provider, refreshPromise)
+      try {
+        return await refreshPromise
+      } finally {
+        this.refreshing.delete(provider)
       }
-
-      const proxyUrl = this.getProxyUrl()
-      if (!proxyUrl) {
-        throw new Error('Cannot refresh token: oauth proxy URL not configured')
-      }
-
-      // Use the stored oauthProvider (e.g. 'google') for the proxy URL, not the connectorId
-      // (e.g. 'google-calendar'). Fall back to registry lookup for tokens saved before this field
-      // existed, then to provider for 1:1 mappings like 'gmail'.
-      const refreshProvider =
-        stored.oauthProvider ||
-        CONNECTOR_REGISTRY.find((e) => e.id === provider)?.oauthProvider ||
-        provider
-
-      const res = await fetch(`${proxyUrl}/oauth/${refreshProvider}/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: stored.refreshToken }),
-      })
-
-      if (!res.ok) {
-        const errText = await res.text()
-        throw new Error(`Token refresh failed for ${provider}: ${errText}`)
-      }
-
-      const data = (await res.json()) as {
-        access_token: string
-        refresh_token?: string
-        expires_in?: number
-      }
-
-      stored.accessToken = data.access_token
-      if (data.refresh_token) stored.refreshToken = data.refresh_token
-      if (data.expires_in) stored.expiresAt = Math.floor(Date.now() / 1000) + data.expires_in
-      this.tokenStore.save(provider, stored)
     }
+
+    return stored.accessToken
+  }
+
+  private async doRefresh(provider: string, stored: StoredToken): Promise<string> {
+    if (!stored.refreshToken) {
+      throw new Error(`Token expired and no refresh token available for ${provider}`)
+    }
+
+    const proxyUrl = this.getProxyUrl()
+    if (!proxyUrl) {
+      throw new Error('Cannot refresh token: oauth proxy URL not configured')
+    }
+
+    // Use the stored oauthProvider (e.g. 'google') for the proxy URL, not the connectorId
+    // (e.g. 'google-calendar'). Fall back to registry lookup for tokens saved before this field
+    // existed, then to provider for 1:1 mappings like 'gmail'.
+    const refreshProvider =
+      stored.oauthProvider ||
+      CONNECTOR_REGISTRY.find((e) => e.id === provider)?.oauthProvider ||
+      provider
+
+    const res = await fetch(`${proxyUrl}/oauth/${refreshProvider}/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: stored.refreshToken }),
+    })
+
+    if (!res.ok) {
+      const errText = await res.text()
+      throw new Error(`Token refresh failed for ${provider}: ${errText}`)
+    }
+
+    const data = (await res.json()) as {
+      access_token: string
+      refresh_token?: string
+      expires_in?: number
+    }
+
+    stored.accessToken = data.access_token
+    if (data.refresh_token) stored.refreshToken = data.refresh_token
+    if (data.expires_in) stored.expiresAt = Math.floor(Date.now() / 1000) + data.expires_in
+    this.tokenStore.save(provider, stored)
 
     return stored.accessToken
   }

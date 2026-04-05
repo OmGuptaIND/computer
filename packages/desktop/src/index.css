@@ -130,6 +130,30 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 html,
@@ -13215,6 +13239,7 @@ button {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0;
 }
 
 .home-layout__divider {
@@ -13340,6 +13365,10 @@ button {
 
 .task-panel__input .composer--hero {
   min-height: unset;
+}
+
+.task-panel__input .composer__anchor {
+  max-width: 100%;
 }
 
 /* Compact task panel: keep toolbar visible but tighter */
@@ -14629,7 +14658,7 @@ button {
 .memory-view {
   flex: 1;
   overflow-y: auto;
-  padding: 28px 24px;
+  padding: 40px 32px;
 }
 
 .memory-view__inner {
@@ -14637,29 +14666,36 @@ button {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 16px;
+}
+
+.memory-section-card {
+  background: rgba(var(--overlay), 0.03);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
 }
 
 .memory-section__header {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .memory-section__title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.01em;
 }
 
 .memory-section__count {
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-subtle);
-  background: rgba(var(--overlay), 0.06);
-  padding: 1px 8px;
+  background: rgba(var(--overlay), 0.08);
+  padding: 2px 8px;
   border-radius: 10px;
 }
 
@@ -14686,30 +14722,37 @@ button {
 .memory-section__desc {
   font-size: 13px;
   color: var(--text-subtle);
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+  line-height: 1.4;
 }
 
 .memory-section__list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .memory-section__empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 20px;
+  gap: 10px;
+  padding: 32px 20px;
   color: var(--text-subtle);
   font-size: 13px;
-  justify-content: center;
+  text-align: center;
 }
 
 .memory-card {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--bg-elevated);
   overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.memory-card:hover {
+  border-color: rgba(var(--overlay), 0.15);
 }
 
 .memory-card--adding {
@@ -14749,12 +14792,15 @@ button {
 }
 
 .memory-card__badge {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
-  padding: 1px 7px;
-  border-radius: 6px;
+  padding: 2px 7px;
+  border-radius: 4px;
   flex-shrink: 0;
   text-transform: capitalize;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .memory-card__badge--user {
@@ -14875,17 +14921,11 @@ button {
 .memory-card__badge--global {
   background: rgba(59, 130, 246, 0.12);
   color: #60a5fa;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
 }
 
 .memory-card__badge--conversation {
   background: rgba(249, 115, 22, 0.12);
   color: #fb923c;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
 }
 
 .memory-card__meta {
@@ -14942,29 +14982,34 @@ button {
 
 .memory-filter-tabs {
   display: flex;
-  gap: 4px;
-  padding: 0 0 8px;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 8px;
+  background: rgba(var(--overlay), 0.04);
+  border-radius: 8px;
+  width: fit-content;
 }
 
 .memory-filter-tab {
   background: none;
-  border: 1px solid transparent;
+  border: none;
   border-radius: 6px;
-  padding: 4px 10px;
+  padding: 5px 12px;
   font-size: 12px;
+  font-weight: 500;
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .memory-filter-tab:hover {
-  background: rgba(var(--overlay), 0.06);
+  color: var(--text);
 }
 
 .memory-filter-tab--active {
-  background: rgba(var(--overlay), 0.08);
+  background: rgba(var(--overlay), 0.1);
   color: var(--text);
-  border-color: var(--border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .spin {
@@ -15900,46 +15945,57 @@ button {
   font-size: 13px;
 }
 
-.agent-run-view__status {
-  font-size: 11px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 2px 8px;
-  border-radius: 4px;
+/* ── Run View Topbar ── */
+
+.run-view__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.agent-run-view__status--success {
+.run-view__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.run-view__badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.run-view__badge--success {
   color: var(--success);
   background: rgba(34, 197, 94, 0.1);
 }
 
-.agent-run-view__status--error {
+.run-view__badge--error {
   color: var(--danger);
   background: rgba(239, 68, 68, 0.1);
 }
 
-.agent-run-view__status--timeout {
+.run-view__badge--timeout {
   color: var(--warning);
   background: rgba(245, 158, 11, 0.1);
 }
 
-.agent-run-view__duration {
-  font-size: 12px;
-  color: var(--text-subtle);
-  font-family: var(--font-mono);
-}
-
-.agent-run-view__trigger {
+.run-view__badge--duration {
   font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 4px;
+  font-family: var(--font-mono);
   color: var(--text-subtle);
-  background: rgba(var(--overlay), 0.06);
+  background: rgba(var(--overlay), 0.05);
 }
 
-.agent-run-view__trigger--manual {
-  color: var(--text-muted);
+.run-view__badge--trigger {
+  font-size: 11px;
+  color: var(--text-subtle);
+  background: rgba(var(--overlay), 0.05);
 }
 
 .agent-run-view__error-msg {
@@ -15969,82 +16025,275 @@ button {
   margin: 0;
 }
 
-.agent-run-view__logs {
+/* ── Run Steps (Perplexity-style agent run timeline) ── */
+
+.run-steps {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  padding-bottom: 24px;
 }
 
-/* Individual log entries */
-.agent-run-log {
+/* ── Prompt (collapsed system prompt) ── */
+
+.run-step--prompt {
+  margin-bottom: 8px;
+}
+
+.run-step__prompt-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
   padding: 8px 12px;
-  border-radius: 6px;
+  border: none;
+  background: rgba(var(--overlay), 0.04);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-subtle);
+  font-size: 12px;
+  text-align: left;
   transition: background 0.1s;
 }
 
-.agent-run-log:hover {
-  background: rgba(var(--overlay), 0.03);
+.run-step__prompt-toggle:hover {
+  background: rgba(var(--overlay), 0.07);
 }
 
-.agent-run-log__header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.agent-run-log__role {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: rgba(var(--overlay), 0.06);
+.run-step__chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s;
   color: var(--text-subtle);
 }
 
-.agent-run-log__role--assistant {
-  color: var(--accent);
-  background: rgba(var(--overlay), 0.08);
-}
-.agent-run-log__role--user {
-  color: var(--success);
-  background: rgba(34, 197, 94, 0.1);
-}
-.agent-run-log__role--tool_call {
-  color: var(--warning);
-  background: rgba(245, 158, 11, 0.1);
-}
-.agent-run-log__role--tool_result {
-  color: var(--text-subtle);
+.run-step__chevron--open {
+  transform: rotate(90deg);
 }
 
-.agent-run-log__tool {
-  font-size: 11px;
-  font-family: var(--font-mono);
+.run-step__prompt-label {
+  font-weight: 500;
   color: var(--text-muted);
+  flex-shrink: 0;
 }
 
-.agent-run-log__time {
-  margin-left: auto;
-  font-size: 10px;
+.run-step__prompt-preview {
   color: var(--text-subtle);
-  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
 }
 
-.agent-run-log__content {
+.run-step__prompt-content {
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11px;
+  line-height: 1.6;
   color: var(--text-muted);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
-  max-height: 200px;
+  padding: 12px 14px;
+  max-height: 300px;
   overflow-y: auto;
+  background: rgba(var(--overlay), 0.03);
+  border-radius: 0 0 8px 8px;
 }
 
-.agent-run-log__content--error {
+/* ── Thinking (collapsible thought process) ── */
+
+.run-step--thinking {
+  margin: 2px 0;
+}
+
+.run-step__thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-subtle);
+  font-size: 12px;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.run-step__thinking-toggle:hover {
+  background: rgba(var(--overlay), 0.04);
+}
+
+.run-step__thinking-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+  opacity: 0.6;
+}
+
+.run-step__thinking-label {
+  font-weight: 500;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.run-step__thinking-preview {
+  color: var(--text-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.5;
+  font-style: italic;
+  flex: 1;
+  min-width: 0;
+}
+
+.run-step__thinking-content {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 8px 14px 12px 32px;
+  opacity: 0.8;
+  border-left: 2px solid rgba(var(--overlay), 0.08);
+  margin-left: 18px;
+}
+
+/* ── Narrative (assistant text) ── */
+
+.run-step--narrative {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+}
+
+.run-step__narrative-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  flex: 1;
+}
+
+.run-step__time {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
+  padding-top: 3px;
+  opacity: 0.6;
+}
+
+/* ── Tool Group (container for tool actions) ── */
+
+.run-step--tools {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 4px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--overlay), 0.06);
+}
+
+/* ── Individual Tool Action ── */
+
+.run-action {
+  background: rgba(var(--overlay), 0.025);
+  transition: background 0.1s;
+}
+
+.run-action:hover {
+  background: rgba(var(--overlay), 0.05);
+}
+
+.run-action__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.run-action__icon {
+  flex-shrink: 0;
+  color: var(--text-subtle);
+}
+
+.run-action__label {
+  font-weight: 500;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.run-action__input-preview {
+  color: var(--text-subtle);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+  flex: 1;
+  min-width: 0;
+}
+
+.run-action__error-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
   color: var(--danger);
+  opacity: 0.9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.run-action__expand {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--text-subtle);
+  transition: transform 0.15s;
+  opacity: 0.5;
+}
+
+.run-action__expand--open {
+  transform: rotate(90deg);
+}
+
+.run-action__detail {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-subtle);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  padding: 8px 12px 10px;
+  max-height: 250px;
+  overflow-y: auto;
+  border-top: 1px solid rgba(var(--overlay), 0.06);
+  background: rgba(var(--overlay), 0.02);
+}
+
+/* Error state for the whole action row */
+.run-action--error {
+  background: rgba(239, 68, 68, 0.03);
+}
+
+.run-action--error:hover {
+  background: rgba(239, 68, 68, 0.06);
 }

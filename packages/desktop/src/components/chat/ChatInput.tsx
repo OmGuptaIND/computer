@@ -17,6 +17,8 @@ interface Props {
   onSkillSelect: (skill: Skill) => void
   /** @deprecated variant is no longer used — all inputs render identically */
   variant?: string
+  /** When true, always render as idle (for hero inputs that create new tasks) */
+  ignoreWorkingState?: boolean
   initialValue?: string
   placeholder?: string
   pendingAskUser?: { id: string; questions: AskUserQuestion[] } | null
@@ -57,6 +59,7 @@ export function ChatInput({
   placeholder: customPlaceholder,
   pendingAskUser,
   onAskUserSubmit,
+  ignoreWorkingState,
 }: Props) {
   const [input, setInput] = useState('')
   const [showSlashMenu, setShowSlashMenu] = useState(false)
@@ -65,7 +68,8 @@ export function ChatInput({
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const isCurrentSessionWorking = useIsCurrentSessionWorking()
+  const _isWorking = useIsCurrentSessionWorking()
+  const isCurrentSessionWorking = ignoreWorkingState ? false : _isWorking
 
   // Sync external initialValue into input (e.g. from suggestion chips)
   useEffect(() => {

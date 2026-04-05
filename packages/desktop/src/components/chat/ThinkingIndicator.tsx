@@ -93,7 +93,7 @@ export function ThinkingIndicator() {
   if (agentStatus !== 'working') return null
 
   const statusText = `${vibe}...`
-  const tokenCount = turnUsage?.totalTokens || 0
+  const tokenCount = turnUsage?.outputTokens || 0
 
   return (
     <AnimatePresence>

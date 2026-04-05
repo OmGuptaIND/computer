@@ -15,6 +15,10 @@ export class NotionConnector implements DirectConnector {
     this.tools = createNotionTools(this.api)
   }
 
+  setTokenProvider(getToken: () => Promise<string>): void {
+    this.api.setTokenProvider(getToken)
+  }
+
   getTools(): AgentTool[] {
     return this.tools
   }

@@ -15,6 +15,10 @@ export class LinearConnector implements DirectConnector {
     this.tools = createLinearTools(this.api)
   }
 
+  setTokenProvider(getToken: () => Promise<string>): void {
+    this.api.setTokenProvider(getToken)
+  }
+
   getTools(): AgentTool[] {
     return this.tools
   }

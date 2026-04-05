@@ -7,16 +7,22 @@ const BASE_URL = 'https://slack.com/api'
 
 export class SlackAPI {
   private token = ''
+  private tokenProvider?: () => Promise<string>
 
   setToken(token: string) {
     this.token = token
   }
 
+  setTokenProvider(fn: () => Promise<string>): void {
+    this.tokenProvider = fn
+  }
+
   private async call<T = unknown>(method: string, body?: Record<string, unknown>): Promise<T> {
+    const token = this.tokenProvider ? await this.tokenProvider() : this.token
     const res = await fetch(`${BASE_URL}/${method}`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${this.token}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json; charset=utf-8',
       },
       body: body ? JSON.stringify(body) : undefined,

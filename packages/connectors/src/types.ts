@@ -11,6 +11,11 @@ export interface DirectConnector {
   /** Set the access token. Called on activation and token refresh. */
   setToken(accessToken: string): void
 
+  /** Set a lazy token provider that returns a fresh token on each API call.
+   *  When set, connectors call this instead of using the static token from setToken().
+   *  The provider should handle caching and refresh internally (e.g. OAuthFlow.getToken). */
+  setTokenProvider?(getToken: () => Promise<string>): void
+
   /** Get all tools this connector provides. */
   getTools(): AgentTool[]
 

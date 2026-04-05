@@ -9,6 +9,7 @@
 - name: Install system packages (Debian/Ubuntu)
   apt:
     name:
+      - acl
       - curl
       - jq
       - git
@@ -81,6 +82,17 @@
 
 # ── Clone/update repo ───────────────────────────────────────────
 
+- name: Check if repo exists
+  stat:
+    path: /opt/anton/.git
+  register: repo_check
+
+- name: Remove /opt/anton if not a git repo
+  file:
+    path: /opt/anton
+    state: absent
+  when: not repo_check.stat.exists
+
 - name: Create /opt/anton directory
   file:
     path: /opt/anton
@@ -88,23 +100,9 @@
     owner: "{{ anton_user }}"
     group: "{{ anton_user }}"
     mode: "0755"
-
-- name: Check if repo exists
-  stat:
-    path: /opt/anton/.git
-  register: repo_check
-
-- name: Clone repo
-  become: true
-  become_user: "{{ anton_user }}"
-  git:
-    repo: "https://github.com/OmGuptaIND/computer.git"
-    dest: /opt/anton
-    version: "{{ anton_branch | default('main') }}"
-    force: true
   when: not repo_check.stat.exists
 
-- name: Pull latest
+- name: Clone or update repo
   become: true
   become_user: "{{ anton_user }}"
   git:
@@ -112,7 +110,6 @@
     dest: /opt/anton
     version: "{{ anton_branch | default('main') }}"
     force: true
-  when: repo_check.stat.exists
   tags: [build]
 
 # ── Install + Build ─────────────────────────────────────────────

@@ -23,13 +23,19 @@ export interface TelegramUpdate {
 
 export class TelegramBotAPI {
   private token = ''
+  private tokenProvider?: () => Promise<string>
 
   setToken(token: string): void {
     this.token = token
   }
 
+  setTokenProvider(fn: () => Promise<string>): void {
+    this.tokenProvider = fn
+  }
+
   private async call<T>(method: string, body?: Record<string, unknown>): Promise<T> {
-    const res = await fetch(`${BASE}/bot${this.token}/${method}`, {
+    const token = this.tokenProvider ? await this.tokenProvider() : this.token
+    const res = await fetch(`${BASE}/bot${token}/${method}`, {
       method: body ? 'POST' : 'GET',
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,

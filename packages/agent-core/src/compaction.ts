@@ -288,28 +288,23 @@ export async function compactContext(
   getApiKey: (provider: string) => Promise<string | undefined>,
   customInstructions?: string,
 ): Promise<{ messages: AgentMessage[]; state: CompactionState }> {
+  // Layer 0: Always trim tool outputs — prevents large tool results from blowing
+  // the context window before the threshold check even runs.
+  const trimmed = trimToolOutputs(messages, config.toolOutputMaxTokens)
+
   if (!config.enabled && !customInstructions) {
-    return { messages, state }
+    return { messages: trimmed, state }
   }
 
   const threshold = config.threshold * config.maxContextTokens
-  const totalTokens = estimateTokens(messages)
+  const totalTokens = estimateTokens(trimmed)
 
-  // Under threshold — no compaction needed
+  // Under threshold — no further compaction needed
   if (totalTokens < threshold && !customInstructions) {
-    return { messages, state }
+    return { messages: trimmed, state }
   }
 
   log.info({ tokens: totalTokens, threshold: Math.round(threshold) }, 'compacting')
-
-  // Layer 1: Trim tool outputs
-  const trimmed = trimToolOutputs(messages, config.toolOutputMaxTokens)
-  const trimmedTokens = estimateTokens(trimmed)
-
-  if (trimmedTokens < threshold && !customInstructions) {
-    log.info({ tokens: trimmedTokens }, 'layer 1 sufficient')
-    return { messages: trimmed, state }
-  }
 
   // Layer 2: LLM summarization
   const preserveCount = Math.min(config.preserveRecentCount, trimmed.length)

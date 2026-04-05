@@ -15,6 +15,10 @@ export class ExaConnector implements DirectConnector {
     this.tools = createExaTools(this.api)
   }
 
+  setTokenProvider(getToken: () => Promise<string>): void {
+    this.api.setTokenProvider(getToken)
+  }
+
   getTools(): AgentTool[] {
     return this.tools
   }

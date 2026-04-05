@@ -15,6 +15,10 @@ export class GmailConnector implements DirectConnector {
     this.tools = createGmailTools(this.api)
   }
 
+  setTokenProvider(getToken: () => Promise<string>): void {
+    this.api.setTokenProvider(getToken)
+  }
+
   getTools(): AgentTool[] {
     return this.tools
   }

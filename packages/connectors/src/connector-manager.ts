@@ -29,7 +29,11 @@ export class ConnectorManager {
     try {
       const token = await this.getToken(providerId)
       const connector = factory()
-      connector.setToken(token)
+      connector.setToken(token) // initial token for immediate use
+      // Set lazy token provider so the connector auto-refreshes on each API call
+      if (connector.setTokenProvider) {
+        connector.setTokenProvider(() => this.getToken(providerId))
+      }
       this.connectors.set(providerId, connector)
       log.info({ connector: connector.name, toolCount: connector.getTools().length }, 'activated')
     } catch (err) {

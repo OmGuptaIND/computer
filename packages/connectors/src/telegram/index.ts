@@ -16,6 +16,10 @@ export class TelegramConnector implements DirectConnector {
     this.tools = createTelegramTools(this.api, this.ownerChatId)
   }
 
+  setTokenProvider(getToken: () => Promise<string>): void {
+    this.api.setTokenProvider(getToken)
+  }
+
   setOwnerChatId(chatId: number): void {
     this.ownerChatId = chatId
     this.tools = createTelegramTools(this.api, this.ownerChatId)

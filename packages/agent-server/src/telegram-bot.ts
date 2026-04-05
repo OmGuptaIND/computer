@@ -145,7 +145,7 @@ export class TelegramBotHandler {
       if (typingInterval) clearInterval(typingInterval)
     }
 
-    return chunks.join('')
+    return sanitizeResponse(chunks.join(''))
   }
 
   private async sendMessage(chatId: number, text: string): Promise<void> {
@@ -195,6 +195,14 @@ function splitMessage(text: string, maxLen: number): string[] {
     remaining = remaining.slice(cutAt)
   }
   return chunks
+}
+
+/** Strip <think>…</think> blocks that some models emit as raw text. */
+function sanitizeResponse(text: string): string {
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/g, '') // closed tags
+    .replace(/<think>[\s\S]*$/g, '') // unclosed tag at end
+    .trim()
 }
 
 interface TelegramUpdate {

@@ -519,7 +519,12 @@ export function TaskListView({ mode }: Props) {
 
           {/* Hero input */}
           <div className="task-list-full__hero">
-            <ChatInput onSend={handleNewTask} onSkillSelect={handleSkillSelect} variant="hero" />
+            <ChatInput
+              onSend={handleNewTask}
+              onSkillSelect={handleSkillSelect}
+              variant="hero"
+              ignoreWorkingState
+            />
           </div>
 
           {/* Task table */}
@@ -634,7 +639,12 @@ export function TaskListView({ mode }: Props) {
       )}
 
       <div className="task-panel__input">
-        <ChatInput onSend={handleNewTask} onSkillSelect={handleSkillSelect} variant="hero" />
+        <ChatInput
+          onSend={handleNewTask}
+          onSkillSelect={handleSkillSelect}
+          variant="hero"
+          ignoreWorkingState
+        />
       </div>
 
       <div className="task-panel__list">

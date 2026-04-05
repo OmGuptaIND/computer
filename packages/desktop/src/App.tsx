@@ -373,7 +373,7 @@ export function App() {
             {activeView === 'projects' && <ProjectList />}
 
             <AnimatePresence>
-              {activeView === 'chat' && sidePanelOpen && <SidePanel />}
+              {(activeView === 'chat' || activeView === 'home') && sidePanelOpen && <SidePanel />}
             </AnimatePresence>
           </div>
         </div>

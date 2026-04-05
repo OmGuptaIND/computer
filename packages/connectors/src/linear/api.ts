@@ -63,16 +63,22 @@ const ISSUE_FIELDS = `
 
 export class LinearAPI {
   private token = ''
+  private tokenProvider?: () => Promise<string>
 
   setToken(token: string): void {
     this.token = token
   }
 
+  setTokenProvider(fn: () => Promise<string>): void {
+    this.tokenProvider = fn
+  }
+
   private async query<T = unknown>(query: string, variables?: Record<string, unknown>): Promise<T> {
+    const token = this.tokenProvider ? await this.tokenProvider() : this.token
     const res = await fetch(GQL_ENDPOINT, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${this.token}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ query, variables }),

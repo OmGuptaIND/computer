@@ -1,5 +1,6 @@
 import type { AgentRunRecord } from '@anton/protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { connectionStore } from '../../lib/store/connectionStore.js'
 import { projectStore } from '../../lib/store/projectStore.js'
 import { WorkflowPipelineView } from '../workflows/WorkflowPipelineView.js'
 import { AgentDetailView } from './AgentDetailView.js'
@@ -18,6 +19,15 @@ export function AgentsView() {
   const [isDragging, setIsDragging] = useState(false)
   const projectAgents = projectStore((s) => s.projectAgents)
   const projectWorkflows = projectStore((s) => s.projectWorkflows)
+  const activeProjectId = projectStore((s) => s.activeProjectId)
+  const connectionStatus = connectionStore((s) => s.initPhase)
+
+  // Fetch agents when view mounts or project/connection changes
+  useEffect(() => {
+    if (activeProjectId && connectionStatus === 'ready') {
+      projectStore.getState().listAgents(activeProjectId)
+    }
+  }, [activeProjectId, connectionStatus])
 
   const selectedAgent = selectedAgentId
     ? projectAgents.find((a) => a.sessionId === selectedAgentId)

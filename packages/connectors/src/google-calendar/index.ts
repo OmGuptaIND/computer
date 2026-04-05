@@ -15,6 +15,10 @@ export class GoogleCalendarConnector implements DirectConnector {
     this.tools = createGoogleCalendarTools(this.api)
   }
 
+  setTokenProvider(getToken: () => Promise<string>): void {
+    this.api.setTokenProvider(getToken)
+  }
+
   getTools(): AgentTool[] {
     return this.tools
   }

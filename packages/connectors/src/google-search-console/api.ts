@@ -60,16 +60,22 @@ export interface GscUrlInspectionResult {
 
 export class GoogleSearchConsoleAPI {
   private token = ''
+  private tokenProvider?: () => Promise<string>
 
   setToken(token: string): void {
     this.token = token
   }
 
+  setTokenProvider(fn: () => Promise<string>): void {
+    this.tokenProvider = fn
+  }
+
   private async request<T>(url: string, options: RequestInit = {}): Promise<T> {
+    const token = this.tokenProvider ? await this.tokenProvider() : this.token
     const res = await fetch(url, {
       ...options,
       headers: {
-        Authorization: `Bearer ${this.token}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
         ...options.headers,
       },

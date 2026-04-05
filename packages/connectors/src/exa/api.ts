@@ -18,6 +18,7 @@ export interface ExaResult {
 export class ExaAPI {
   private proxyUrl = ''
   private proxyToken = ''
+  private tokenProvider?: () => Promise<string>
 
   setToken(token: string): void {
     // Token format: "proxyUrl|proxyToken"
@@ -33,11 +34,29 @@ export class ExaAPI {
     }
   }
 
+  setTokenProvider(fn: () => Promise<string>): void {
+    this.tokenProvider = fn
+  }
+
   private async request<T>(path: string, body: Record<string, unknown>): Promise<T> {
-    const res = await fetch(`${this.proxyUrl}${path}`, {
+    let proxyUrl = this.proxyUrl
+    let proxyToken = this.proxyToken
+    // For Exa, the provider returns a compound "proxyUrl|proxyToken" string
+    if (this.tokenProvider) {
+      const raw = await this.tokenProvider()
+      const sep = raw.indexOf('|')
+      if (sep > 0) {
+        proxyUrl = raw.slice(0, sep)
+        proxyToken = raw.slice(sep + 1)
+      } else {
+        proxyToken = raw
+        if (!proxyUrl) proxyUrl = 'https://search.antoncomputer.in'
+      }
+    }
+    const res = await fetch(`${proxyUrl}${path}`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${this.proxyToken}`,
+        Authorization: `Bearer ${proxyToken}`,
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },

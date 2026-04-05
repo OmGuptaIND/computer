@@ -6,9 +6,14 @@ const BASE_URL = 'https://api.github.com'
 
 export class GitHubAPI {
   private token = ''
+  private tokenProvider?: () => Promise<string>
 
   setToken(token: string) {
     this.token = token
+  }
+
+  setTokenProvider(fn: () => Promise<string>): void {
+    this.tokenProvider = fn
   }
 
   private async request<T = unknown>(
@@ -16,10 +21,11 @@ export class GitHubAPI {
     path: string,
     body?: Record<string, unknown>,
   ): Promise<T> {
+    const token = this.tokenProvider ? await this.tokenProvider() : this.token
     const res = await fetch(`${BASE_URL}${path}`, {
       method,
       headers: {
-        Authorization: `Bearer ${this.token}`,
+        Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
         ...(body ? { 'Content-Type': 'application/json' } : {}),

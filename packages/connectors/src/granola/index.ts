@@ -15,6 +15,10 @@ export class GranolaConnector implements DirectConnector {
     this.tools = createGranolaTools(this.api)
   }
 
+  setTokenProvider(getToken: () => Promise<string>): void {
+    this.api.setTokenProvider(getToken)
+  }
+
   getTools(): AgentTool[] {
     return this.tools
   }

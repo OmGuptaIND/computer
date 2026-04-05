@@ -35,16 +35,22 @@ export interface AirtableRecordList {
 
 export class AirtableAPI {
   private token = ''
+  private tokenProvider?: () => Promise<string>
 
   setToken(token: string): void {
     this.token = token
   }
 
+  setTokenProvider(fn: () => Promise<string>): void {
+    this.tokenProvider = fn
+  }
+
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const token = this.tokenProvider ? await this.tokenProvider() : this.token
     const res = await fetch(`${BASE}${path}`, {
       ...options,
       headers: {
-        Authorization: `Bearer ${this.token}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
         ...options.headers,
       },
@@ -62,9 +68,10 @@ export class AirtableAPI {
 
   async getBaseSchema(baseId: string): Promise<{ tables: AirtableTable[] }> {
     // Meta endpoint uses a different path
+    const token = this.tokenProvider ? await this.tokenProvider() : this.token
     const res = await fetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
       headers: {
-        Authorization: `Bearer ${this.token}`,
+        Authorization: `Bearer ${token}`,
       },
     })
     if (!res.ok) {
@@ -147,8 +154,9 @@ export class AirtableAPI {
   }
 
   async whoami(): Promise<{ id: string; email?: string }> {
+    const token = this.tokenProvider ? await this.tokenProvider() : this.token
     const res = await fetch('https://api.airtable.com/v0/meta/whoami', {
-      headers: { Authorization: `Bearer ${this.token}` },
+      headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) {
       const text = await res.text()

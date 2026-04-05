@@ -116,6 +116,11 @@ export class UnipileLinkedInAPI {
   private apiKey = ''
   private baseUrl = ''
   private accountId = ''
+  private tokenProvider?: () => Promise<string>
+
+  setTokenProvider(fn: () => Promise<string>): void {
+    this.tokenProvider = fn
+  }
 
   setCredentials(apiKey: string, dsn: string, accountId?: string): void {
     this.apiKey = apiKey
@@ -150,7 +155,18 @@ export class UnipileLinkedInAPI {
       params?: Record<string, string>
     } = {},
   ): Promise<T> {
-    const url = new URL(`${this.baseUrl}/api/v1${path}`)
+    let apiKey = this.apiKey
+    let baseUrl = this.baseUrl
+    // Refresh credentials from provider if set (compound "apiKey|dsn|accountId" string)
+    if (this.tokenProvider) {
+      const raw = await this.tokenProvider()
+      const parts = raw.split('|')
+      apiKey = parts[0] ?? ''
+      baseUrl = (parts[1] ?? '').replace(/\/+$/, '')
+      if (parts[2]) this.accountId = parts[2]
+    }
+
+    const url = new URL(`${baseUrl}/api/v1${path}`)
     if (opts.params) {
       for (const [k, v] of Object.entries(opts.params)) {
         if (v !== undefined && v !== '') url.searchParams.set(k, v)
@@ -160,7 +176,7 @@ export class UnipileLinkedInAPI {
     const res = await fetch(url.toString(), {
       method: opts.method ?? (opts.body ? 'POST' : 'GET'),
       headers: {
-        'X-API-KEY': this.apiKey,
+        'X-API-KEY': apiKey,
         Accept: 'application/json',
         ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
       },
