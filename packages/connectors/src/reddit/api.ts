@@ -54,9 +54,7 @@ export class RedditAPI {
   }
 
   private buildQuery(params: Record<string, unknown>): string {
-    const entries = Object.entries(params).filter(
-      ([, v]) => v !== undefined && v !== null,
-    )
+    const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null)
     if (entries.length === 0) return ''
     return `?${new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString()}`
   }
@@ -164,10 +162,7 @@ export class RedditAPI {
       limit: opts.limit || 25,
     })
     const prefix = subreddit ? `/r/${encodeURIComponent(subreddit)}` : ''
-    return this.call(
-      'GET',
-      `${prefix}/comments/${encodeURIComponent(postId)}.json${query}`,
-    )
+    return this.call('GET', `${prefix}/comments/${encodeURIComponent(postId)}.json${query}`)
   }
 
   // ── Search ──
@@ -205,9 +200,7 @@ export class RedditAPI {
       restrict_sr: opts.subreddit ? 'true' : undefined,
       type: 'link',
     })
-    const prefix = opts.subreddit
-      ? `/r/${encodeURIComponent(opts.subreddit)}`
-      : ''
+    const prefix = opts.subreddit ? `/r/${encodeURIComponent(opts.subreddit)}` : ''
     return this.call('GET', `${prefix}/search.json${params}`)
   }
 
@@ -274,9 +267,7 @@ export class RedditAPI {
 
   // ── Subscriptions ──
 
-  async getSubscriptions(
-    opts: { limit?: number; after?: string } = {},
-  ): Promise<{
+  async getSubscriptions(opts: { limit?: number; after?: string } = {}): Promise<{
     data: {
       children: Array<{
         data: {
@@ -327,13 +318,11 @@ export class RedditAPI {
   }> {
     const sort = opts.sort || 'new'
     const query = this.buildQuery({
+      sort,
       limit: opts.limit || 25,
       after: opts.after,
       t: opts.t,
     })
-    return this.call(
-      'GET',
-      `/user/${encodeURIComponent(username)}/submitted.json${query}`,
-    )
+    return this.call('GET', `/user/${encodeURIComponent(username)}/submitted.json${query}`)
   }
 }
