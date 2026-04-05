@@ -1,0 +1,263 @@
+packages/connectors/src/github/api.ts
+  9613c501160ecba1 9,15-18,24,28
+packages/desktop/src/components/memory/MemoryView.tsx
+  0a41d955db1b7478 150,218,222,225,314,319,322,348,355,393
+packages/desktop/src/App.tsx
+  0a41d955db1b7478 376
+packages/desktop/src/components/agents/AgentsView.tsx
+  9613c501160ecba1 3,22-30
+packages/connectors/src/notion/api.ts
+  9613c501160ecba1 27,33-36,38,42
+packages/agent-server/src/telegram-bot.ts
+  66cab4c036773d14 148,200-207
+packages/connectors/src/google-calendar/index.ts
+  9613c501160ecba1 18-21
+packages/connectors/src/connector-manager.ts
+  9613c501160ecba1 32-36
+packages/desktop/src/index.css
+  0a41d955db1b7478 14661,14669,14672-14676,14683,14687,14690,14694-14695,14697-14698,14725-14726,14732,14737,14739-14740,14743,14748,14751,14754-14755,14795,14797-14798,14801-14803,14985-14990,14995,14997,14999,15006,15010,15012
+  5d938eefe1da6b85 15948-15963,15968-15970,15973,15978,15983,15988-15989,15991-15992,15995,15998,16028-16030,16033-16034,16037-16040,16043-16047,16049-16055,16059-16084,16087-16097,16099,16102-16108,16111-16166,16168,16170-16179,16182-16183,16186-16188,16191,16193-16200,16202-16207,16209-16225,16227-16229,16233-16236,16239-16240,16243-16262,16265,16267,16269-16270,16273-16274,16277,16279,16281,16285-16286,16288-16289,16292-16298
+  b7055c2db3c9cbc9 133-156,13242,13370-13373
+packages/desktop/src/components/home/TaskListView.tsx
+  ef7a117a1049f906 526,646
+packages/agent-server/src/server.ts
+  ef7a117a1049f906 2636-2647
+packages/connectors/src/linear/api.ts
+  9613c501160ecba1 66,72-75,77,81
+packages/connectors/src/exa/api.ts
+  9613c501160ecba1 21,37-40,42-56,59
+packages/connectors/src/airtable/index.ts
+  9613c501160ecba1 18-21
+packages/connectors/src/google-drive/index.ts
+  9613c501160ecba1 18-21
+packages/desktop/src/components/home/HomeView.tsx
+  0a41d955db1b7478 3,10,51-54,57-68,70
+packages/connectors/src/linkedin/index.ts
+  9613c501160ecba1 27-30
+packages/connectors/src/github/index.ts
+  9613c501160ecba1 18-21
+packages/connectors/src/google-sheets/index.ts
+  9613c501160ecba1 18-21
+packages/connectors/src/google-drive/api.ts
+  9613c501160ecba1 22,28-31,33,37,75,77,84,87
+deploy/ansible/roles/anton-agent/tasks/main.yml
+  afa024d186dc1890 12,90-93,105
+packages/connectors/src/google-docs/api.ts
+  9613c501160ecba1 33,39-42,44,48
+packages/desktop/src/components/agents/AgentRunView.tsx
+  9613c501160ecba1 28-29,31,432-436,439,441,443,445
+  5d938eefe1da6b85 2-13,15-16,20-27,30,32-350,380-383,398,402-403,405-407,409,431,437-438,440,442,444,446-449
+packages/connectors/src/gmail/api.ts
+  9613c501160ecba1 24,30-33,35,39
+packages/connectors/src/airtable/api.ts
+  9613c501160ecba1 38,44-47,49,53,71,74,157,159
+packages/connectors/src/telegram/api.ts
+  9613c501160ecba1 26,32-35,37-38
+packages/connectors/src/linkedin/api.ts
+  9613c501160ecba1 119-123,158-169,179
+packages/desktop/src/components/chat/ChatInput.tsx
+  ef7a117a1049f906 20-21,62,71-72
+packages/connectors/src/google-calendar/api.ts
+  9613c501160ecba1 29,35-38,40,44
+packages/connectors/src/slack/api.ts
+  9613c501160ecba1 10,16-19,21,25
+packages/connectors/src/google-search-console/index.ts
+  9613c501160ecba1 18-21
+packages/connectors/src/notion/index.ts
+  9613c501160ecba1 18-21
+packages/desktop/src/lib/store/handlers/interactionHandler.ts
+  ef7a117a1049f906 189-193,196-197,200
+packages/connectors/src/linear/index.ts
+  9613c501160ecba1 18-21
+packages/connectors/src/granola/index.ts
+  9613c501160ecba1 18-21
+packages/agent-server/src/oauth/oauth-flow.ts
+  9613c501160ecba1 23,143-145,147-152,154,156-157,159-162,164-181,183-185,188-197
+packages/agent-core/src/session.ts
+  afa024d186dc1890 165-167,537,745,939-940,1314-1321,1323-1324,1414-1444
+packages/connectors/src/gmail/index.ts
+  9613c501160ecba1 18-21
+packages/connectors/src/google-sheets/api.ts
+  9613c501160ecba1 27,33-36,38,42
+packages/connectors/src/granola/api.ts
+  9613c501160ecba1 41,47-50,52,56
+packages/desktop/src/components/chat/ThinkingIndicator.tsx
+  eedaf54677c4f3ad 96
+packages/agent-core/src/compaction.ts
+  afa024d186dc1890 291-294,296,300,302,304
+packages/connectors/src/types.ts
+  9613c501160ecba1 14-18
+packages/connectors/src/telegram/index.ts
+  9613c501160ecba1 19-22
+packages/connectors/src/google-search-console/api.ts
+  9613c501160ecba1 63,69-72,74,78
+packages/connectors/src/slack/index.ts
+  9613c501160ecba1 18-21
+packages/connectors/src/google-docs/index.ts
+  9613c501160ecba1 18-21
+packages/connectors/src/exa/index.ts
+  9613c501160ecba1 18-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "b74d781c6082de95762a68dec5b2af38f48ebe6f",
+  "prompts": {
+    "0a41d955db1b7478": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b0371636-2fb1-42a7-82a5-086b5da6ae86",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 110,
+      "total_deletions": 85,
+      "accepted_lines": 80,
+      "overriden_lines": 0
+    },
+    "2cec0488cff200d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8ea5e76e-6f49-4dbd-9b3d-8559bc90709d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 733,
+      "total_deletions": 228,
+      "accepted_lines": 505,
+      "overriden_lines": 0
+    },
+    "5d938eefe1da6b85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "93e0e8ad-a5cb-4054-b091-24baed233a3a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 695,
+      "total_deletions": 143,
+      "accepted_lines": 624,
+      "overriden_lines": 0
+    },
+    "66cab4c036773d14": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc1ed913-bdf0-4456-949a-0f93496379aa",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 9,
+      "total_deletions": 1,
+      "accepted_lines": 9,
+      "overriden_lines": 0
+    },
+    "7b82cbdeefcec3fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40d7e693-24ab-4dbd-89db-cfab867db69e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "9613c501160ecba1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fa1aafa3-3a15-43b6-9d36-60a7a26fe7d8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 297,
+      "total_deletions": 79,
+      "accepted_lines": 280,
+      "overriden_lines": 0
+    },
+    "9a307b50903c7f2b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e912b9e6-4b2d-413f-90ec-f9223c61eb58",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 403,
+      "total_deletions": 157,
+      "accepted_lines": 246,
+      "overriden_lines": 0
+    },
+    "afa024d186dc1890": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a04a08a-f537-47a6-b116-e822e2360425",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 95,
+      "total_deletions": 87,
+      "accepted_lines": 71,
+      "overriden_lines": 0
+    },
+    "b7055c2db3c9cbc9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a42a4aa2-2fca-470f-984e-a3cf4d194ad4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 106,
+      "total_deletions": 76,
+      "accepted_lines": 69,
+      "overriden_lines": 0
+    },
+    "b86c1b79f0b75756": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9ea7e932-7812-4d56-8f40-5115d6521554",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 112,
+      "overriden_lines": 0
+    },
+    "eedaf54677c4f3ad": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cba00b7f-f4f3-4232-86c8-d737c074df72",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "ef7a117a1049f906": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "925407b7-8c6b-44a7-9f03-5115ce557d5a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 27,
+      "total_deletions": 6,
+      "accepted_lines": 27,
+      "overriden_lines": 0
+    }
+  }
+}
