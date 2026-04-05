@@ -1,6 +1,7 @@
 import { Check, ChevronRight, MessageSquare, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { sessionStore } from '../lib/store/sessionStore.js'
+import { useStore } from '../lib/store.js'
+import { sessionStore, useActiveSessionState } from '../lib/store/sessionStore.js'
 import { uiStore } from '../lib/store/uiStore.js'
 import { MarkdownRenderer } from './chat/MarkdownRenderer.js'
 
@@ -29,8 +30,8 @@ function extractToc(markdown: string): TocEntry[] {
 }
 
 export function PlanPanel() {
-  const pendingPlan = sessionStore((s) => s.pendingPlan)
-  const setPendingPlan = sessionStore((s) => s.setPendingPlan)
+  const pendingPlan = useActiveSessionState((s) => s.pendingPlan)
+  const activeSessionId = useStore((s) => s.getActiveConversation()?.sessionId)
   const setSidePanelView = uiStore((s) => s.setSidePanelView)
   const [showFeedback, setShowFeedback] = useState(false)
   const [feedback, setFeedback] = useState('')
@@ -79,7 +80,9 @@ export function PlanPanel() {
 
   const handleApprove = () => {
     sessionStore.getState().sendPlanResponse(pendingPlan.id, true)
-    setPendingPlan(null)
+    if (activeSessionId) {
+      sessionStore.getState().updateSessionState(activeSessionId, { pendingPlan: null })
+    }
     setSidePanelView('artifacts')
   }
 
@@ -89,7 +92,9 @@ export function PlanPanel() {
       return
     }
     sessionStore.getState().sendPlanResponse(pendingPlan.id, false, feedback || undefined)
-    setPendingPlan(null)
+    if (activeSessionId) {
+      sessionStore.getState().updateSessionState(activeSessionId, { pendingPlan: null })
+    }
     setSidePanelView('artifacts')
     setShowFeedback(false)
     setFeedback('')

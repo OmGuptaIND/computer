@@ -2,7 +2,7 @@ import { AnimatePresence } from 'framer-motion'
 import { ArrowDown, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type ChatMessage, useAgentStatus, useStore } from '../../lib/store.js'
-import { sessionStore } from '../../lib/store/sessionStore.js'
+import { useActiveSessionState, sessionStore } from '../../lib/store/sessionStore.js'
 import { uiStore } from '../../lib/store/uiStore.js'
 import { ActionsGroup } from './ActionsGroup.js'
 import { MessageBubble } from './MessageBubble.js'
@@ -31,14 +31,11 @@ function formatTokens(n: number): string {
 }
 
 function TurnStats() {
-  const turnUsage = sessionStore((s) => s.turnUsage)
-  const lastTurnDurationMs = sessionStore((s) => s.lastTurnDurationMs)
-  const agentStatus = sessionStore((s) => s.agentStatus)
-  const activeConversationId = useStore((s) => s.activeConversationId)
-  const turnStatsConversationId = sessionStore((s) => s.turnStatsConversationId)
+  const turnUsage = useActiveSessionState((s) => s.turnUsage)
+  const lastTurnDurationMs = useActiveSessionState((s) => s.lastTurnDurationMs)
+  const agentStatus = useActiveSessionState((s) => s.status)
 
   if (agentStatus !== 'idle' || !turnUsage || !lastTurnDurationMs) return null
-  if (turnStatsConversationId !== activeConversationId) return null
 
   return (
     <div className="turn-stats">
@@ -50,7 +47,7 @@ function TurnStats() {
 }
 
 function TaskChecklistInline() {
-  const currentTasks = sessionStore((s) => s.currentTasks)
+  const currentTasks = useActiveSessionState((s) => s.tasks)
   const tasksHidden = uiStore((s) => s.tasksHidden)
   if (currentTasks.length === 0 || tasksHidden) return null
   return <TaskChecklist tasks={currentTasks} />

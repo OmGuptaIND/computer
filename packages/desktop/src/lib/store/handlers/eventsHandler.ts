@@ -4,7 +4,6 @@
 
 import type { EventMessage } from '@anton/protocol'
 import { connection } from '../../connection.js'
-import { useStore } from '../../store.js'
 import { projectStore } from '../projectStore.js'
 import { sessionStore } from '../sessionStore.js'
 import { uiStore } from '../uiStore.js'
@@ -39,25 +38,13 @@ export function handleEventsMessage(msg: EventMessage): void {
         )
 
       const sid: string | undefined = msg.sessionId
+      if (!sid) return
+
       const ss = sessionStore.getState()
+      ss.setSessionStatus(sid, msg.status, msg.detail || null)
 
-      if (sid) {
-        ss.updateSessionState(sid, { status: msg.status, statusDetail: msg.detail })
-      }
-
-      const activeConv = useStore.getState().getActiveConversation()
-      if (sid === activeConv?.sessionId) {
-        ss.setAgentStatus(msg.status, sid)
-        ss.setAgentStatusDetail(msg.detail || null)
-        if (msg.status === 'idle') {
-          ss.clearAgentSteps()
-        }
-      } else if (!sid) {
-        ss.setAgentStatus(msg.status)
-        ss.setAgentStatusDetail(msg.detail || null)
-        if (msg.status === 'idle') {
-          ss.clearAgentSteps()
-        }
+      if (msg.status === 'idle') {
+        ss.updateSessionState(sid, { agentSteps: [] })
       }
       return
     }

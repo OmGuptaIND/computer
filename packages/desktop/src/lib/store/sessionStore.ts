@@ -1,9 +1,9 @@
 /**
- * Session domain store — sessions, providers, agent status, per-session state.
+ * Session domain store — sessions, providers, per-session state.
  *
- * Consolidates 10+ separate Maps/Sets into a single `sessionStates` Map<sessionId, SessionState>.
- * Each session's status, tasks, sync state, streaming state, and message tracking
- * lives in one place instead of being scattered across separate collections.
+ * ALL transient session state lives inside `sessionStates: Map<sessionId, SessionState>`.
+ * There are ZERO global fields for session-specific data — switching conversations
+ * just changes which sessionId is "active", no save/restore needed.
  */
 
 import type {
@@ -18,37 +18,6 @@ import { connection } from '../connection.js'
 import type { AgentStatus, AgentStep, ProviderInfo, SessionMeta } from './types.js'
 
 // ── Consolidated per-session state ────────────────────────────────
-
-export interface SessionState {
-  status: AgentStatus
-  statusDetail?: string
-  tasks: TaskItem[]
-  isStreaming: boolean
-  needsHistoryRefresh: boolean
-  isSyncing: boolean
-  pendingSyncMessages: AiMessage[]
-  hasMore: boolean
-  isLoadingOlder: boolean
-  assistantMsgId: string | null
-  resolver?: () => void
-}
-
-function createSessionState(partial?: Partial<SessionState>): SessionState {
-  return {
-    status: 'idle',
-    tasks: [],
-    isStreaming: false,
-    needsHistoryRefresh: false,
-    isSyncing: false,
-    pendingSyncMessages: [],
-    hasMore: true,
-    isLoadingOlder: false,
-    assistantMsgId: null,
-    ...partial,
-  }
-}
-
-// ── Pending interaction types ─────────────────────────────────────
 
 export interface PendingConfirm {
   id: string
@@ -70,6 +39,81 @@ export interface PendingAskUser {
   sessionId?: string
 }
 
+export interface SessionState {
+  // Core status
+  status: AgentStatus
+  statusDetail: string | null
+  isStreaming: boolean
+
+  // Tasks
+  tasks: TaskItem[]
+
+  // Agent steps (tool call sequence)
+  agentSteps: AgentStep[]
+
+  // Turn timing
+  workingStartedAt: number | null
+  lastTurnDurationMs: number | null
+
+  // Token usage
+  turnUsage: TokenUsage | null
+  sessionUsage: TokenUsage | null
+  lastResponseProvider: string | null
+  lastResponseModel: string | null
+
+  // Pending interactions
+  pendingConfirm: PendingConfirm | null
+  pendingPlan: PendingPlan | null
+  pendingAskUser: PendingAskUser | null
+
+  // Tool call tracking
+  hiddenToolCallIds: Set<string>
+  toolCallNames: Map<string, { name: string; input?: Record<string, unknown> }>
+
+  // Sync state
+  needsHistoryRefresh: boolean
+  isSyncing: boolean
+  pendingSyncMessages: AiMessage[]
+
+  // Pagination
+  hasMore: boolean
+  isLoadingOlder: boolean
+
+  // Message tracking
+  assistantMsgId: string | null
+
+  // Session readiness
+  resolver?: () => void
+}
+
+export function createSessionState(partial?: Partial<SessionState>): SessionState {
+  return {
+    status: 'idle',
+    statusDetail: null,
+    isStreaming: false,
+    tasks: [],
+    agentSteps: [],
+    workingStartedAt: null,
+    lastTurnDurationMs: null,
+    turnUsage: null,
+    sessionUsage: null,
+    lastResponseProvider: null,
+    lastResponseModel: null,
+    pendingConfirm: null,
+    pendingPlan: null,
+    pendingAskUser: null,
+    hiddenToolCallIds: new Set(),
+    toolCallNames: new Map(),
+    needsHistoryRefresh: false,
+    isSyncing: false,
+    pendingSyncMessages: [],
+    hasMore: true,
+    isLoadingOlder: false,
+    assistantMsgId: null,
+    ...partial,
+  }
+}
+
 // ── Store interface ───────────────────────────────────────────────
 
 const MODEL_KEY = 'anton.selectedModel'
@@ -87,11 +131,14 @@ function saveSelectedModel(provider: string, model: string) {
   localStorage.setItem(MODEL_KEY, JSON.stringify({ provider, model }))
 }
 
+// Per-session stuck-state timeouts
+const _stuckTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+
 interface SessionStoreState {
   // Connection
   connectionStatus: 'connected' | 'connecting' | 'disconnected' | 'authenticating' | 'error'
 
-  // Current session
+  // Current session (identifies which session is "active" — not per-session state)
   currentSessionId: string | null
   currentProvider: string
   currentModel: string
@@ -100,41 +147,12 @@ interface SessionStoreState {
   sessions: SessionMeta[]
   sessionsLoaded: boolean
 
-  // Providers
+  // Providers (app-wide)
   providers: ProviderInfo[]
   defaults: { provider: string; model: string }
 
-  // Global agent status (for the active session)
-  agentStatus: AgentStatus
-  agentStatusDetail: string | null
-  agentSteps: AgentStep[]
-
-  // Turn timing
-  workingStartedAt: number | null
-  lastTurnDurationMs: number | null
-  turnStatsConversationId: string | null
-  workingSessionId: string | null
-
-  // Token usage (per-turn)
-  turnUsage: TokenUsage | null
-  sessionUsage: TokenUsage | null
-  lastResponseProvider: string | null
-  lastResponseModel: string | null
-
-  // Currently visible tasks (for active session)
-  currentTasks: TaskItem[]
-
-  // Consolidated per-session state
+  // Consolidated per-session state (ALL transient state lives here)
   sessionStates: Map<string, SessionState>
-
-  // Tool call tracking (not per-session — cleared on turn end)
-  _hiddenToolCallIds: Set<string>
-  _toolCallNames: Map<string, { name: string; input?: Record<string, unknown> }>
-
-  // Pending interactions
-  pendingConfirm: PendingConfirm | null
-  pendingPlan: PendingPlan | null
-  pendingAskUser: PendingAskUser | null
 
   // ── Actions ──────────────────────────────────────────────────
 
@@ -148,37 +166,18 @@ interface SessionStoreState {
   setSessions: (sessions: SessionMeta[]) => void
   setProviders: (providers: ProviderInfo[], defaults: { provider: string; model: string }) => void
 
-  // Agent status
-  setAgentStatus: (status: AgentStatus, sessionId?: string) => void
-  setAgentStatusDetail: (detail: string | null) => void
-  addAgentStep: (step: AgentStep) => void
-  updateAgentStep: (id: string, updates: Partial<AgentStep>) => void
-  clearAgentSteps: () => void
-
-  // Turn usage
-  setUsage: (turn: TokenUsage | null, session: TokenUsage | null) => void
-  setLastResponseModel: (provider: string, model: string) => void
-
-  // Tasks
-  setCurrentTasks: (tasks: TaskItem[]) => void
-
-  // Pending interactions
-  setPendingConfirm: (confirm: PendingConfirm | null) => void
-  setPendingPlan: (plan: PendingPlan | null) => void
-  setPendingAskUser: (ask: PendingAskUser | null) => void
-
-  // Per-session state helpers
+  // Per-session state (the ONLY way to read/write session-specific data)
   getSessionState: (sessionId: string) => SessionState
   updateSessionState: (sessionId: string, updates: Partial<SessionState>) => void
+
+  // Convenience helpers for common per-session operations
+  setSessionStatus: (sessionId: string, status: AgentStatus, statusDetail?: string | null) => void
+  addAgentStep: (sessionId: string, step: AgentStep) => void
+  updateAgentStep: (sessionId: string, stepId: string, updates: Partial<AgentStep>) => void
 
   // Session readiness
   registerPendingSession: (id: string) => Promise<void>
   resolvePendingSession: (id: string) => void
-
-  // Pending interaction selectors (filters by active session)
-  getPendingConfirmForSession: (activeSessionId?: string) => PendingConfirm | null
-  getPendingPlanForSession: (activeSessionId?: string) => PendingPlan | null
-  getPendingAskUserForSession: (activeSessionId?: string) => PendingAskUser | null
 
   // Connection actions
   createSession: (
@@ -207,6 +206,7 @@ interface SessionStoreState {
     sessionId?: string,
     projectId?: string,
   ) => void
+
   // Reset
   reset: () => void
   resetKeepConversations: () => void
@@ -224,24 +224,7 @@ export const sessionStore = create<SessionStoreState>((set, get) => {
     sessionsLoaded: false,
     providers: [],
     defaults: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
-    agentStatus: 'idle',
-    agentStatusDetail: null,
-    agentSteps: [],
-    workingStartedAt: null,
-    lastTurnDurationMs: null,
-    turnStatsConversationId: null,
-    workingSessionId: null,
-    turnUsage: null,
-    sessionUsage: null,
-    lastResponseProvider: null,
-    lastResponseModel: null,
-    currentTasks: [],
     sessionStates: new Map(),
-    _hiddenToolCallIds: new Set(),
-    _toolCallNames: new Map(),
-    pendingConfirm: null,
-    pendingPlan: null,
-    pendingAskUser: null,
 
     // ── Connection ────────────────────────────────────────────
 
@@ -267,98 +250,6 @@ export const sessionStore = create<SessionStoreState>((set, get) => {
       set({ providers, defaults, currentProvider: provider, currentModel: model })
     },
 
-    // ── Agent status ──────────────────────────────────────────
-
-    setAgentStatus: (status, sessionId?) => {
-      const prev = get().agentStatus
-
-      // Clear any existing stuck-state timeout
-      if ((window as unknown as Record<string, unknown>).__stuckTimeout) {
-        clearTimeout((window as unknown as Record<string, unknown>).__stuckTimeout as number)
-        ;(window as unknown as Record<string, unknown>).__stuckTimeout = null
-      }
-
-      if (status === 'working' && prev !== 'working') {
-        set({
-          agentStatus: status,
-          workingStartedAt: Date.now(),
-          lastTurnDurationMs: null,
-          turnUsage: null,
-          currentTasks: [],
-          workingSessionId: sessionId || null,
-        })
-
-        // Safety net: if stuck in "working" for 5 min with no events, auto-recover
-        ;(window as unknown as Record<string, unknown>).__stuckTimeout = window.setTimeout(
-          () => {
-            const current = get()
-            if (current.agentStatus === 'working') {
-              console.error('[sessionStore] Stuck-state timeout: auto-recovering to idle.')
-              set({ agentStatus: 'idle', workingSessionId: null })
-              current.clearAgentSteps()
-              current.setAgentStatusDetail(null)
-            }
-          },
-          5 * 60 * 1000,
-        )
-      } else if (status === 'idle' && prev === 'working') {
-        const started = get().workingStartedAt
-        const duration = started ? Date.now() - started : null
-        set({
-          agentStatus: status,
-          lastTurnDurationMs: duration,
-          turnStatsConversationId: null, // will be set by caller if needed
-          workingSessionId: null,
-        })
-      } else {
-        set({
-          agentStatus: status,
-          workingSessionId: status === 'working' ? sessionId || null : null,
-        })
-      }
-    },
-
-    setAgentStatusDetail: (detail) => set({ agentStatusDetail: detail }),
-    addAgentStep: (step) => set((s) => ({ agentSteps: [...s.agentSteps, step] })),
-    updateAgentStep: (id, updates) =>
-      set((s) => ({
-        agentSteps: s.agentSteps.map((step) => (step.id === id ? { ...step, ...updates } : step)),
-      })),
-    clearAgentSteps: () => set({ agentSteps: [] }),
-
-    // ── Turn usage ────────────────────────────────────────────
-
-    setUsage: (turn, session) => set({ turnUsage: turn, sessionUsage: session }),
-    setLastResponseModel: (provider, model) =>
-      set({ lastResponseProvider: provider, lastResponseModel: model }),
-
-    // ── Tasks ─────────────────────────────────────────────────
-
-    setCurrentTasks: (tasks) => set({ currentTasks: tasks }),
-
-    // ── Pending interactions ──────────────────────────────────
-
-    setPendingConfirm: (confirm) => set({ pendingConfirm: confirm }),
-    setPendingPlan: (plan) => set({ pendingPlan: plan }),
-    setPendingAskUser: (ask) => set({ pendingAskUser: ask }),
-
-    // Selectors that filter by active session
-    getPendingConfirmForSession: (activeSessionId) => {
-      const c = get().pendingConfirm
-      if (!c) return null
-      return !c.sessionId || c.sessionId === activeSessionId ? c : null
-    },
-    getPendingPlanForSession: (activeSessionId) => {
-      const p = get().pendingPlan
-      if (!p) return null
-      return !p.sessionId || p.sessionId === activeSessionId ? p : null
-    },
-    getPendingAskUserForSession: (activeSessionId) => {
-      const a = get().pendingAskUser
-      if (!a) return null
-      return !a.sessionId || a.sessionId === activeSessionId ? a : null
-    },
-
     // ── Per-session state ─────────────────────────────────────
 
     getSessionState: (sessionId) => {
@@ -371,6 +262,71 @@ export const sessionStore = create<SessionStoreState>((set, get) => {
         const current = states.get(sessionId) ?? createSessionState()
         states.set(sessionId, { ...current, ...updates })
         return { sessionStates: states }
+      })
+    },
+
+    // ── Convenience helpers ───────────────────────────────────
+
+    setSessionStatus: (sessionId, status, statusDetail) => {
+      const prev = get().getSessionState(sessionId)
+
+      // Clear any existing stuck-state timeout for this session
+      const existingTimeout = _stuckTimeouts.get(sessionId)
+      if (existingTimeout) {
+        clearTimeout(existingTimeout)
+        _stuckTimeouts.delete(sessionId)
+      }
+
+      if (status === 'working' && prev.status !== 'working') {
+        get().updateSessionState(sessionId, {
+          status,
+          statusDetail: statusDetail ?? null,
+          workingStartedAt: Date.now(),
+          lastTurnDurationMs: null,
+          turnUsage: null,
+          tasks: [],
+        })
+
+        // Safety net: if stuck in "working" for 5 min, auto-recover
+        const timeout = setTimeout(() => {
+          const current = get().getSessionState(sessionId)
+          if (current.status === 'working') {
+            console.error(`[sessionStore] Stuck-state timeout for ${sessionId}: auto-recovering.`)
+            get().updateSessionState(sessionId, {
+              status: 'idle',
+              statusDetail: null,
+              agentSteps: [],
+            })
+          }
+          _stuckTimeouts.delete(sessionId)
+        }, 5 * 60 * 1000)
+        _stuckTimeouts.set(sessionId, timeout)
+      } else if (status === 'idle' && prev.status === 'working') {
+        const duration = prev.workingStartedAt ? Date.now() - prev.workingStartedAt : null
+        get().updateSessionState(sessionId, {
+          status,
+          statusDetail: statusDetail ?? null,
+          lastTurnDurationMs: duration,
+        })
+      } else {
+        get().updateSessionState(sessionId, {
+          status,
+          statusDetail: statusDetail !== undefined ? statusDetail : prev.statusDetail,
+        })
+      }
+    },
+
+    addAgentStep: (sessionId, step) => {
+      const ss = get().getSessionState(sessionId)
+      get().updateSessionState(sessionId, {
+        agentSteps: [...ss.agentSteps, step],
+      })
+    },
+
+    updateAgentStep: (sessionId, stepId, updates) => {
+      const ss = get().getSessionState(sessionId)
+      get().updateSessionState(sessionId, {
+        agentSteps: ss.agentSteps.map((s) => (s.id === stepId ? { ...s, ...updates } : s)),
       })
     },
 
@@ -401,11 +357,10 @@ export const sessionStore = create<SessionStoreState>((set, get) => {
       if (opts) {
         connection.sendSessionHistory(sessionId, opts)
       } else {
-        // Mark session as syncing
         get().updateSessionState(sessionId, { isSyncing: true })
         connection.sendSessionHistory(sessionId)
 
-        // Safety timeout: clear syncing flag if server never responds
+        // Safety timeout
         setTimeout(() => {
           const ss = get().getSessionState(sessionId)
           if (ss.isSyncing) {
@@ -415,9 +370,7 @@ export const sessionStore = create<SessionStoreState>((set, get) => {
               isSyncing: false,
               pendingSyncMessages: [],
             })
-            // Replay any queued messages
             for (const msg of queued) {
-              // The message handler will be wired externally
               console.log(`[Sync] Would replay ${msg.type} for ${sessionId}`)
             }
           }
@@ -439,59 +392,65 @@ export const sessionStore = create<SessionStoreState>((set, get) => {
     sendSteerMessage: (text, sessionId) => connection.sendSteerMessage(text, sessionId),
     sendConfigQuery: (key, sessionId, projectId) =>
       connection.sendConfigQuery(key, sessionId, projectId),
+
     // ── Reset ─────────────────────────────────────────────────
 
-    reset: () =>
+    reset: () => {
+      // Clear all stuck-state timeouts
+      for (const timeout of _stuckTimeouts.values()) clearTimeout(timeout)
+      _stuckTimeouts.clear()
+
       set({
         connectionStatus: 'disconnected',
         currentSessionId: null,
         sessions: [],
         sessionsLoaded: false,
         providers: [],
-        agentStatus: 'idle',
-        agentStatusDetail: null,
-        agentSteps: [],
-        workingStartedAt: null,
-        lastTurnDurationMs: null,
-        turnStatsConversationId: null,
-        workingSessionId: null,
-        turnUsage: null,
-        sessionUsage: null,
-        lastResponseProvider: null,
-        lastResponseModel: null,
-        currentTasks: [],
         sessionStates: new Map(),
-        _hiddenToolCallIds: new Set(),
-        _toolCallNames: new Map(),
-        pendingConfirm: null,
-        pendingPlan: null,
-        pendingAskUser: null,
-      }),
+      })
+    },
 
-    resetKeepConversations: () =>
+    resetKeepConversations: () => {
+      for (const timeout of _stuckTimeouts.values()) clearTimeout(timeout)
+      _stuckTimeouts.clear()
+
       set({
         currentSessionId: null,
         sessions: [],
         sessionsLoaded: false,
-        agentStatus: 'idle',
-        agentStatusDetail: null,
-        agentSteps: [],
-        workingStartedAt: null,
-        lastTurnDurationMs: null,
-        turnStatsConversationId: null,
-        workingSessionId: null,
-        turnUsage: null,
-        sessionUsage: null,
-        lastResponseProvider: null,
-        lastResponseModel: null,
-        currentTasks: [],
-        sessionStates: new Map(),
-        _hiddenToolCallIds: new Set(),
-        _toolCallNames: new Map(),
-        pendingConfirm: null,
-        pendingPlan: null,
-        pendingAskUser: null,
         providers: [],
-      }),
+        sessionStates: new Map(),
+      })
+    },
   }
 })
+
+// ── Per-session selector hooks ───────────────────────────────────
+
+const _defaultState = createSessionState()
+
+/**
+ * Read from the ACTIVE session's state. Reacts to both sessionId changes
+ * and changes to that session's state within the Map.
+ */
+export function useActiveSessionState<T>(selector: (s: SessionState) => T): T {
+  return sessionStore((store) => {
+    const sid = store.currentSessionId
+    if (!sid) return selector(_defaultState)
+    return selector(store.sessionStates.get(sid) ?? _defaultState)
+  })
+}
+
+/**
+ * Read from a SPECIFIC session's state by sessionId.
+ * Use for Sidebar badges, non-active session indicators, etc.
+ */
+export function useSessionState<T>(
+  sessionId: string | undefined,
+  selector: (s: SessionState) => T,
+): T {
+  return sessionStore((store) => {
+    if (!sessionId) return selector(_defaultState)
+    return selector(store.sessionStates.get(sessionId) ?? _defaultState)
+  })
+}

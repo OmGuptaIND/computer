@@ -10,19 +10,18 @@ import {
   Layers,
 } from 'lucide-react'
 import { useStore } from '../../lib/store.js'
-import { sessionStore } from '../../lib/store/sessionStore.js'
+import { sessionStore, useActiveSessionState } from '../../lib/store/sessionStore.js'
 
 export function ContextPanelContent() {
   const activeConv = useStore((s) => s.getActiveConversation())
-  const sessionUsage = sessionStore((s) => s.sessionUsage)
+  const sessionUsage = useActiveSessionState((s) => s.sessionUsage)
   const currentProvider = sessionStore((s) => s.currentProvider)
   const currentModel = sessionStore((s) => s.currentModel)
   const sessionStates = sessionStore((s) => s.sessionStates)
   const connectionStatus = useStore((s) => s.connectionStatus)
-  const agentStatus = sessionStore((s) => s.agentStatus)
+  const agentStatus = useActiveSessionState((s) => s.status)
   const activeConversationId = useStore((s) => s.activeConversationId)
   const currentSessionId = sessionStore((s) => s.currentSessionId)
-  const workingSessionId = sessionStore((s) => s.workingSessionId)
   const sessionAssistantMsgIds = useStore((s) => s._sessionAssistantMsgIds)
 
   const contextInfo = activeConv?.contextInfo
@@ -165,7 +164,6 @@ export function ContextPanelContent() {
           <KVRow label="Conv ID" value={activeConversationId ?? 'null'} />
           <KVRow label="Conv sessionId" value={sessionId ?? 'null'} />
           <KVRow label="currentSessionId" value={currentSessionId ?? 'null'} />
-          <KVRow label="workingSessionId" value={workingSessionId ?? 'null'} />
           <KVRow
             label="_sessionAssistantMsgId"
             value={sessionId ? (sessionAssistantMsgIds.get(sessionId) ?? 'null') : 'n/a'}

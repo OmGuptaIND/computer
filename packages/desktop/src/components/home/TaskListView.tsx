@@ -27,7 +27,7 @@ type TaskStatus = 'working' | 'completed' | 'error' | 'idle'
 
 function getTaskStatus(
   sessionId: string | undefined,
-  sessionStates: Map<string, { status: string; statusDetail?: string }>,
+  sessionStates: Map<string, { status: string; statusDetail?: string | null }>,
   messages: { role: string; isError?: boolean }[],
 ): TaskStatus {
   if (!sessionId) return 'idle'
@@ -110,7 +110,7 @@ function StatusIcon({ status }: { status: TaskStatus }) {
 
 function getStatusDetail(
   sessionId: string | undefined,
-  sessionStates: Map<string, { status: string; statusDetail?: string }>,
+  sessionStates: Map<string, { status: string; statusDetail?: string | null }>,
   status: TaskStatus,
 ): string | null {
   if (!sessionId) return null

@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { AlertTriangle } from 'lucide-react'
 import { type ChatMessage, useStore } from '../../lib/store.js'
-import { sessionStore } from '../../lib/store/sessionStore.js'
+import { useActiveSessionState } from '../../lib/store/sessionStore.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
 import { SourceCards } from './SourceCards.js'
 import { ThinkingBlock } from './ThinkingBlock.js'
@@ -19,7 +19,7 @@ function attachmentSrc(message: ChatMessage, index: number): string | undefined 
 
 export function MessageBubble({ message, isLastThinking }: Props) {
   const citations = useStore((s) => s.citations.get(message.id))
-  const isAgentWorking = sessionStore((s) => s.agentStatus === 'working')
+  const isAgentWorking = useActiveSessionState((s) => s.status === 'working')
 
   return (
     <motion.div

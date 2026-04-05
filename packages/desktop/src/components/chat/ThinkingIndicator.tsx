@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
-import { sessionStore } from '../../lib/store/sessionStore.js'
+import { useActiveSessionState } from '../../lib/store/sessionStore.js'
 
 const VIBES = [
   'Thinking',
@@ -57,10 +57,10 @@ function formatTokens(n: number): string {
 }
 
 export function ThinkingIndicator() {
-  const agentStatus = sessionStore((s) => s.agentStatus)
-  const _agentStatusDetail = sessionStore((s) => s.agentStatusDetail)
-  const workingStartedAt = sessionStore((s) => s.workingStartedAt)
-  const turnUsage = sessionStore((s) => s.turnUsage)
+  const agentStatus = useActiveSessionState((s) => s.status)
+  const _agentStatusDetail = useActiveSessionState((s) => s.statusDetail)
+  const workingStartedAt = useActiveSessionState((s) => s.workingStartedAt)
+  const turnUsage = useActiveSessionState((s) => s.turnUsage)
   const [elapsed, setElapsed] = useState(0)
   const [vibe, setVibe] = useState(() => pickVibe(''))
 

@@ -4,7 +4,7 @@ import type { Skill } from '../../lib/skills.js'
 import type { ChatImageAttachment } from '../../lib/store.js'
 import { useStore } from '../../lib/store.js'
 import { artifactStore } from '../../lib/store/artifactStore.js'
-import { sessionStore } from '../../lib/store/sessionStore.js'
+import { sessionStore, useActiveSessionState, useSessionState } from '../../lib/store/sessionStore.js'
 import { Skeleton } from '../Skeleton.js'
 import { ChatInput } from '../chat/ChatInput.js'
 import { ConfirmDialog } from '../chat/ConfirmDialog.js'
@@ -14,15 +14,12 @@ import { PlanReviewOverlay } from '../chat/PlanReviewOverlay.js'
 export function TaskDetailView() {
   const activeConv = useStore((s) => s.getActiveConversation())
   const addMessage = useStore((s) => s.addMessage)
-  const currentTasks = sessionStore((s) => s.currentTasks)
+  const currentTasks = useActiveSessionState((s) => s.tasks)
   const [todoOpen, setTodoOpen] = useState(false)
 
   const activeSessionId = activeConv?.sessionId
-  const pendingConfirm = sessionStore((s) => s.getPendingConfirmForSession(activeSessionId))
-  const setPendingConfirm = sessionStore((s) => s.setPendingConfirm)
-
-  const pendingAskUser = sessionStore((s) => s.getPendingAskUserForSession(activeSessionId))
-  const setPendingAskUser = sessionStore((s) => s.setPendingAskUser)
+  const pendingConfirm = useSessionState(activeSessionId, (s) => s.pendingConfirm)
+  const pendingAskUser = useSessionState(activeSessionId, (s) => s.pendingAskUser)
 
   const messages = activeConv?.messages || []
   const isSyncing = sessionStore((s) =>
@@ -85,9 +82,11 @@ export function TaskDetailView() {
           : `Denied: ${pendingConfirm.command}`,
         timestamp: Date.now(),
       })
-      setPendingConfirm(null)
+      if (activeSessionId) {
+        sessionStore.getState().updateSessionState(activeSessionId, { pendingConfirm: null })
+      }
     },
-    [pendingConfirm, addMessage, setPendingConfirm],
+    [pendingConfirm, addMessage, activeSessionId],
   )
 
   const handleAskUserSubmit = useCallback(
@@ -103,9 +102,11 @@ export function TaskDetailView() {
         content: summary,
         timestamp: Date.now(),
       })
-      setPendingAskUser(null)
+      if (activeSessionId) {
+        sessionStore.getState().updateSessionState(activeSessionId, { pendingAskUser: null })
+      }
     },
-    [pendingAskUser, addMessage, setPendingAskUser],
+    [pendingAskUser, addMessage, activeSessionId],
   )
 
   const handleSkillSelect = (_skill: Skill) => {}

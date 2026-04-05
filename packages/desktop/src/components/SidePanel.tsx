@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import { Brain, Code, Globe, Layers, ListChecks, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { artifactStore } from '../lib/store/artifactStore.js'
-import { sessionStore } from '../lib/store/sessionStore.js'
+import { useActiveSessionState } from '../lib/store/sessionStore.js'
 import { uiStore } from '../lib/store/uiStore.js'
 import { PlanPanel } from './PlanPanel.js'
 import { ArtifactPanelContent } from './artifacts/ArtifactPanel.js'
@@ -25,7 +25,7 @@ const DEFAULT_WIDTH = 440
 
 export function SidePanel() {
   const artifacts = artifactStore((s) => s.artifacts)
-  const _pendingPlan = sessionStore((s) => s.pendingPlan)
+  const _pendingPlan = useActiveSessionState((s) => s.pendingPlan)
   const browserState = artifactStore((s) => s.browserState)
   const sidePanelView = uiStore((s) => s.sidePanelView)
   const setSidePanelView = uiStore((s) => s.setSidePanelView)

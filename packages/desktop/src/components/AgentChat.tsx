@@ -5,7 +5,7 @@ import type { ChatImageAttachment } from '../lib/store.js'
 import { useStore } from '../lib/store.js'
 import { connectionStore } from '../lib/store/connectionStore.js'
 import { projectStore } from '../lib/store/projectStore.js'
-import { sessionStore } from '../lib/store/sessionStore.js'
+import { sessionStore, useSessionState } from '../lib/store/sessionStore.js'
 import { uiStore } from '../lib/store/uiStore.js'
 import { AgentChatHeader } from './chat/AgentChatHeader.js'
 import { AgentEmptyState } from './chat/AgentEmptyState.js'
@@ -23,10 +23,8 @@ export function AgentChat() {
   const addMessage = useStore((s) => s.addMessage)
   const newConversation = useStore((s) => s.newConversation)
   const activeSessionId = activeConv?.sessionId
-  const pendingConfirm = sessionStore((s) => s.getPendingConfirmForSession(activeSessionId))
-  const setPendingConfirm = sessionStore((s) => s.setPendingConfirm)
-  const pendingAskUser = sessionStore((s) => s.getPendingAskUserForSession(activeSessionId))
-  const setPendingAskUser = sessionStore((s) => s.setPendingAskUser)
+  const pendingConfirm = useSessionState(activeSessionId, (s) => s.pendingConfirm)
+  const pendingAskUser = useSessionState(activeSessionId, (s) => s.pendingAskUser)
   const _currentProvider = sessionStore((s) => s.currentProvider)
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null)
 
@@ -199,11 +197,10 @@ export function AgentChat() {
     const sessionId = conv?.sessionId || sessionStore.getState().currentSessionId
     if (!sessionId) return
     // If a plan is pending, reject it and clear it
-    const ss = sessionStore.getState()
-    const plan = ss.pendingPlan
-    if (plan && (!plan.sessionId || plan.sessionId === sessionId)) {
+    const plan = sessionStore.getState().getSessionState(sessionId).pendingPlan
+    if (plan) {
       sessionStore.getState().sendPlanResponse(plan.id, false, 'Cancelled by user')
-      ss.setPendingPlan(null)
+      sessionStore.getState().updateSessionState(sessionId, { pendingPlan: null })
     }
     sessionStore.getState().sendCancelTurn(sessionId)
   }, [])
@@ -220,9 +217,11 @@ export function AgentChat() {
           : `Denied: ${pendingConfirm.command}`,
         timestamp: Date.now(),
       })
-      setPendingConfirm(null)
+      if (activeSessionId) {
+        sessionStore.getState().updateSessionState(activeSessionId, { pendingConfirm: null })
+      }
     },
-    [pendingConfirm, addMessage, setPendingConfirm],
+    [pendingConfirm, addMessage, activeSessionId],
   )
 
   const handleAskUserSubmit = useCallback(
@@ -239,9 +238,11 @@ export function AgentChat() {
         content: summary,
         timestamp: Date.now(),
       })
-      setPendingAskUser(null)
+      if (activeSessionId) {
+        sessionStore.getState().updateSessionState(activeSessionId, { pendingAskUser: null })
+      }
     },
-    [pendingAskUser, addMessage, setPendingAskUser],
+    [pendingAskUser, addMessage, activeSessionId],
   )
 
   const messages = activeConv?.messages || []

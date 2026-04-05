@@ -14,21 +14,34 @@ export function handleToolMessage(msg: AiMessage, ctx: MessageContext): boolean 
   switch (msg.type) {
     case 'tool_call': {
       const ss = sessionStore.getState()
+      const sid = ctx.msgSessionId || useStore.getState().getActiveConversation()?.sessionId
       const uiOnlyTools = new Set(['ask_user', 'task_tracker', 'plan_confirm'])
+
       if (uiOnlyTools.has(msg.name)) {
-        ss._hiddenToolCallIds.add(msg.id)
-        ss.setAgentStatus('working', ctx.msgSessionId)
+        // Track hidden tool call in per-session state
+        if (sid) {
+          const state = ss.getSessionState(sid)
+          const hiddenIds = new Set(state.hiddenToolCallIds)
+          hiddenIds.add(msg.id)
+          ss.updateSessionState(sid, { hiddenToolCallIds: hiddenIds })
+        }
+        if (sid) ss.setSessionStatus(sid, 'working')
         return true
       }
+
       // Reset assistant message tracking so text after this tool call creates a new bubble
-      if (!msg.parentToolCallId) {
-        const sid =
-          ctx.msgSessionId || useStore.getState().getActiveConversation()?.sessionId
-        if (sid) {
-          useStore.getState()._sessionAssistantMsgIds.delete(sid)
-        }
+      if (!msg.parentToolCallId && sid) {
+        useStore.getState()._sessionAssistantMsgIds.delete(sid)
       }
-      ss._toolCallNames.set(msg.id, { name: msg.name, input: msg.input })
+
+      // Track tool call name in per-session state
+      if (sid) {
+        const state = ss.getSessionState(sid)
+        const names = new Map(state.toolCallNames)
+        names.set(msg.id, { name: msg.name, input: msg.input })
+        ss.updateSessionState(sid, { toolCallNames: names })
+      }
+
       ctx.addMsg({
         id: `tc_${msg.id}`,
         role: 'tool',
@@ -38,11 +51,13 @@ export function handleToolMessage(msg: AiMessage, ctx: MessageContext): boolean 
         timestamp: Date.now(),
         parentToolCallId: msg.parentToolCallId,
       })
+
       if (msg.name === 'web_search') {
         useStore.getState()._pendingWebSearchToolCallIds.add(msg.id)
       }
-      if (!msg.parentToolCallId) {
-        ss.addAgentStep({
+
+      if (!msg.parentToolCallId && sid) {
+        ss.addAgentStep(sid, {
           id: msg.id,
           type: 'tool_call',
           label: `Running: ${msg.name}`,
@@ -51,17 +66,38 @@ export function handleToolMessage(msg: AiMessage, ctx: MessageContext): boolean 
           timestamp: Date.now(),
         })
       }
-      ss.setAgentStatus('working', ctx.msgSessionId)
+
+      if (sid) ss.setSessionStatus(sid, 'working')
       return true
     }
 
     case 'tool_result': {
       const ss = sessionStore.getState()
-      if (ss._hiddenToolCallIds.has(msg.id)) {
-        ss._hiddenToolCallIds.delete(msg.id)
-        return true
+      const sid = ctx.msgSessionId || useStore.getState().getActiveConversation()?.sessionId
+
+      // Check per-session hidden tool call IDs
+      if (sid) {
+        const state = ss.getSessionState(sid)
+        if (state.hiddenToolCallIds.has(msg.id)) {
+          const hiddenIds = new Set(state.hiddenToolCallIds)
+          hiddenIds.delete(msg.id)
+          ss.updateSessionState(sid, { hiddenToolCallIds: hiddenIds })
+          return true
+        }
       }
-      const callInfo = ss._toolCallNames.get(msg.id)
+
+      // Get tool call info from per-session state
+      let callInfo: { name: string; input?: Record<string, unknown> } | undefined
+      if (sid) {
+        const state = ss.getSessionState(sid)
+        callInfo = state.toolCallNames.get(msg.id)
+        if (callInfo) {
+          const names = new Map(state.toolCallNames)
+          names.delete(msg.id)
+          ss.updateSessionState(sid, { toolCallNames: names })
+        }
+      }
+
       ctx.addMsg({
         id: `tr_${msg.id}`,
         role: 'tool',
@@ -71,7 +107,6 @@ export function handleToolMessage(msg: AiMessage, ctx: MessageContext): boolean 
         parentToolCallId: msg.parentToolCallId,
         ...(callInfo && { toolName: callInfo.name, toolInput: callInfo.input }),
       })
-      ss._toolCallNames.delete(msg.id)
 
       const store = useStore.getState()
       if (store._pendingWebSearchToolCallIds.has(msg.id)) {
@@ -83,8 +118,9 @@ export function handleToolMessage(msg: AiMessage, ctx: MessageContext): boolean 
           }
         }
       }
-      if (!msg.parentToolCallId) {
-        ss.updateAgentStep(msg.id, { status: msg.isError ? 'error' : 'complete' })
+
+      if (!msg.parentToolCallId && sid) {
+        ss.updateAgentStep(sid, msg.id, { status: msg.isError ? 'error' : 'complete' })
       }
       return true
     }

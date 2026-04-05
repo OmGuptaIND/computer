@@ -14,50 +14,67 @@ import type { MessageContext } from './shared.js'
 export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): boolean {
   switch (msg.type) {
     case 'confirm': {
-      sessionStore.getState().setPendingConfirm({
-        id: msg.id,
-        command: msg.command,
-        reason: msg.reason,
-        sessionId: ctx.msgSessionId,
-      })
+      const sid = ctx.msgSessionId
+      if (sid) {
+        sessionStore.getState().updateSessionState(sid, {
+          pendingConfirm: {
+            id: msg.id,
+            command: msg.command,
+            reason: msg.reason,
+            sessionId: sid,
+          },
+        })
+      }
       return true
     }
 
     case 'plan_confirm': {
-      sessionStore.getState().setPendingPlan({
-        id: msg.id,
-        title: msg.title,
-        content: msg.content,
-        sessionId: ctx.msgSessionId,
-      })
+      const sid = ctx.msgSessionId
+      if (sid) {
+        sessionStore.getState().updateSessionState(sid, {
+          pendingPlan: {
+            id: msg.id,
+            title: msg.title,
+            content: msg.content,
+            sessionId: sid,
+          },
+        })
+      }
       return true
     }
 
     case 'ask_user': {
-      sessionStore.getState().setPendingAskUser({
-        id: msg.id,
-        questions: msg.questions,
-        sessionId: ctx.msgSessionId,
-      })
+      const sid = ctx.msgSessionId
+      if (sid) {
+        sessionStore.getState().updateSessionState(sid, {
+          pendingAskUser: {
+            id: msg.id,
+            questions: msg.questions,
+            sessionId: sid,
+          },
+        })
+      }
       return true
     }
 
     case 'error': {
       const ss = sessionStore.getState()
-      if (ctx.msgSessionId && ss.getSessionState(ctx.msgSessionId).isSyncing) {
-        ss.updateSessionState(ctx.msgSessionId, { isSyncing: false, pendingSyncMessages: [] })
+      const sid = ctx.msgSessionId
+
+      if (sid && ss.getSessionState(sid).isSyncing) {
+        ss.updateSessionState(sid, { isSyncing: false, pendingSyncMessages: [] })
       }
 
-      if (msg.code === 'session_not_found' && ctx.msgSessionId) {
+      if (msg.code === 'session_not_found' && sid) {
         const store = useStore.getState()
-        const staleConv = store.conversations.find((c) => c.sessionId === ctx.msgSessionId)
+        const staleConv = store.conversations.find((c) => c.sessionId === sid)
         if (staleConv) {
           store.deleteConversation(staleConv.id)
         }
         return true
       }
 
-      if (ctx.msgSessionId) {
+      if (sid) {
         ctx.addMsg({
           id: `err_${Date.now()}`,
           role: 'system',
@@ -65,19 +82,12 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
           isError: true,
           timestamp: Date.now(),
         })
+        ss.updateSessionState(sid, { isStreaming: false, status: 'error' })
       } else {
         console.warn(
           '[WS] Received error without sessionId, not adding to conversation:',
           msg.message,
         )
-      }
-      if (ctx.isForActiveSession && ctx.msgSessionId) {
-        ss.setAgentStatus('error', ctx.msgSessionId)
-      }
-      const errSessionId =
-        ctx.msgSessionId || useStore.getState().getActiveConversation()?.sessionId
-      if (errSessionId) {
-        ss.updateSessionState(errSessionId, { isStreaming: false, status: 'error' })
       }
       return true
     }
@@ -99,14 +109,8 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
     }
 
     case 'tasks_update': {
-      if (msg.tasks) {
-        const ss = sessionStore.getState()
-        if (ctx.msgSessionId) {
-          ss.updateSessionState(ctx.msgSessionId, { tasks: msg.tasks })
-        }
-        if (ctx.isForActiveSession) {
-          ss.setCurrentTasks(msg.tasks)
-        }
+      if (msg.tasks && ctx.msgSessionId) {
+        sessionStore.getState().updateSessionState(ctx.msgSessionId, { tasks: msg.tasks })
       }
       return true
     }
@@ -138,8 +142,9 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
     }
 
     case 'token_update': {
-      if (ctx.isForActiveSession && msg.usage) {
-        sessionStore.getState().setUsage(msg.usage, null)
+      const sid = ctx.msgSessionId
+      if (sid && msg.usage) {
+        sessionStore.getState().updateSessionState(sid, { turnUsage: msg.usage })
       }
       return true
     }
@@ -152,8 +157,12 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
       const doneConv = ctx.msgSessionId
         ? store.findConversationBySession(ctx.msgSessionId)
         : activeConv
+      const doneSessionId = ctx.msgSessionId || activeConv?.sessionId
+
       const lastMsg = doneConv?.messages[doneConv.messages.length - 1]
-      const wasWorking = ss.agentStatus === 'working'
+      const wasWorking = doneSessionId
+        ? ss.getSessionState(doneSessionId).status === 'working'
+        : false
       const noResponse = wasWorking && lastMsg?.role === 'user'
       const zeroTokens = msg.usage && msg.usage.inputTokens === 0 && msg.usage.outputTokens === 0
 
@@ -176,20 +185,29 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
         })
       }
 
-      const doneSessionId = ctx.msgSessionId || activeConv?.sessionId
       if (doneSessionId) {
-        ss.updateSessionState(doneSessionId, {
+        // Update all per-session state in one call
+        const updates: Partial<import('../sessionStore.js').SessionState> = {
           status: 'idle',
+          statusDetail: null,
           isStreaming: false,
           assistantMsgId: null,
+          agentSteps: [],
           needsHistoryRefresh: !ctx.isForActiveSession,
-        })
-      }
+        }
+        if (msg.usage) {
+          updates.turnUsage = msg.usage
+          updates.sessionUsage = msg.cumulativeUsage || null
+        }
+        if (msg.provider && msg.model) {
+          updates.lastResponseProvider = msg.provider
+          updates.lastResponseModel = msg.model
+        }
+        ss.updateSessionState(doneSessionId, updates)
 
-      if (ctx.isForActiveSession || !ctx.msgSessionId) {
-        ss.setAgentStatus('idle')
-        ss.clearAgentSteps()
-        ss.setAgentStatusDetail(null)
+        // Clear per-session message tracking in app store
+        store._sessionAssistantMsgIds.delete(doneSessionId)
+        store._sessionThinkingMsgIds.delete(doneSessionId)
       }
 
       // Close out pending tool calls that never got a result
@@ -212,18 +230,6 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
         }
       }
 
-      // Clear per-session message tracking
-      if (doneSessionId) {
-        store._sessionAssistantMsgIds.delete(doneSessionId)
-        store._sessionThinkingMsgIds.delete(doneSessionId)
-      }
-
-      if (msg.usage) {
-        ss.setUsage(msg.usage, msg.cumulativeUsage || null)
-      }
-      if (msg.provider && msg.model) {
-        ss.setLastResponseModel(msg.provider, msg.model)
-      }
       return true
     }
 

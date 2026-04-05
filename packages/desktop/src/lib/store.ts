@@ -13,7 +13,7 @@ import { connectionStore } from './store/connectionStore.js'
 import { connectorStore } from './store/connectorStore.js'
 import { handleWsMessage } from './store/handlers/index.js'
 import { projectStore } from './store/projectStore.js'
-import { sessionStore } from './store/sessionStore.js'
+import { sessionStore, useActiveSessionState } from './store/sessionStore.js'
 import type { AgentStatus } from './store/types.js'
 import { uiStore } from './store/uiStore.js'
 import { updateStore } from './store/updateStore.js'
@@ -268,10 +268,7 @@ export const useStore = create<AppState>((set, get) => {
           activeConversationId: conv.id,
         }
       })
-      // Reset session state for new conversation
-      ss.setAgentStatus('idle')
-      ss.setAgentStatusDetail(null)
-      ss.setCurrentTasks([])
+      // New conversation gets a fresh SessionState with idle defaults automatically
       return conv.id
     },
 
@@ -296,44 +293,20 @@ export const useStore = create<AppState>((set, get) => {
 
     switchConversation: (id) => {
       localStorage.setItem(ACTIVE_CONV_KEY, id)
-      // Restore per-conversation model when switching
+      // Restore per-conversation model and set currentSessionId
       const conv = get().conversations.find((c) => c.id === id)
       const updates: Partial<AppState> = { activeConversationId: id }
-      if (conv?.provider && conv?.model) {
-        sessionStore
-          .getState()
-          .setCurrentSession(
-            conv.sessionId || sessionStore.getState().currentSessionId || '',
-            conv.provider,
-            conv.model,
-          )
-      }
-
-      // Restore per-session agent status from sessionStore's consolidated state
       const ss = sessionStore.getState()
       if (conv?.sessionId) {
-        const sessionState = ss.getSessionState(conv.sessionId)
-        ss.setAgentStatus(sessionState.status, conv.sessionId)
-        ss.setAgentStatusDetail(sessionState.statusDetail ?? null)
-      } else {
-        ss.setAgentStatus('idle')
-        ss.setAgentStatusDetail(null)
+        ss.setCurrentSession(
+          conv.sessionId,
+          conv.provider || ss.currentProvider,
+          conv.model || ss.currentModel,
+        )
       }
 
-      // Save current session's tasks before switching, then restore target session's tasks
-      const currentState = get()
-      const currentConv = currentState.conversations.find(
-        (c) => c.id === currentState.activeConversationId,
-      )
-      if (currentConv?.sessionId) {
-        const currentTasks = ss.currentTasks
-        if (currentTasks.length > 0) {
-          ss.updateSessionState(currentConv.sessionId, { tasks: currentTasks })
-        }
-      }
-      // Restore target session's tasks (or clear if none)
-      const restoredTasks = conv?.sessionId ? ss.getSessionState(conv.sessionId).tasks : []
-      ss.setCurrentTasks(restoredTasks)
+      // No save/restore needed — all transient state lives per-session in sessionStates Map.
+      // Switching just changes currentSessionId; components read from the active session automatically.
 
       // Close artifact panel when switching conversations
       artifactStore.setState({ artifactPanelOpen: false })
@@ -835,15 +808,10 @@ export function useConnectionStatus(): ConnectionStatus {
 }
 
 export function useAgentStatus(): AgentStatus {
-  return sessionStore((s) => s.agentStatus)
+  return useActiveSessionState((s) => s.status)
 }
 
-/** Returns true if the currently active conversation's session is the one that's working. */
+/** Returns true if the currently active conversation's session is working. */
 export function useIsCurrentSessionWorking(): boolean {
-  const agentStatus = sessionStore((s) => s.agentStatus)
-  const workingSessionId = sessionStore((s) => s.workingSessionId)
-  const activeConv = useStore((s) => s.getActiveConversation())
-  if (agentStatus !== 'working') return false
-  if (!workingSessionId) return true
-  return activeConv?.sessionId === workingSessionId
+  return useActiveSessionState((s) => s.status === 'working')
 }

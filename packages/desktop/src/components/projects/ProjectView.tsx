@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '../../lib/store.js'
 import { artifactStore } from '../../lib/store/artifactStore.js'
 import { projectStore } from '../../lib/store/projectStore.js'
-import { sessionStore } from '../../lib/store/sessionStore.js'
+import { sessionStore, useSessionState } from '../../lib/store/sessionStore.js'
 import { AgentChat } from '../AgentChat.js'
 import { SidePanel } from '../SidePanel.js'
 import { CodeModePanel } from '../code-mode/CodeModePanel.js'
@@ -20,7 +20,7 @@ export function ProjectView() {
   const projectSessions = projectStore((s) => s.projectSessions)
   const projectSessionsLoading = projectStore((s) => s.projectSessionsLoading)
   const artifactPanelOpen = artifactStore((s) => s.artifactPanelOpen)
-  const pendingPlan = sessionStore((s) => s.pendingPlan)
+  const pendingPlan = useSessionState(activeSessionId ?? undefined, (s) => s.pendingPlan)
   const agentSession: AgentSession | null = useStore((s) => s.getActiveAgentSession())
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 

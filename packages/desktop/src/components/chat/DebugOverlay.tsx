@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../../lib/store.js'
-import { sessionStore } from '../../lib/store/sessionStore.js'
+import { useActiveSessionState, sessionStore } from '../../lib/store/sessionStore.js'
 
 /**
  * Lightweight debug overlay for observability.
@@ -27,11 +27,10 @@ export function DebugOverlay() {
 }
 
 function DebugPanel({ onClose }: { onClose: () => void }) {
-  const agentStatus = sessionStore((s) => s.agentStatus)
-  const agentStatusDetail = sessionStore((s) => s.agentStatusDetail)
+  const agentStatus = useActiveSessionState((s) => s.status)
+  const agentStatusDetail = useActiveSessionState((s) => s.statusDetail)
   const connectionStatus = useStore((s) => s.connectionStatus)
-  const workingStartedAt = sessionStore((s) => s.workingStartedAt)
-  const workingSessionId = sessionStore((s) => s.workingSessionId)
+  const workingStartedAt = useActiveSessionState((s) => s.workingStartedAt)
   const sessionStates = sessionStore((s) => s.sessionStates)
 
   const [now, setNow] = useState(Date.now())
@@ -100,7 +99,6 @@ function DebugPanel({ onClose }: { onClose: () => void }) {
           color={workingFor > 120 ? '#f87171' : '#facc15'}
         />
       )}
-      {workingSessionId && <Row label="Working session" value={workingSessionId.slice(0, 12)} />}
       <Row label="Assist msg ID" value="(per-session)" />
       <Row
         label="Streaming"

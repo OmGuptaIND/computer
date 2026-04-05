@@ -27,7 +27,7 @@ import { useConnectionStatus, useStore } from './lib/store.js'
 import { artifactStore } from './lib/store/artifactStore.js'
 import { connectionStore } from './lib/store/connectionStore.js'
 import { projectStore } from './lib/store/projectStore.js'
-import { sessionStore } from './lib/store/sessionStore.js'
+import { sessionStore, useActiveSessionState } from './lib/store/sessionStore.js'
 import { uiStore } from './lib/store/uiStore.js'
 import { updateStore } from './lib/store/updateStore.js'
 
@@ -45,7 +45,7 @@ export function App() {
   // Subscribe to reactive state for re-renders
   uiStore((s) => s.activeMode)
   const setActiveView = uiStore((s) => s.setActiveView)
-  const sessionUsage = sessionStore((s) => s.sessionUsage)
+  const sessionUsage = useActiveSessionState((s) => s.sessionUsage)
   const activeConv = useStore((s) => s.getActiveConversation())
   const hasMessages = (activeConv?.messages?.length || 0) > 0
   const artifactPanelOpen = artifactStore((s) => s.artifactPanelOpen)
@@ -64,7 +64,7 @@ export function App() {
   const setSidePanelView = uiStore((s) => s.setSidePanelView)
   const tasksHidden = uiStore((s) => s.tasksHidden)
   const toggleTasksHidden = uiStore((s) => s.toggleTasksHidden)
-  const currentTasks = sessionStore((s) => s.currentTasks)
+  const currentTasks = useActiveSessionState((s) => s.tasks)
   const showWelcome = onboardingLoaded && !onboardingCompleted
 
   // Apply theme on mount + listen for system preference changes

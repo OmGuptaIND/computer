@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useConnectionStatus, useStore } from '../../lib/store.js'
-import { sessionStore } from '../../lib/store/sessionStore.js'
+import { sessionStore, useActiveSessionState } from '../../lib/store/sessionStore.js'
 import { uiStore } from '../../lib/store/uiStore.js'
 
 type DevTab = 'overview' | 'events' | 'prompt' | 'memories'
@@ -46,9 +46,9 @@ function formatTime(ts: number): string {
 
 function StatusBar() {
   const connectionStatus = useConnectionStatus()
-  const agentStatus = sessionStore((s) => s.agentStatus)
-  const agentStatusDetail = sessionStore((s) => s.agentStatusDetail)
-  const workingStartedAt = sessionStore((s) => s.workingStartedAt)
+  const agentStatus = useActiveSessionState((s) => s.status)
+  const agentStatusDetail = useActiveSessionState((s) => s.statusDetail)
+  const workingStartedAt = useActiveSessionState((s) => s.workingStartedAt)
   const [elapsed, setElapsed] = useState(0)
 
   useEffect(() => {
@@ -110,10 +110,9 @@ function StatusBar() {
 
 function OverviewTab() {
   const sessionStates = sessionStore((s) => s.sessionStates)
-  const turnUsage = sessionStore((s) => s.turnUsage)
-  const sessionUsage = sessionStore((s) => s.sessionUsage)
-  const lastTurnDurationMs = sessionStore((s) => s.lastTurnDurationMs)
-  const workingSessionId = sessionStore((s) => s.workingSessionId)
+  const turnUsage = useActiveSessionState((s) => s.turnUsage)
+  const sessionUsage = useActiveSessionState((s) => s.sessionUsage)
+  const lastTurnDurationMs = useActiveSessionState((s) => s.lastTurnDurationMs)
 
   const sessions = Array.from(sessionStates.entries())
   const activeSessions = sessions.filter(([, v]) => v.status === 'working')
@@ -137,14 +136,6 @@ function OverviewTab() {
             <span className="dev-kv__label">Streaming</span>
             <span className="dev-kv__value">{streamingCount}</span>
           </div>
-          {workingSessionId && (
-            <div className="dev-kv">
-              <span className="dev-kv__label">Working</span>
-              <span className="dev-kv__value dev-kv__value--mono">
-                {workingSessionId.slice(0, 16)}
-              </span>
-            </div>
-          )}
           {sessions.length > 0 && (
             <div className="dev-session-list">
               {sessions.map(([sid, s]) => (

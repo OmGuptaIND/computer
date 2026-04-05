@@ -44,7 +44,10 @@ export function handleChatMessage(msg: AiMessage, ctx: MessageContext): boolean 
       if (thinkContent) {
         ctx.appendThinking(thinkContent)
       }
-      sessionStore.getState().setAgentStatus('working', ctx.msgSessionId)
+      const sid = ctx.msgSessionId || useStore.getState().getActiveConversation()?.sessionId
+      if (sid) {
+        sessionStore.getState().setSessionStatus(sid, 'working')
+      }
       return true
     }
 

@@ -1,6 +1,6 @@
 import { Check, Send } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { sessionStore } from '../../lib/store/sessionStore.js'
+import { useActiveSessionState, sessionStore } from '../../lib/store/sessionStore.js'
 import { MarkdownRenderer } from './MarkdownRenderer.js'
 
 interface TocEntry {
@@ -26,8 +26,7 @@ function extractToc(markdown: string): TocEntry[] {
 }
 
 export function PlanReviewOverlay() {
-  const pendingPlan = sessionStore((s) => s.pendingPlan)
-  const setPendingPlan = sessionStore((s) => s.setPendingPlan)
+  const pendingPlan = useActiveSessionState((s) => s.pendingPlan)
   const [feedback, setFeedback] = useState('')
   const [activeSection, setActiveSection] = useState<string | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -62,14 +61,18 @@ export function PlanReviewOverlay() {
   if (!pendingPlan) return null
 
   const handleApprove = () => {
-    sessionStore.getState().sendPlanResponse(pendingPlan.id, true)
-    setPendingPlan(null)
+    const state = sessionStore.getState()
+    state.sendPlanResponse(pendingPlan.id, true)
+    const sid = state.currentSessionId
+    if (sid) state.updateSessionState(sid, { pendingPlan: null })
   }
 
   const handleReject = () => {
     if (!feedback.trim()) return
-    sessionStore.getState().sendPlanResponse(pendingPlan.id, false, feedback)
-    setPendingPlan(null)
+    const state = sessionStore.getState()
+    state.sendPlanResponse(pendingPlan.id, false, feedback)
+    const sid = state.currentSessionId
+    if (sid) state.updateSessionState(sid, { pendingPlan: null })
     setFeedback('')
   }
 

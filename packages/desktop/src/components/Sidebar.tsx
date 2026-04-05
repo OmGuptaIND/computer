@@ -52,9 +52,6 @@ export function Sidebar({ onViewChange, onOpenSettings }: Props) {
   const setActiveMode = uiStore((s) => s.setActiveMode)
   const setActiveView = uiStore((s) => s.setActiveView)
   const sessionStates = sessionStore((s) => s.sessionStates)
-  const pendingConfirm = sessionStore((s) => s.pendingConfirm)
-  const pendingAskUser = sessionStore((s) => s.pendingAskUser)
-  const pendingPlan = sessionStore((s) => s.pendingPlan)
   const sessionsLoaded = sessionStore((s) => s.sessionsLoaded)
 
   const projects = projectStore((s) => s.projects)
@@ -117,15 +114,11 @@ export function Sidebar({ onViewChange, onOpenSettings }: Props) {
 
   const getConvStatus = (sessionId: string | undefined) => {
     if (!sessionId) return null
-    if (
-      pendingConfirm?.sessionId === sessionId ||
-      pendingAskUser?.sessionId === sessionId ||
-      pendingPlan?.sessionId === sessionId
-    ) {
+    const state = sessionStates.get(sessionId)
+    if (state?.pendingConfirm || state?.pendingAskUser || state?.pendingPlan) {
       return 'awaiting'
     }
-    const status = sessionStates.get(sessionId)
-    if (status?.status === 'working') return 'working'
+    if (state?.status === 'working') return 'working'
     return null
   }
 
