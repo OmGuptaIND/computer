@@ -1,0 +1,70 @@
+.github/workflows/release.yml
+  698ac3818f55214c 1,6-7
+packages/desktop/src/components/chat/AskUserInline.tsx
+  698ac3818f55214c 29,123
+Makefile
+  698ac3818f55214c 150,167-169
+scripts/release.sh
+  698ac3818f55214c 246-247,291-292
+deploy/ansible/Makefile
+  698ac3818f55214c 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "45dccfb7dd6d3a24c8e60facf233562799ef0109",
+  "prompts": {
+    "0a41d955db1b7478": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b0371636-2fb1-42a7-82a5-086b5da6ae86",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "698ac3818f55214c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c33a1426-1d99-4bea-913d-0c4df2bed988",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 16,
+      "total_deletions": 207,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    },
+    "7b82cbdeefcec3fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40d7e693-24ab-4dbd-89db-cfab867db69e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "b86c1b79f0b75756": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9ea7e932-7812-4d56-8f40-5115d6521554",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 112,
+      "overriden_lines": 0
+    }
+  }
+}
