@@ -34,7 +34,8 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
     defineTool({
       name: 'reddit_get_me',
       label: 'Get My Profile',
-      description: '[Reddit] Get the authenticated user\'s profile info including karma and account details.',
+      description:
+        "[Reddit] Get the authenticated user's profile info including karma and account details.",
       parameters: Type.Object({}),
       async execute() {
         try {
@@ -65,7 +66,9 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
       description:
         '[Reddit] Browse posts from a subreddit. Supports sorting by hot, new, top, rising.',
       parameters: Type.Object({
-        subreddit: Type.String({ description: 'Subreddit name without r/ prefix (e.g. "programming")' }),
+        subreddit: Type.String({
+          description: 'Subreddit name without r/ prefix (e.g. "programming")',
+        }),
         sort: Type.Optional(
           Type.String({ description: 'Sort order: hot, new, top, rising (default: hot)' }),
         ),
@@ -74,11 +77,14 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
         ),
         time: Type.Optional(
           Type.String({
-            description: 'Time filter for "top" sort: hour, day, week, month, year, all (default: day)',
+            description:
+              'Time filter for "top" sort: hour, day, week, month, year, all (default: day)',
           }),
         ),
         after: Type.Optional(
-          Type.String({ description: 'Pagination cursor from a previous response to fetch the next page' }),
+          Type.String({
+            description: 'Pagination cursor from a previous response to fetch the next page',
+          }),
         ),
       }),
       async execute(_id, params) {
@@ -101,7 +107,9 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
             url: c.data.is_self ? `https://reddit.com${c.data.permalink}` : c.data.url,
             permalink: `https://reddit.com${c.data.permalink}`,
             is_self: c.data.is_self,
-            selftext: c.data.selftext ? c.data.selftext.slice(0, SELFTEXT_PREVIEW_LIMIT) : undefined,
+            selftext: c.data.selftext
+              ? c.data.selftext.slice(0, SELFTEXT_PREVIEW_LIMIT)
+              : undefined,
             flair: c.data.link_flair_text,
             created: formatTimestamp(c.data.created_utc),
             nsfw: c.data.over_18,
@@ -120,10 +128,16 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
       description:
         '[Reddit] Get a specific post with its comments. Returns the post content and top-level comments.',
       parameters: Type.Object({
-        subreddit: Type.Optional(Type.String({ description: 'Subreddit name without r/ prefix (optional, improves performance)' })),
+        subreddit: Type.Optional(
+          Type.String({
+            description: 'Subreddit name without r/ prefix (optional, improves performance)',
+          }),
+        ),
         post_id: Type.String({ description: 'Post ID (e.g. "1abc2de")' }),
         sort: Type.Optional(
-          Type.String({ description: 'Comment sort: best, top, new, controversial (default: best)' }),
+          Type.String({
+            description: 'Comment sort: best, top, new, controversial (default: best)',
+          }),
         ),
         comment_limit: Type.Optional(
           Type.Number({ description: 'Max number of comments to return (default: 25)' }),
@@ -177,24 +191,27 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
     defineTool({
       name: 'reddit_search',
       label: 'Search Posts',
-      description:
-        '[Reddit] Search for posts across Reddit or within a specific subreddit.',
+      description: '[Reddit] Search for posts across Reddit or within a specific subreddit.',
       parameters: Type.Object({
         query: Type.String({ description: 'Search query' }),
         subreddit: Type.Optional(
           Type.String({ description: 'Limit search to this subreddit (without r/ prefix)' }),
         ),
         sort: Type.Optional(
-          Type.String({ description: 'Sort: relevance, hot, top, new, comments (default: relevance)' }),
+          Type.String({
+            description: 'Sort: relevance, hot, top, new, comments (default: relevance)',
+          }),
         ),
         time: Type.Optional(
-          Type.String({ description: 'Time filter: hour, day, week, month, year, all (default: all)' }),
+          Type.String({
+            description: 'Time filter: hour, day, week, month, year, all (default: all)',
+          }),
         ),
-        limit: Type.Optional(
-          Type.Number({ description: 'Max results (default: 25, max: 100)' }),
-        ),
+        limit: Type.Optional(Type.Number({ description: 'Max results (default: 25, max: 100)' })),
         after: Type.Optional(
-          Type.String({ description: 'Pagination cursor from a previous response to fetch the next page' }),
+          Type.String({
+            description: 'Pagination cursor from a previous response to fetch the next page',
+          }),
         ),
       }),
       async execute(_id, params) {
@@ -217,7 +234,9 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
             url: c.data.is_self ? `https://reddit.com${c.data.permalink}` : c.data.url,
             permalink: `https://reddit.com${c.data.permalink}`,
             is_self: c.data.is_self,
-            selftext: c.data.selftext ? c.data.selftext.slice(0, SELFTEXT_PREVIEW_LIMIT) : undefined,
+            selftext: c.data.selftext
+              ? c.data.selftext.slice(0, SELFTEXT_PREVIEW_LIMIT)
+              : undefined,
             created: formatTimestamp(c.data.created_utc),
           }))
           return toolResult(JSON.stringify({ posts, after: result.data.after }, null, 2))
@@ -240,9 +259,7 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
         try {
           const result = await api.submitTextPost(params.subreddit, params.title, params.text)
           const data = result.json.data
-          return toolResult(
-            `Post submitted: ${data.url}\nID: ${data.id}\nFullname: ${data.name}`,
-          )
+          return toolResult(`Post submitted: ${data.url}\nID: ${data.id}\nFullname: ${data.name}`)
         } catch (err) {
           return toolResult(`Error submitting post: ${(err as Error).message}`, true)
         }
@@ -278,8 +295,7 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
         '[Reddit] Add a comment to a post or reply to a comment. Use the fullname (e.g. t3_abc123 for posts, t1_abc123 for comments).',
       parameters: Type.Object({
         parent_fullname: Type.String({
-          description:
-            'Fullname of the parent (t3_<id> for a post, t1_<id> for a comment)',
+          description: 'Fullname of the parent (t3_<id> for a post, t1_<id> for a comment)',
         }),
         text: Type.String({ description: 'Comment text (supports markdown)' }),
       }),
@@ -302,8 +318,7 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
     defineTool({
       name: 'reddit_vote',
       label: 'Vote',
-      description:
-        '[Reddit] Upvote, downvote, or remove vote on a post or comment.',
+      description: '[Reddit] Upvote, downvote, or remove vote on a post or comment.',
       parameters: Type.Object({
         fullname: Type.String({
           description: 'Fullname of the target (t3_<id> for posts, t1_<id> for comments)',
@@ -317,7 +332,9 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
           const dir = params.direction === 'up' ? 1 : params.direction === 'down' ? -1 : 0
           await api.vote(params.fullname, dir)
           const action =
-            params.direction === 'none' ? 'Vote removed' : `${params.direction === 'up' ? 'Upvoted' : 'Downvoted'}`
+            params.direction === 'none'
+              ? 'Vote removed'
+              : `${params.direction === 'up' ? 'Upvoted' : 'Downvoted'}`
           return toolResult(`${action}: ${params.fullname}`)
         } catch (err) {
           return toolResult(`Error voting: ${(err as Error).message}`, true)
@@ -328,13 +345,15 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
     defineTool({
       name: 'reddit_get_subscriptions',
       label: 'Get Subscriptions',
-      description: '[Reddit] List the authenticated user\'s subscribed subreddits.',
+      description: "[Reddit] List the authenticated user's subscribed subreddits.",
       parameters: Type.Object({
         limit: Type.Optional(
           Type.Number({ description: 'Max subreddits to return (default: 25, max: 100)' }),
         ),
         after: Type.Optional(
-          Type.String({ description: 'Pagination cursor from a previous response to fetch the next page' }),
+          Type.String({
+            description: 'Pagination cursor from a previous response to fetch the next page',
+          }),
         ),
       }),
       async execute(_id, params) {
@@ -375,7 +394,9 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
           }),
         ),
         after: Type.Optional(
-          Type.String({ description: 'Pagination cursor from a previous response to fetch the next page' }),
+          Type.String({
+            description: 'Pagination cursor from a previous response to fetch the next page',
+          }),
         ),
       }),
       async execute(_id, params) {
@@ -396,7 +417,9 @@ export function createRedditTools(api: RedditAPI): AgentTool[] {
             url: c.data.is_self ? `https://reddit.com${c.data.permalink}` : c.data.url,
             permalink: `https://reddit.com${c.data.permalink}`,
             is_self: c.data.is_self,
-            selftext: c.data.selftext ? c.data.selftext.slice(0, SELFTEXT_PREVIEW_LIMIT) : undefined,
+            selftext: c.data.selftext
+              ? c.data.selftext.slice(0, SELFTEXT_PREVIEW_LIMIT)
+              : undefined,
             created: formatTimestamp(c.data.created_utc),
           }))
           return toolResult(JSON.stringify({ posts, after: result.data.after }, null, 2))
