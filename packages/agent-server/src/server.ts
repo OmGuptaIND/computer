@@ -85,6 +85,7 @@ import {
   listBuiltinWorkflows,
   loadBuiltinManifest,
 } from './workflows/builtin-registry.js'
+import { WorkflowStateDb } from './workflows/shared-state-db.js'
 import { buildWorkflowAgentContext } from './workflows/workflow-context.js'
 import { WorkflowInstaller } from './workflows/workflow-installer.js'
 
@@ -147,6 +148,7 @@ export class AgentServer {
   // Resolvers for pending interactive prompts — keyed by prompt ID
   private promptResolvers: Map<string, (msg: AiMessage) => void> = new Map()
   private scheduler: Scheduler | null = null
+  private workflowDbs: Map<string, WorkflowStateDb> = new Map()
   private agentManager: import('./agents/agent-manager.js').AgentManager | null = null
   private updater: Updater = new Updater()
   private mcpManager: McpManager = new McpManager()
@@ -1000,6 +1002,9 @@ export class AgentServer {
         break
       case 'workflow_uninstall':
         this.handleWorkflowUninstall(msg)
+        break
+      case 'workflow_activate':
+        this.handleWorkflowActivate(msg)
         break
 
       // ── Connectors ──
@@ -1967,6 +1972,34 @@ export class AgentServer {
     }
   }
 
+  private handleWorkflowActivate(msg: { projectId: string; workflowId: string }) {
+    if (!this.agentManager) {
+      this.sendToClient(Channel.AI, {
+        type: 'error',
+        message: 'Agent manager not available',
+      })
+      return
+    }
+
+    try {
+      const installer = new WorkflowInstaller(this.agentManager)
+      const installed = installer.activateWorkflow(msg.projectId, msg.workflowId)
+      const agents = this.agentManager
+        .listAgents(msg.projectId)
+        .filter((a) => a.agent.workflowId === msg.workflowId)
+      this.sendToClient(Channel.AI, {
+        type: 'workflow_activated',
+        workflow: installed,
+        agents,
+      })
+    } catch (err) {
+      this.sendToClient(Channel.AI, {
+        type: 'error',
+        message: `Activation failed: ${err instanceof Error ? err.message : String(err)}`,
+      })
+    }
+  }
+
   private wireAgentAutoHandlers(session: Session) {
     session.setConfirmHandler(async (_command, _reason) => {
       log.debug({ sessionId: session.id, command: _command }, 'Agent auto-approved confirm')
@@ -2023,20 +2056,28 @@ export class AgentServer {
     const project = projectId ? loadProject(projectId) : undefined
     const isAgent = sessionId.startsWith('agent--')
 
-    // Load agent instructions from metadata unless explicitly provided
+    // Load agent instructions and workflow metadata
     let agentInstructions = extra?.agentInstructions
     let agentMemory = extra?.agentMemory
+    let agentWorkflowId: string | undefined
+    let agentWorkflowKey: string | undefined
+
     if (!agentInstructions && isAgent && projectId) {
       const meta = loadAgentMetadata(projectId, sessionId)
       if (meta) {
+        agentWorkflowId = meta.workflowId
+        agentWorkflowKey = meta.workflowAgentKey
         // If this is a workflow agent, build rich context from workflow files
         if (meta.workflowId) {
-          const wfContext = buildWorkflowAgentContext(projectId, meta.workflowId)
+          const wfContext = buildWorkflowAgentContext(
+            projectId,
+            meta.workflowId,
+            meta.workflowAgentKey,
+          )
           if (wfContext) {
             agentInstructions = wfContext.instructions
             agentMemory = agentMemory || wfContext.memory || undefined
           } else {
-            // Fallback to flat instructions if workflow context build fails
             agentInstructions = meta.instructions
           }
         } else {
@@ -2058,6 +2099,13 @@ export class AgentServer {
       projectWorkspacePath: project?.workspacePath,
       projectType: project?.type,
       onJobAction: projectId ? this.buildAgentActionHandler(sessionId) : undefined,
+      onActivateWorkflow: projectId && !isAgent ? this.buildActivateWorkflowHandler() : undefined,
+      onSharedState:
+        agentWorkflowId && projectId
+          ? this.buildSharedStateHandler(agentWorkflowId, agentWorkflowKey)
+          : undefined,
+      workflowId: agentWorkflowId,
+      workflowAgentKey: agentWorkflowKey,
       onDeliverResult:
         isAgent && projectId ? this.buildDeliverResultHandler(sessionId, projectId) : undefined,
       agentInstructions,
@@ -2140,6 +2188,69 @@ export class AgentServer {
         default:
           return `Unknown operation: ${input.operation}`
       }
+    }
+  }
+
+  /** Build the activate_workflow callback for the bootstrap agent */
+  private buildActivateWorkflowHandler():
+    | import('@anton/agent-core').ActivateWorkflowHandler
+    | undefined {
+    if (!this.agentManager) return undefined
+
+    return async (projectId, workflowId) => {
+      try {
+        const installer = new WorkflowInstaller(this.agentManager!)
+        const installed = installer.activateWorkflow(projectId, workflowId)
+        const agents = this.agentManager!.listAgents(projectId).filter(
+          (a) => a.agent.workflowId === workflowId,
+        )
+
+        // Notify the client about the new agents
+        this.sendToClient(Channel.AI, {
+          type: 'workflow_activated',
+          workflow: installed,
+          agents,
+        })
+
+        const agentNames = agents.map((a) => a.agent.name).join(', ')
+        return `Workflow "${workflowId}" activated successfully. Created ${agents.length} agents: ${agentNames}. They will start running on their configured schedules.`
+      } catch (err) {
+        return `Failed to activate workflow: ${err instanceof Error ? err.message : String(err)}`
+      }
+    }
+  }
+
+  /** Build the shared_state callback for workflow agents */
+  private buildSharedStateHandler(
+    _defaultWorkflowId: string,
+    agentKey?: string,
+  ): import('@anton/agent-core').SharedStateHandler | undefined {
+    return async (projectId, wfId, operation, sql, params) => {
+      const cacheKey = `${projectId}:${wfId}`
+      let db = this.workflowDbs.get(cacheKey)
+
+      if (!db) {
+        // Lazy-open the DB
+        const { getWorkflowStateDbPath } = await import('@anton/agent-config')
+        const { loadWorkflowManifest } = await import('@anton/agent-config')
+        const dbPath = getWorkflowStateDbPath(projectId, wfId)
+        const manifest = loadWorkflowManifest(projectId, wfId)
+        const transitions = manifest?.sharedState?.transitions || {}
+
+        try {
+          db = new WorkflowStateDb(dbPath, transitions)
+          this.workflowDbs.set(cacheKey, db)
+        } catch (err) {
+          return JSON.stringify({
+            error: `Failed to open shared state DB: ${err instanceof Error ? err.message : String(err)}`,
+          })
+        }
+      }
+
+      if (operation === 'query') {
+        return db.query(sql, params || [])
+      }
+      return db.execute(sql, params || [], agentKey)
     }
   }
 
@@ -2822,12 +2933,12 @@ export class AgentServer {
         this.sendToClient(Channel.AI, payload)
         this.pendingPrompts.set(confirmId, { type: 'plan_confirm', payload })
 
-        // 5 minutes — plans need reading time
+        // 24 hours — user may leave and come back; pending prompts survive reconnects
         const timeout = setTimeout(() => {
           this.pendingPrompts.delete(confirmId)
           this.promptResolvers.delete(confirmId)
           resolve({ approved: false, feedback: 'Timed out waiting for plan review' })
-        }, 300_000)
+        }, 86_400_000)
 
         this.promptResolvers.set(confirmId, (msg: AiMessage) => {
           if (msg.type === 'plan_confirm_response' && msg.id === confirmId) {
@@ -2858,12 +2969,12 @@ export class AgentServer {
         // Track so we can re-send on reconnect
         this.pendingPrompts.set(askId, { type: 'ask_user', payload })
 
-        // 5 minutes — user needs time to answer
+        // 24 hours — user may leave and come back; pending prompts survive reconnects
         const timeout = setTimeout(() => {
           this.pendingPrompts.delete(askId)
           this.promptResolvers.delete(askId)
           resolve({})
-        }, 300_000)
+        }, 86_400_000)
 
         // Register resolver — routed via handleMessage, survives reconnects
         this.promptResolvers.set(askId, (msg: AiMessage) => {

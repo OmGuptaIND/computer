@@ -26,6 +26,11 @@ export function getWorkflowDir(projectId: string, workflowId: string): string {
   return join(getWorkflowsDir(projectId), workflowId)
 }
 
+/** Get the path to the workflow's shared state SQLite database */
+export function getWorkflowStateDbPath(projectId: string, workflowId: string): string {
+  return join(getWorkflowDir(projectId, workflowId), 'state', 'shared.db')
+}
+
 // ── Manifest ────────────────────────────────────────────────────────
 
 /** Load and parse workflow.json from a workflow directory */

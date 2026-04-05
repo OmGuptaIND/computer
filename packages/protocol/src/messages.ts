@@ -907,6 +907,18 @@ export interface WorkflowUninstalledMessage {
   workflowId: string
 }
 
+export interface WorkflowActivateMessage {
+  type: 'workflow_activate'
+  projectId: string
+  workflowId: string
+}
+
+export interface WorkflowActivatedMessage {
+  type: 'workflow_activated'
+  workflow: InstalledWorkflow
+  agents: AgentSession[]
+}
+
 // ── Connector management ─────────────────────────────────────────────
 
 export interface ConnectorConfigPayload {
@@ -1226,6 +1238,8 @@ export type AiMessage =
   | WorkflowsListResponse
   | WorkflowUninstallMessage
   | WorkflowUninstalledMessage
+  | WorkflowActivateMessage
+  | WorkflowActivatedMessage
   // Connectors
   | ConnectorsListMessage
   | ConnectorsListResponse

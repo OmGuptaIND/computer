@@ -69,6 +69,8 @@ export interface AgentMetadata {
   instructions: string
   /** If this agent was created from a workflow, the workflow ID */
   workflowId?: string
+  /** Key in the workflow manifest's agents map (e.g., "orchestrator", "lead-scorer") */
+  workflowAgentKey?: string
   /** Cron schedule — null means manual-only */
   schedule?: { cron: string }
   /** Which conversation created this agent (for result delivery) */

@@ -164,6 +164,30 @@ export function handleProjectMessage(msg: AiMessage): boolean {
       return true
     }
 
+    case 'workflow_activated': {
+      const ps = projectStore.getState()
+      // Update the installed workflow with activation data
+      ps.setProjectWorkflows(
+        ps.projectWorkflows.map((w) =>
+          w.workflowId === msg.workflow.workflowId ? msg.workflow : w,
+        ),
+      )
+      // Sync server-created agents into UI store so they render in the agents list
+      if (msg.agents?.length) {
+        const existing = ps.allAgents.filter(
+          (a) => !msg.agents.some((na: { sessionId: string }) => na.sessionId === a.sessionId),
+        )
+        ps.setAllAgents([...existing, ...msg.agents])
+        if (msg.workflow.projectId === ps.activeProjectId) {
+          const existingProject = ps.projectAgents.filter(
+            (a) => !msg.agents.some((na: { sessionId: string }) => na.sessionId === a.sessionId),
+          )
+          ps.setProjectAgents([...existingProject, ...msg.agents])
+        }
+      }
+      return true
+    }
+
     default:
       return false
   }

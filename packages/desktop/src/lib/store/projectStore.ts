@@ -137,6 +137,7 @@ interface ProjectState {
   ) => void
   listWorkflows: (projectId: string) => void
   uninstallWorkflow: (projectId: string, workflowId: string) => void
+  activateWorkflow: (projectId: string, workflowId: string) => void
   getProjectInstructions: (projectId: string) => void
   saveProjectInstructions: (projectId: string, content: string) => void
   getProjectPreferences: (projectId: string) => void
@@ -288,6 +289,8 @@ export const projectStore = create<ProjectState>((set, get) => ({
   listWorkflows: (projectId) => connection.sendWorkflowsList(projectId),
   uninstallWorkflow: (projectId, workflowId) =>
     connection.sendWorkflowUninstall(projectId, workflowId),
+  activateWorkflow: (projectId, workflowId) =>
+    connection.sendWorkflowActivate(projectId, workflowId),
   getProjectInstructions: (projectId) => connection.sendProjectInstructionsGet(projectId),
   saveProjectInstructions: (projectId, content) =>
     connection.sendProjectInstructionsSave(projectId, content),

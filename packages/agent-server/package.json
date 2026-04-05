@@ -19,9 +19,11 @@
     "@anton/connectors": "workspace:*",
     "@anton/protocol": "workspace:*",
     "ws": "^8.18.0",
-    "chokidar": "^4.0.0"
+    "chokidar": "^4.0.0",
+    "better-sqlite3": "^11.7.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.0",
     "tsx": "^4.19.0",

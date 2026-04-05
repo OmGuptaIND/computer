@@ -11,7 +11,7 @@ const WORKFLOW_ICONS: Record<string, string> = {
 }
 
 const AGENTS: Record<string, string[]> = {
-  'lead-qualification': ['orchestrator', 'lead-scorer', 'outreach-writer'],
+  'lead-qualification': ['lead-scanner', 'lead-scorer', 'outreach-writer'],
 }
 
 const SCRIPTS: Record<string, string[]> = {
@@ -77,12 +77,14 @@ function InstallModal({
 
   const handleConfirm = useCallback(() => {
     setInstalling(true)
-    // Check if a project with this workflow name already exists
-    const existingProject = projectStore.getState().projects.find((p) => p.name === workflow.name)
-    if (existingProject) {
-      // Install into the existing project instead of creating a duplicate
-      projectStore.getState().installWorkflow(existingProject.id, workflow.id, {})
+    // Check if a project already has this specific workflow installed
+    const ps = projectStore.getState()
+    const existingWorkflow = ps.projectWorkflows.find((w) => w.workflowId === workflow.id)
+    if (existingWorkflow) {
+      // Workflow already installed somewhere — install into that project
+      projectStore.getState().installWorkflow(existingWorkflow.projectId, workflow.id, {})
     } else {
+      // Create a fresh project for this workflow
       projectStore.getState().createProject({
         name: workflow.name,
         description: workflow.description,

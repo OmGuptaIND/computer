@@ -15541,6 +15541,47 @@ button {
   color: var(--danger) !important;
 }
 
+/* ── Setup Incomplete Banner ─────────────────────────────────── */
+
+.setup-incomplete-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  background: rgba(251, 191, 36, 0.06);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  width: 100%;
+  transition: all 0.15s;
+  color: #fbbf24;
+}
+
+.setup-incomplete-banner:hover {
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+.setup-incomplete-banner__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setup-incomplete-banner__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.setup-incomplete-banner__desc {
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
 /* ── Workflow Pipeline View ───────────────────────────────────── */
 
 .wf-pipeline {

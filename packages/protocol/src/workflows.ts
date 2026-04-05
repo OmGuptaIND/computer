@@ -103,6 +103,25 @@ export interface WorkflowManifest {
    * Used by the UI to render a Zapier/Make-style pipeline visualization.
    */
   pipeline?: WorkflowPipelineStep[]
+
+  /**
+   * Shared state database — each workflow gets its own SQLite DB for agent coordination.
+   * Agents read/write through the `shared_state` tool. The system enforces valid transitions.
+   * External connectors (Sheets, Slack) are output destinations, not coordination layers.
+   */
+  sharedState?: WorkflowSharedState
+}
+
+// ── Shared State ──────────────────────────────────────────────────
+
+/** Shared state definition — per-workflow SQLite database for agent coordination */
+export interface WorkflowSharedState {
+  /** Name of the shared state (e.g., "leads", "content", "tickets") */
+  name: string
+  /** SQL statements to create tables — run on activation */
+  setupSql: string
+  /** Valid status transitions per agent key. `from: null` means the agent can INSERT new items. */
+  transitions: Record<string, { from: string | null; to: string }>
 }
 
 // ── Pipeline ───────────────────────────────────────────────────────
@@ -180,12 +199,18 @@ export interface WorkflowInput {
 export interface WorkflowAgentRef {
   /** Relative path to the .md file (e.g. "agents/orchestrator.md") */
   file: string
-  /** "main" = orchestrator, "sub" = loaded as reference in orchestrator context */
+  /** "main" = independent agent created during activation. "sub" = legacy: loaded as reference text into main agent context (deprecated — use "main" for all new workflows). */
   role: 'main' | 'sub'
+  /** Display name for this agent (if different from the key) */
+  name?: string
+  /** Short description of what this agent does */
+  description?: string
   /** Which connectors this agent uses (for documentation, not enforcement) */
   connectors?: string[]
   /** Which scripts this agent may run */
   scripts?: string[]
+  /** Agent-specific cron schedule (overrides workflow-level trigger for this agent) */
+  schedule?: string
 }
 
 // ── Installed workflow state ────────────────────────────────────────
@@ -196,8 +221,10 @@ export interface InstalledWorkflow {
   workflowId: string
   /** Project this workflow is installed in */
   projectId: string
-  /** The agent session created for this workflow */
+  /** The primary agent session (orchestrator) — backward compat */
   agentSessionId: string
+  /** All agent session IDs created for this workflow (populated after activation) */
+  agentSessionIds?: string[]
   /** Timestamp of installation */
   installedAt: number
   /** User's answers to manifest.inputs */

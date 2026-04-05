@@ -95,72 +95,70 @@
   },
 
   "agents": {
-    "orchestrator": {
-      "file": "agents/orchestrator.md",
+    "lead-scanner": {
+      "file": "agents/lead-scanner.md",
       "role": "main",
-      "connectors": ["gmail", "google-sheets", "slack", "exa-search"],
-      "scripts": ["scripts/enrich-lead.py", "scripts/compute-score.py", "scripts/validate-email.py"]
+      "name": "Lead Scanner",
+      "description": "Scans Gmail for new leads from configured sources and adds them to the tracking sheet",
+      "connectors": ["gmail", "google-sheets"],
+      "schedule": "0 */2 * * *"
     },
     "lead-scorer": {
       "file": "agents/lead-scorer.md",
-      "role": "sub"
+      "role": "main",
+      "name": "Lead Scorer",
+      "description": "Enriches and scores new leads against your ICP, updates the tracking sheet",
+      "connectors": ["google-sheets", "exa-search"],
+      "scripts": ["scripts/enrich-lead.py", "scripts/compute-score.py"],
+      "schedule": "30 */2 * * *"
     },
     "outreach-writer": {
       "file": "agents/outreach-writer.md",
-      "role": "sub"
+      "role": "main",
+      "name": "Outreach Writer",
+      "description": "Sends personalized outreach emails to high-scoring leads",
+      "connectors": ["gmail", "google-sheets", "slack"],
+      "scripts": ["scripts/validate-email.py"],
+      "schedule": "0 1-23/2 * * *"
     }
   },
 
   "pipeline": [
     {
-      "id": "trigger",
-      "label": "New Lead",
-      "description": "Email or web form submission detected",
+      "id": "lead-scanner",
+      "label": "Lead Scanner",
+      "description": "Scans Gmail for new form submissions every 2h",
       "icon": "mail",
-      "type": "trigger",
-      "next": ["enrich"]
-    },
-    {
-      "id": "enrich",
-      "label": "Enrich Lead",
-      "description": "Company data, role, social profiles",
-      "icon": "search",
       "type": "agent",
-      "next": ["score"]
+      "next": ["lead-scorer"]
     },
     {
-      "id": "score",
-      "label": "Score & Qualify",
-      "description": "ICP fit scoring (0-100)",
+      "id": "lead-scorer",
+      "label": "Lead Scorer",
+      "description": "Enriches leads and scores against your ICP (0-100)",
       "icon": "bar-chart",
       "type": "agent",
-      "next": ["route"]
+      "next": ["outreach-writer"]
     },
     {
-      "id": "route",
-      "label": "Route to Sheet",
-      "description": "Add to Google Sheets pipeline",
-      "icon": "table",
-      "type": "connector",
-      "next": ["outreach", "notify"]
-    },
-    {
-      "id": "outreach",
-      "label": "Send Outreach",
-      "description": "Personalized email if score >= threshold",
+      "id": "outreach-writer",
+      "label": "Outreach Writer",
+      "description": "Sends personalized emails to high-scoring leads",
       "icon": "send",
       "type": "agent",
       "next": []
-    },
-    {
-      "id": "notify",
-      "label": "Slack Alert",
-      "description": "Notify team of hot lead",
-      "icon": "message-square",
-      "type": "connector",
-      "next": []
     }
   ],
+
+  "sharedState": {
+    "name": "leads",
+    "setupSql": "CREATE TABLE IF NOT EXISTS leads (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE, name TEXT, company TEXT, title TEXT, score INTEGER, status TEXT NOT NULL DEFAULT 'new', source TEXT, notes TEXT, research TEXT, outreach_subject TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), claimed_by TEXT, error TEXT); CREATE TABLE IF NOT EXISTS state_log (id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER, agent TEXT, from_status TEXT, to_status TEXT, message TEXT, timestamp TEXT DEFAULT (datetime('now')));",
+    "transitions": {
+      "lead-scanner": { "from": null, "to": "new" },
+      "lead-scorer": { "from": "new", "to": "scored" },
+      "outreach-writer": { "from": "scored", "to": "outreach_sent" }
+    }
+  },
 
   "resources": [
     "templates/scoring-rubric.md",

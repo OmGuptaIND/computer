@@ -1,4 +1,4 @@
-import { MoreHorizontal, Pencil, Pin, Search, Trash2 } from 'lucide-react'
+import { AlertCircle, MoreHorizontal, Pencil, Pin, Search, Trash2 } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { Skill } from '../../lib/skills.js'
 import type { ChatImageAttachment } from '../../lib/store.js'
@@ -332,6 +332,7 @@ export function TaskListView({ mode }: Props) {
   const activeConversationId = useStore((s) => s.activeConversationId)
   const activeProjectId = projectStore((s) => s.activeProjectId)
   const projects = projectStore((s) => s.projects)
+  const projectWorkflows = projectStore((s) => s.projectWorkflows)
   const sessionsLoaded = sessionStore((s) => s.sessionsLoaded)
   const switchConversation = useStore((s) => s.switchConversation)
   const deleteConversation = useStore((s) => s.deleteConversation)
@@ -340,6 +341,11 @@ export function TaskListView({ mode }: Props) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Check if this project has an unbootstrapped workflow
+  const pendingWorkflow = projectWorkflows.find(
+    (w) => w.projectId === activeProjectId && !w.bootstrapped,
+  )
 
   const selectionMode = selectedIds.size > 0
 
@@ -491,6 +497,25 @@ export function TaskListView({ mode }: Props) {
         )}
 
         <div className="task-list-full__inner">
+          {/* Setup incomplete banner */}
+          {pendingWorkflow && (
+            <button
+              type="button"
+              className="setup-incomplete-banner"
+              onClick={() => handleNewTask(`Continue setting up ${pendingWorkflow.manifest.name}`)}
+            >
+              <AlertCircle size={16} strokeWidth={1.5} />
+              <div className="setup-incomplete-banner__text">
+                <span className="setup-incomplete-banner__title">
+                  {pendingWorkflow.manifest.name} setup incomplete
+                </span>
+                <span className="setup-incomplete-banner__desc">
+                  Click to continue the setup conversation
+                </span>
+              </div>
+            </button>
+          )}
+
           {/* Hero input */}
           <div className="task-list-full__hero">
             <ChatInput onSend={handleNewTask} onSkillSelect={handleSkillSelect} variant="hero" />

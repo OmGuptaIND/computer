@@ -22,6 +22,7 @@ const log = createLogger('tools')
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core'
 import { Type } from '@mariozechner/pi-ai'
 import type { Static, TSchema, TextContent } from '@mariozechner/pi-ai'
+import type { ActivateWorkflowHandler } from './tools/activate-workflow.js'
 import { executeArtifact } from './tools/artifact.js'
 import { executeBrowser } from './tools/browser.js'
 import { executeClipboard } from './tools/clipboard.js'
@@ -40,6 +41,7 @@ import { executeNotification } from './tools/notification.js'
 import { executePlan } from './tools/plan.js'
 import { executeProcess } from './tools/process.js'
 import { executePublish } from './tools/publish.js'
+import type { SharedStateHandler } from './tools/shared-state.js'
 import { executeShell } from './tools/shell.js'
 import { type TasksUpdateCallback, executeTaskTracker } from './tools/task-tracker.js'
 import { executeTodo } from './tools/todo.js'
@@ -147,6 +149,14 @@ export interface ToolCallbacks {
   projectId?: string
   /** Callback for the agent management tool. Provided by the server. */
   onJobAction?: JobActionHandler
+  /** Callback for activating a workflow (creating all its agents). Provided by the server. */
+  onActivateWorkflow?: ActivateWorkflowHandler
+  /** Callback for shared state DB operations. Provided by the server for workflow agents. */
+  onSharedState?: SharedStateHandler
+  /** The workflow ID this agent belongs to (for shared state context). */
+  workflowId?: string
+  /** The agent key within the workflow (for transition enforcement). */
+  workflowAgentKey?: string
   /** Callback to deliver results back to the origin conversation. */
   onDeliverResult?: DeliverResultHandler
   /** Domain for this agent (e.g. "slug.antoncomputer.in"). Used by the publish tool. */
@@ -815,6 +825,66 @@ export function buildTools(
       },
     }),
   ]
+
+  // ── Workflow activation (only for project-scoped sessions with handler) ──
+  if (callbacks?.projectId && callbacks?.onActivateWorkflow) {
+    const projectId = callbacks.projectId
+    const activateHandler = callbacks.onActivateWorkflow
+    tools.push(
+      defineTool({
+        name: 'activate_workflow',
+        label: 'Activate Workflow',
+        description:
+          'Activate a workflow by creating all its agents. Call this ONLY after the user has approved the final configuration plan. ' +
+          'This creates the scheduled agents defined in the workflow manifest and starts them running.',
+        parameters: Type.Object({
+          workflow_id: Type.String({
+            description: 'The workflow ID to activate (e.g. "lead-qualification")',
+          }),
+        }),
+        async execute(_toolCallId, params) {
+          const output = await activateHandler(projectId, params.workflow_id)
+          return toolResult(output)
+        },
+      }),
+    )
+  }
+
+  // ── Shared state (workflow agents with DB access) ──
+  if (callbacks?.onSharedState && callbacks?.workflowId) {
+    const sharedStateHandler = callbacks.onSharedState
+    const wfId = callbacks.workflowId
+    const wfProjectId = callbacks.projectId!
+    tools.push(
+      defineTool({
+        name: 'shared_state',
+        label: 'Shared State',
+        description:
+          'Query or modify the workflow shared state database (SQLite). ' +
+          'Use standard SQL. Status transitions are enforced by the system — invalid transitions will be rejected. ' +
+          'Operations: "query" for SELECT statements, "execute" for INSERT/UPDATE/DELETE.',
+        parameters: Type.Object({
+          operation: Type.Union([Type.Literal('query'), Type.Literal('execute')], {
+            description: '"query" for SELECT, "execute" for INSERT/UPDATE/DELETE',
+          }),
+          sql: Type.String({ description: 'SQL statement to run' }),
+          params: Type.Optional(
+            Type.Array(Type.Unknown(), { description: 'Bind parameters for the SQL statement' }),
+          ),
+        }),
+        async execute(_toolCallId, params) {
+          const output = await sharedStateHandler(
+            wfProjectId,
+            wfId,
+            params.operation,
+            params.sql,
+            params.params as unknown[] | undefined,
+          )
+          return toolResult(output)
+        },
+      }),
+    )
+  }
 
   // ── Sub-agent (depth-limited — max 2 levels of nesting) ──
   const currentDepth = callbacks?.subAgentDepth ?? 0

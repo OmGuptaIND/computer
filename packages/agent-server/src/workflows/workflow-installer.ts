@@ -1,13 +1,17 @@
 /**
  * Workflow Installer — installs workflow directories into projects
- * and creates the associated agent for execution.
+ * and activates agents after user completes setup.
+ *
+ * Flow: install() → user completes bootstrap → activateWorkflow() → agents created
  */
 
 import { cpSync, existsSync, mkdirSync } from 'node:fs'
 import {
   getWorkflowDir,
+  getWorkflowStateDbPath,
   getWorkflowsDir,
   loadInstalledMeta,
+  loadWorkflowManifest,
   loadWorkflowResource,
   deleteWorkflow as removeWorkflowDir,
   saveAgentMetadata,
@@ -17,17 +21,19 @@ import {
 } from '@anton/agent-config'
 import type { InstalledWorkflow, WorkflowManifest } from '@anton/protocol'
 import type { AgentManager } from '../agents/agent-manager.js'
+import { WorkflowStateDb } from './shared-state-db.js'
 
 export class WorkflowInstaller {
   constructor(private agentManager: AgentManager) {}
 
   /**
    * Install a workflow from a source directory into a project.
+   * Does NOT create agents — those are created after bootstrap via activateWorkflow().
    *
    * 1. Copies workflow files to project's workflows/ directory
    * 2. Saves user config
-   * 3. Creates an agent with the workflow's cron schedule
-   * 4. Writes installed.json linking workflow to agent
+   * 3. Writes installed.json (no agents yet)
+   * 4. Saves bootstrap prompt as project instructions
    */
   install(
     projectId: string,
@@ -64,65 +70,109 @@ export class WorkflowInstaller {
     // Save user config
     saveWorkflowUserConfig(projectId, workflowId, userInputs)
 
-    // Create agent — this is a regular agent that the AgentManager schedules
-    // The key difference: agent.workflowId is set, so buildSessionOptions()
-    // will call buildWorkflowAgentContext() instead of using flat instructions
-    const schedule = manifest.trigger.type === 'schedule' ? manifest.trigger.schedule : undefined
-
-    const agentSession = this.agentManager.createAgent(projectId, {
-      name: manifest.name,
-      description: manifest.description,
-      instructions: `[Workflow Agent] This agent is powered by the "${manifest.name}" workflow. Instructions are loaded from the workflow directory at runtime.`,
-      schedule,
-    })
-
-    // Set workflowId on the agent metadata
-    agentSession.agent.workflowId = workflowId
-
-    // Pause the scheduled agent until bootstrap completes —
-    // the agent shouldn't run on cron until the user finishes setup
-    if (manifest.bootstrap) {
-      agentSession.agent.status = 'paused'
-    }
-
-    saveAgentMetadata(projectId, agentSession.sessionId, agentSession.agent)
-
     // If workflow has a bootstrap agent, save its prompt as project instructions.
-    // This means the FIRST conversation the user has in this project will be
-    // guided by the bootstrap prompt — the AI will walk them through setup.
+    // The FIRST conversation the user has in this project will be guided by this prompt.
     if (manifest.bootstrap) {
       const bootstrapPrompt = loadWorkflowResource(projectId, workflowId, manifest.bootstrap.file)
+      const bootstrapTask = loadWorkflowResource(projectId, workflowId, 'agents/bootstrap/task.md')
       if (bootstrapPrompt) {
-        const instructions = [
+        const sections = [
           `# Workflow Bootstrap: ${manifest.name}`,
           '',
           `This project is powered by the "${manifest.name}" workflow.`,
-          'The workflow agent is PAUSED until you complete this setup.',
+          `Workflow ID: \`${workflowId}\``,
+          `Workflow directory: \`${getWorkflowDir(projectId, workflowId)}\``,
           '',
-          '## Your Task',
-          'Guide the user through the setup process below. When setup is complete:',
-          '1. Save all configuration to memory',
-          '2. Tell the user the workflow is ready and the scheduled agent will now activate',
-          '',
-          '---',
-          '',
-          bootstrapPrompt,
-        ].join('\n')
+          'No agents have been created yet — they will be deployed after you complete setup.',
+          `When the user approves the final plan, call the \`activate_workflow\` tool with workflow_id: "${workflowId}".`,
+        ]
 
-        saveProjectInstructions(projectId, instructions)
+        // Include bootstrap task.md as the primary instruction
+        if (bootstrapTask) {
+          sections.push('', '---', '', bootstrapTask)
+        }
+
+        // Include bootstrap process guide
+        sections.push('', '---', '', bootstrapPrompt)
+
+        saveProjectInstructions(projectId, sections.join('\n'))
       }
     }
 
-    // Write installed.json
+    // Write installed.json — NO agents created yet
     const installed: InstalledWorkflow = {
       workflowId,
       projectId,
-      agentSessionId: agentSession.sessionId,
+      agentSessionId: '', // no agent yet
+      agentSessionIds: [],
       installedAt: Date.now(),
       userConfig: userInputs,
       manifest,
       bootstrapped: !manifest.bootstrap, // true if no bootstrap needed
     }
+    saveInstalledMeta(projectId, workflowId, installed)
+
+    return installed
+  }
+
+  /**
+   * Activate a workflow — creates all agents after bootstrap is complete.
+   * Called after the user has approved the final configuration plan.
+   */
+  activateWorkflow(projectId: string, workflowId: string): InstalledWorkflow {
+    const manifest = loadWorkflowManifest(projectId, workflowId)
+    if (!manifest) {
+      throw new Error(`Workflow manifest not found for "${workflowId}"`)
+    }
+
+    const installed = loadInstalledMeta(projectId, workflowId)
+    if (!installed) {
+      throw new Error(`Workflow "${workflowId}" is not installed`)
+    }
+
+    if (
+      installed.bootstrapped &&
+      installed.agentSessionIds &&
+      installed.agentSessionIds.length > 0
+    ) {
+      throw new Error(`Workflow "${workflowId}" is already activated`)
+    }
+
+    // Create shared state DB if manifest defines one
+    if (manifest.sharedState) {
+      const dbPath = getWorkflowStateDbPath(projectId, workflowId)
+      const db = new WorkflowStateDb(dbPath, manifest.sharedState.transitions)
+      db.setup(manifest.sharedState.setupSql)
+      db.close()
+    }
+
+    const defaultSchedule =
+      manifest.trigger.type === 'schedule' ? manifest.trigger.schedule : undefined
+    const agentSessionIds: string[] = []
+
+    for (const [key, ref] of Object.entries(manifest.agents)) {
+      // Each agent can have its own schedule, or fall back to the workflow default for main agents
+      const agentSchedule = ref.schedule || (ref.role === 'main' ? defaultSchedule : undefined)
+      const agentName = ref.name || formatAgentName(key)
+
+      const agentSession = this.agentManager.createAgent(projectId, {
+        name: agentName,
+        description: ref.description || manifest.description,
+        instructions: `[Workflow Agent: ${key}] Instructions loaded from workflow at runtime.`,
+        schedule: agentSchedule,
+      })
+
+      agentSession.agent.workflowId = workflowId
+      agentSession.agent.workflowAgentKey = key
+
+      saveAgentMetadata(projectId, agentSession.sessionId, agentSession.agent)
+      agentSessionIds.push(agentSession.sessionId)
+    }
+
+    // Update installed metadata
+    installed.bootstrapped = true
+    installed.agentSessionIds = agentSessionIds
+    installed.agentSessionId = agentSessionIds[0] || ''
     saveInstalledMeta(projectId, workflowId, installed)
 
     return installed
@@ -150,18 +200,31 @@ export class WorkflowInstaller {
   }
 
   /**
-   * Uninstall a workflow — removes the agent and workflow directory.
+   * Uninstall a workflow — removes ALL agents and the workflow directory.
    */
   uninstall(projectId: string, workflowId: string): boolean {
     const installed = loadInstalledMeta(projectId, workflowId)
     if (!installed) return false
 
-    // Delete the agent
-    this.agentManager.deleteAgent(installed.agentSessionId)
+    // Delete all agents created by this workflow
+    const allAgents = this.agentManager.listAgents(projectId)
+    for (const agent of allAgents) {
+      if (agent.agent.workflowId === workflowId) {
+        this.agentManager.deleteAgent(agent.sessionId)
+      }
+    }
 
     // Remove the workflow directory
     removeWorkflowDir(projectId, workflowId)
 
     return true
   }
+}
+
+/** Convert kebab-case agent key to display name */
+function formatAgentName(key: string): string {
+  return key
+    .split('-')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
 }

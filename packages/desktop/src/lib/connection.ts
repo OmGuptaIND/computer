@@ -401,6 +401,10 @@ export class Connection {
     this.send(Channel.AI, { type: 'workflow_uninstall', projectId, workflowId })
   }
 
+  sendWorkflowActivate(projectId: string, workflowId: string) {
+    this.send(Channel.AI, { type: 'workflow_activate', projectId, workflowId })
+  }
+
   // ── Connectors ─────────────────────────────────────────────────
 
   sendConnectorsList() {
