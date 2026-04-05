@@ -90,6 +90,25 @@ export function MessageList({ messages }: Props) {
       return
     }
 
+    // When a new user message is sent, scroll so the new query appears
+    // at the top of the viewport (Perplexity-style). The assistant
+    // response will stream in below it.
+    const lastMsg = messages[messages.length - 1]
+    if (messages.length > prevCount && lastMsg?.role === 'user') {
+      requestAnimationFrame(() => {
+        // Find the last user message bubble in the DOM
+        const userBubbles = container.querySelectorAll('.message--user')
+        const lastUserBubble = userBubbles[userBubbles.length - 1]
+        if (lastUserBubble) {
+          const bubbleTop = (lastUserBubble as HTMLElement).offsetTop
+          container.scrollTo({ top: bubbleTop, behavior: 'instant' })
+        } else {
+          scrollToBottom(true)
+        }
+      })
+      return
+    }
+
     const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
 
     if (isNearBottom) {
@@ -153,10 +172,11 @@ export function MessageList({ messages }: Props) {
         <AnimatePresence mode="popLayout">
           {grouped.map((item, idx) => {
             if (item.type === 'message') {
-              // Find if this is the last thinking message (for streaming indicator)
-              const isLastThinking = item.message.isThinking
-                ? !grouped.slice(idx + 1).some((g) => g.type === 'message' && g.message.isThinking)
-                : false
+              // A thinking block streams only if nothing follows it — meaning
+              // the model is still in its thinking phase. Once any response text,
+              // tool call, or new user message appears after it, this turn's thinking is done.
+              const hasAnythingAfter = grouped.slice(idx + 1).length > 0
+              const isLastThinking = item.message.isThinking && !hasAnythingAfter
               return (
                 <MessageBubble
                   key={item.message.id}

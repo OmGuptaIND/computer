@@ -2000,6 +2000,11 @@ export function resumeSession(
  */
 function generateSmartTitle(text: string): string {
   let cleaned = text.trim().replace(/\n/g, ' ').replace(/\s+/g, ' ')
+  // Strip <think>...</think> tags
+  cleaned = cleaned
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .replace(/<think>[\s\S]*$/g, '')
+    .trim()
   if (!cleaned) return 'New conversation'
 
   // Strip greeting prefixes
@@ -2084,6 +2089,9 @@ async function generateAITitle(
     .map((b) => b.text)
     .join('')
     .trim()
+    // Strip <think>...</think> tags that some models embed in text output
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .replace(/<think>[\s\S]*$/g, '')
     // Clean up any quotes or trailing punctuation the model might add
     .replace(/^["']|["']$/g, '')
     .replace(/[.!?]+$/, '')

@@ -92,8 +92,14 @@ export function autoTitle(messages: ChatMessage[]): string {
 }
 
 function generateTitle(text: string): string {
-  // Remove common filler/greeting prefixes
+  // Strip <think>...</think> tags that some models embed
   let cleaned = text
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .replace(/<think>[\s\S]*$/g, '')
+    .trim()
+
+  // Remove common filler/greeting prefixes
+  cleaned = cleaned
     .replace(
       /^(hey|hi|hello|yo|sup|ok|okay|please|can you|could you|i want to|i need to|i'd like to|help me|let's|let me)\b[,!.\s]*/i,
       '',

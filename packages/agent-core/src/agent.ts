@@ -1230,11 +1230,22 @@ export function buildTools(
         }),
         async execute(_toolCallId, params) {
           if (!provider) {
+            // Check if exa_search is available via connectors (MCP-based Exa)
+            const hasExaConnector = connectorManager
+              ?.getAllTools()
+              .some((t) => t.name === 'exa_search')
+            if (hasExaConnector) {
+              return toolResult(
+                'The web_search proxy is not configured, but the Exa connector is available. ' +
+                  'Use the exa_search tool instead — it provides the same web search functionality.',
+                true,
+              )
+            }
             return toolResult(
               'Web search is not configured. To enable it:\n\n' +
                 '1. Go to Settings → Connectors\n' +
                 '2. Find "Web Search (Exa)" and click Connect\n' +
-                '3. Enter your search proxy URL and token\n\n' +
+                '3. Enter your Exa API key\n\n' +
                 'In the meantime, you can use the browser tool to fetch specific URLs if you have them.',
               true,
             )
