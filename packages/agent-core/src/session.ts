@@ -962,6 +962,7 @@ export class Session {
       toolInput?: Record<string, unknown>
       toolId?: string
       isError?: boolean
+      isThinking?: boolean
       attachments?: SessionImageAttachment[]
     }> = []
     let seq = 0
@@ -1077,6 +1078,27 @@ export class Session {
         })
       } else if (msg.role === 'assistant') {
         if (!Array.isArray(msg.content)) continue
+
+        // Extract thinking content blocks
+        const thinkingParts = msg.content.filter(
+          (c): c is ThinkingContent => c.type === 'thinking',
+        )
+        if (thinkingParts.length > 0) {
+          const thinkingText = thinkingParts
+            .map((c) => c.thinking)
+            .join('')
+          if (thinkingText) {
+            entries.push({
+              seq: ++seq,
+              role: 'assistant',
+              content: thinkingText,
+              isThinking: true,
+              ts: msg.timestamp ?? this.createdAt,
+            })
+          }
+        }
+
+        // Extract text content blocks
         const text = extractText(msg.content)
         if (text) {
           entries.push({

@@ -214,6 +214,7 @@ export interface SessionHistoryEntry {
   toolInput?: Record<string, unknown>
   toolId?: string
   isError?: boolean
+  isThinking?: boolean
   attachments?: SessionImageAttachment[]
 }
 

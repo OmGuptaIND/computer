@@ -138,6 +138,7 @@ export function handleSessionMessage(msg: AiMessage): boolean {
             toolName: entry.toolName,
             toolInput: entry.toolInput,
             isError: entry.isError,
+            isThinking: entry.isThinking,
           } as ChatMessage
         })
 
