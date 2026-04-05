@@ -10,6 +10,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
+## [1.0.31] - 2026-04-06
+
+### Features
+- persist thinking
+- sanitize conversation titles by stripping <think> tags and optimize store updates and UI spacing
+- evals
+- allow agents to have shared state using sqllite
+- group sidebar conversations by date, update web search to use OAuth, and add connector build step to release workflow
+
+### Fixes
+- modals
+- bugs
+- view
+- issues
+- linting issues
+- global states blunder
+- logging
+- logging
+- linting issues
+- protocol duplication issue
+- linting issues
+- agent arch v2
+- major arch change
+
+### Added
+- more robust code
+- anton test prompts
+- logging specs
+
+### Other
+- docs: rewrite README with architecture diagrams and full system overview
+- docs: rewrite README with improved branding, story, and clarity
+- Add: sginificant changes
+---
+
 ## [1.0.30] - 2026-03-31
 
 ### Fixes
@@ -225,7 +260,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
-[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.30...HEAD
+[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.31...HEAD
+[1.0.31]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.31
 [1.0.30]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.30
 [1.0.29]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.29
 [1.0.29]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.29
