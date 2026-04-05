@@ -32,7 +32,7 @@ endif
 
 # ── Commands ─────────────────────────────────────────────────────
 
-.PHONY: deploy update sync verify status logs restart stop ping check setup help
+.PHONY: deploy update verify status logs restart stop ping check setup help
 
 ## deploy: Full deploy to all hosts in inventory (or HOST=name for one)
 deploy: _check-ansible
@@ -41,60 +41,6 @@ deploy: _check-ansible
 ## update: Pull latest from remote repo, rebuild, and restart on all hosts
 update: _check-ansible
 	ansible-playbook $(PLAYBOOK) -i $(INVENTORY) $(LIMIT) $(EXTRA_ARGS) --tags build -v
-
-## sync: Build agent binary locally and push to VPS (no git push needed)
-sync: _check-ansible
-	@echo ""
-	@echo "  Building agent binary locally..."
-	@echo "  ─────────────────────────────────"
-	@echo ""
-	@cd "$(REPO_ROOT)" && \
-	GIT_HASH=$$(git rev-parse --short HEAD 2>/dev/null || echo "dev") && \
-	PKG_VERSION=$$(node -e "console.log(JSON.parse(require('fs').readFileSync('packages/agent-config/package.json','utf8')).version)" 2>/dev/null || echo "0.0.0") && \
-	echo "  → Building TypeScript packages..." && \
-	pnpm --filter @anton/protocol build --silent && \
-	pnpm --filter @anton/agent-config build --silent && \
-	pnpm --filter @anton/agent-core build --silent && \
-	pnpm --filter @anton/connectors build --silent && \
-	pnpm --filter @anton/agent-server build --silent && \
-	echo "  → Bundling with esbuild..." && \
-	AGENT_EXTERNALS=$$(node scripts/esbuild.config.js agent-externals) && \
-	npx esbuild packages/agent-server/dist/index.js \
-		--bundle \
-		--platform=node \
-		--target=node22 \
-		--format=cjs \
-		--outfile=/tmp/anton-agent-bundle.js \
-		$$AGENT_EXTERNALS \
-		--define:__AGENT_VERSION__=\"$$PKG_VERSION\" && \
-	echo "  → Creating SEA binary..." && \
-	printf '{"main":"/tmp/anton-agent-bundle.js","output":"/tmp/anton-sea-prep.blob","disableExperimentalSEAWarning":true,"useSnapshot":false,"useCodeCache":true}' > /tmp/anton-sea-config.json && \
-	node --experimental-sea-config /tmp/anton-sea-config.json && \
-	cp $$(which node) /tmp/anton-agent-linux-local && \
-	npx postject /tmp/anton-agent-linux-local NODE_SEA_BLOB /tmp/anton-sea-prep.blob \
-		--sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 && \
-	chmod +x /tmp/anton-agent-linux-local && \
-	echo "  → Binary built: $$PKG_VERSION ($$GIT_HASH)" && \
-	echo "" && \
-	ansible all -i $(INVENTORY) $(LIMIT) --list-hosts 2>/dev/null | tail -n +2 | sed 's/^ *//' | while read host; do \
-		IP=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_host','$$host'))" 2>/dev/null || echo "$$host"); \
-		SSHUSER=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_user','ubuntu'))" 2>/dev/null || echo "ubuntu"); \
-		KEY=$$(ansible-inventory -i $(INVENTORY) --host "$$host" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ansible_ssh_private_key_file',''))" 2>/dev/null || echo ""); \
-		SSH_OPTS="-o StrictHostKeyChecking=no"; \
-		SCP_OPTS="-o StrictHostKeyChecking=no"; \
-		if [ -n "$$KEY" ]; then SSH_OPTS="$$SSH_OPTS -i $$KEY"; SCP_OPTS="$$SCP_OPTS -i $$KEY"; fi; \
-		echo "  → Uploading to $$host ($$IP)..."; \
-		scp $$SCP_OPTS /tmp/anton-agent-linux-local "$$SSHUSER@$$IP:/tmp/anton-agent-new"; \
-		ssh $$SSH_OPTS "$$SSHUSER@$$IP" "\
-			sudo mv /tmp/anton-agent-new /usr/local/bin/anton-agent && \
-			sudo chmod +x /usr/local/bin/anton-agent && \
-			sudo systemctl restart anton-agent"; \
-		echo "  → $$host done ✓ ($$PKG_VERSION $$GIT_HASH)"; \
-		echo ""; \
-	done && \
-	rm -f /tmp/anton-agent-bundle.js /tmp/anton-sea-prep.blob /tmp/anton-sea-config.json /tmp/anton-agent-linux-local
-	@echo "  Sync complete. Run 'make verify' to check."
-	@echo ""
 
 ## verify: Health check across all hosts (or HOST=name for one)
 verify: _check-ansible
@@ -228,8 +174,6 @@ help:
 	@echo "    make deploy"
 	@echo "    make deploy HOST=agent1 API_KEY=sk-ant-api03-xxxxx"
 	@echo "    make deploy BRANCH=staging"
-	@echo "    make sync                    # build binary locally → push to VPS"
-	@echo "    make sync HOST=agent1        # sync to one host"
 	@echo "    make status"
 	@echo "    make logs HOST=agent2"
 	@echo "    make restart"

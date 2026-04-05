@@ -1074,7 +1074,12 @@ export function buildTools(
             ],
             { description: 'Operation to perform' },
           ),
-          name: Type.Optional(Type.String({ description: 'Agent name (for create, or for delete/start/stop to display in confirmation)' })),
+          name: Type.Optional(
+            Type.String({
+              description:
+                'Agent name (for create, or for delete/start/stop to display in confirmation)',
+            }),
+          ),
           description: Type.Optional(
             Type.String({ description: 'What the agent does (for create)' }),
           ),
@@ -1099,9 +1104,7 @@ export function buildTools(
           if (params.operation === 'create' && getAskUser) {
             const askUser = getAskUser()
             if (askUser) {
-              const humanSchedule = params.schedule
-                ? humanizeCron(params.schedule)
-                : null
+              const humanSchedule = params.schedule ? humanizeCron(params.schedule) : null
               const answers = await askUser([
                 {
                   question: `Create agent "${params.name || 'Untitled'}"?`,

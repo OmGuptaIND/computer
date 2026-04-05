@@ -25,7 +25,8 @@ interface AgentCreateMeta {
 
 function isAgentCreate(q: AskUserQuestion): AgentCreateMeta | null {
   const m = q.metadata
-  if (m && (m as Record<string, unknown>).type === 'agent_create') return m as AgentCreateMeta
+  if (m && (m as Record<string, unknown>).type === 'agent_create')
+    return m as unknown as AgentCreateMeta
   return null
 }
 
@@ -34,8 +35,7 @@ function AgentCreateCard({
   onConfirm,
   onCancel,
 }: { meta: AgentCreateMeta; onConfirm: () => void; onCancel: () => void }) {
-  const promptPreview =
-    meta.prompt.length > 120 ? `${meta.prompt.slice(0, 120)}...` : meta.prompt
+  const promptPreview = meta.prompt.length > 120 ? `${meta.prompt.slice(0, 120)}...` : meta.prompt
 
   return (
     <div className="agent-confirm">
@@ -49,9 +49,7 @@ function AgentCreateCard({
         </div>
       </div>
 
-      {meta.description && (
-        <p className="agent-confirm__desc">{meta.description}</p>
-      )}
+      {meta.description && <p className="agent-confirm__desc">{meta.description}</p>}
 
       <div className="agent-confirm__fields">
         <div className="agent-confirm__field">
@@ -63,9 +61,7 @@ function AgentCreateCard({
             )}
           </span>
           <span className="agent-confirm__field-label">Schedule</span>
-          <span className="agent-confirm__field-value">
-            {meta.schedule || 'Manual only'}
-          </span>
+          <span className="agent-confirm__field-value">{meta.schedule || 'Manual only'}</span>
         </div>
 
         {meta.cron && (
@@ -123,7 +119,8 @@ interface AgentDeleteMeta {
 
 function isAgentDelete(q: AskUserQuestion): AgentDeleteMeta | null {
   const m = q.metadata
-  if (m && (m as Record<string, unknown>).type === 'agent_delete') return m as AgentDeleteMeta
+  if (m && (m as Record<string, unknown>).type === 'agent_delete')
+    return m as unknown as AgentDeleteMeta
   return null
 }
 

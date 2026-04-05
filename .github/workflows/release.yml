@@ -1,10 +1,10 @@
-# Build agent binaries + desktop app installers, then create a GitHub Release.
+# Build CLI + desktop app installers, then create a GitHub Release.
 #
 # Triggered by: git push origin main --tags (after running `make release`)
 #
 # What it does:
-#   1. Builds agent SEA binaries for linux-x64 and linux-arm64
-#   2. Builds desktop app for macOS (dmg), Windows (msi), Linux (AppImage/deb)
+#   1. Bundles CLI as a single .mjs file
+#   2. Builds desktop app for macOS (dmg)
 #   3. Extracts changelog for this version
 #   4. Creates a GitHub Release with all artifacts + changelog
 #   5. Updates manifest.json with the final git hash
@@ -20,119 +20,6 @@ permissions:
   contents: write
 
 jobs:
-  # ── Agent binaries (linux only) ──────────────────────────────────
-  agent:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: linux-x64
-          - os: ubuntu-24.04-arm
-            target: linux-arm64
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Install dependencies
-        run: pnpm install --ignore-scripts
-
-      - name: Build TypeScript packages
-        run: |
-          pnpm --filter @anton/protocol build
-          pnpm --filter @anton/agent-config build
-          pnpm --filter @anton/connectors build
-          pnpm --filter @anton/agent-core build
-          pnpm --filter @anton/agent-server build
-
-      - name: Get version from tag
-        id: agent_version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Bundle with esbuild
-        run: |
-          AGENT_EXTERNALS=$(node scripts/esbuild.config.js agent-externals)
-          npx esbuild packages/agent-server/dist/index.js \
-            --bundle \
-            --platform=node \
-            --target=node22 \
-            --format=cjs \
-            --outfile=agent-bundle.js \
-            $AGENT_EXTERNALS \
-            --define:__AGENT_VERSION__=\"${{ steps.agent_version.outputs.version }}\"
-
-      - name: Create SEA binary
-        run: |
-          cat > sea-config.json << 'EOF'
-          {
-            "main": "agent-bundle.js",
-            "output": "sea-prep.blob",
-            "disableExperimentalSEAWarning": true,
-            "useSnapshot": false,
-            "useCodeCache": true
-          }
-          EOF
-
-          node --experimental-sea-config sea-config.json
-          cp $(which node) anton-agent-${{ matrix.target }}
-
-          npx postject anton-agent-${{ matrix.target }} NODE_SEA_BLOB sea-prep.blob \
-            --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
-
-          chmod +x anton-agent-${{ matrix.target }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: anton-agent-${{ matrix.target }}
-          path: anton-agent-${{ matrix.target }}
-
-  # ── Sidecar binaries (Go, linux only) ────────────────────────────
-  sidecar:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            goarch: amd64
-          - os: ubuntu-24.04-arm
-            goarch: arm64
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-          cache-dependency-path: sidecar/go.sum
-
-      - name: Extract version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Build sidecar binary
-        working-directory: sidecar
-        run: |
-          GOOS=linux GOARCH=${{ matrix.goarch }} go build \
-            -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
-            -o anton-sidecar-linux-${{ matrix.goarch }} .
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: anton-sidecar-linux-${{ matrix.goarch }}
-          path: sidecar/anton-sidecar-linux-${{ matrix.goarch }}
-
   # ── CLI (single .mjs file, platform-independent) ─────────────────
   # ink/yoga-layout use top-level await (ESM-only) which is incompatible
   # with Node.js SEA (CJS-only). We ship a single .mjs bundle instead.
@@ -244,7 +131,7 @@ jobs:
 
   # ── Create GitHub Release ────────────────────────────────────────
   release:
-    needs: [agent, sidecar, cli, desktop]
+    needs: [cli, desktop]
     runs-on: ubuntu-latest
 
     steps:
@@ -274,12 +161,6 @@ jobs:
       - name: Collect all release assets
         run: |
           mkdir -p release-assets
-          # Agent binaries
-          cp artifacts/anton-agent-linux-x64/anton-agent-linux-x64 release-assets/ 2>/dev/null || true
-          cp artifacts/anton-agent-linux-arm64/anton-agent-linux-arm64 release-assets/ 2>/dev/null || true
-          # Sidecar binaries
-          cp artifacts/anton-sidecar-linux-amd64/anton-sidecar-linux-amd64 release-assets/ 2>/dev/null || true
-          cp artifacts/anton-sidecar-linux-arm64/anton-sidecar-linux-arm64 release-assets/ 2>/dev/null || true
           # CLI
           cp artifacts/anton-cli/anton-cli.mjs release-assets/ 2>/dev/null || true
           # Desktop installers — find recursively since Tauri nests them

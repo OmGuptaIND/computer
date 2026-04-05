@@ -147,10 +147,9 @@ verify: _check-ansible
 					else UPTIME="$${MINS}m"; fi; \
 				fi; \
 			fi; \
-			PORT9876="✗"; PORT9877="✗"; SIDECAR="✗ DOWN"; \
+			PORT9876="✗"; PORT9877="✗"; \
 			ss -tlnp 2>/dev/null | grep -q ":9876" && PORT9876="✓"; \
 			ss -tlnp 2>/dev/null | grep -q ":9877" && PORT9877="✓"; \
-			if systemctl is-active anton-sidecar >/dev/null 2>&1; then SIDECAR="✓ RUNNING"; fi; \
 			VER="-"; HASH="-"; DEPLOYED="-"; VIA="-"; \
 			if [ -f /home/anton/.anton/version.json ] && command -v jq >/dev/null 2>&1; then \
 				VER=$$(jq -r ".version // \"-\"" /home/anton/.anton/version.json); \
@@ -165,14 +164,13 @@ verify: _check-ansible
 			fi; \
 			NODE_VER=$$(node --version 2>/dev/null || echo "missing"); \
 			REPO_EXISTS="✗"; [ -d /opt/anton/packages ] && REPO_EXISTS="✓"; \
-			echo "$$STATUS|$$PID|$$MEM|$$UPTIME|$$PORT9876|$$PORT9877|$$SIDECAR|$$VER|$$HASH|$$DEPLOYED|$$VIA|$$AGENTID|$$TOKEN|$$NODE_VER|$$REPO_EXISTS" \
-		' 2>/dev/null) || REMOTE="? UNREACHABLE via SSH||||||||||||||"; \
-		IFS="|" read -r R_STATUS R_PID R_MEM R_UPTIME R_P9876 R_P9877 R_SIDECAR R_VER R_HASH R_DEPLOYED R_VIA R_AID R_TOKEN R_NODE R_REPO <<< "$$REMOTE"; \
+			echo "$$STATUS|$$PID|$$MEM|$$UPTIME|$$PORT9876|$$PORT9877|$$VER|$$HASH|$$DEPLOYED|$$VIA|$$AGENTID|$$TOKEN|$$NODE_VER|$$REPO_EXISTS" \
+		' 2>/dev/null) || REMOTE="? UNREACHABLE via SSH|||||||||||||"; \
+		IFS="|" read -r R_STATUS R_PID R_MEM R_UPTIME R_P9876 R_P9877 R_VER R_HASH R_DEPLOYED R_VIA R_AID R_TOKEN R_NODE R_REPO <<< "$$REMOTE"; \
 		printf "  │  %-18s %-40s│\n" "Service:" "$$R_STATUS"; \
 		printf "  │  %-18s %-40s│\n" "PID / Memory:" "$$R_PID / $$R_MEM"; \
 		printf "  │  %-18s %-40s│\n" "Uptime:" "$$R_UPTIME"; \
 		printf "  │  %-18s %-40s│\n" "Ports:" "9876 $$R_P9876  9877 $$R_P9877"; \
-		printf "  │  %-18s %-40s│\n" "Sidecar:" "$$R_SIDECAR"; \
 		printf "  │  %-18s %-40s│\n" "Node.js:" "$$R_NODE"; \
 		printf "  │  %-18s %-40s│\n" "Repo:" "/opt/anton $$R_REPO"; \
 		echo "  │                                                              │"; \

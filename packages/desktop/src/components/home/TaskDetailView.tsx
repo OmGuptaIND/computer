@@ -12,9 +12,9 @@ import {
   SquareCode,
 } from 'lucide-react'
 import { useCallback, useState } from 'react'
-import { sanitizeTitle } from '../../lib/conversations.js'
 import type { ArtifactRenderType } from '../../lib/artifacts.js'
 import { getArtifactTypeLabel } from '../../lib/artifacts.js'
+import { sanitizeTitle } from '../../lib/conversations.js'
 import type { Skill } from '../../lib/skills.js'
 import type { ChatImageAttachment } from '../../lib/store.js'
 import { useStore } from '../../lib/store.js'

@@ -243,14 +243,8 @@ node -e "
     console.log(JSON.stringify(compact));
   ");
   manifest.publishedAt = new Date().toISOString();
-  manifest.binaries = {
-    'linux-x64': '${GITHUB_BASE}/anton-agent-linux-x64',
-    'linux-arm64': '${GITHUB_BASE}/anton-agent-linux-arm64'
-  };
-  manifest.sidecar_binaries = {
-    'linux-x64': '${GITHUB_BASE}/anton-sidecar-linux-amd64',
-    'linux-arm64': '${GITHUB_BASE}/anton-sidecar-linux-arm64'
-  };
+  delete manifest.binaries;
+  delete manifest.sidecar_binaries;
   manifest.cli = '${GITHUB_BASE}/anton-cli.mjs';
   fs.writeFileSync('manifest.json', JSON.stringify(manifest, null, 2) + '\n');
 "
@@ -294,8 +288,8 @@ if [[ "$AUTO_PUSH" == "--push" ]]; then
   ok "Pushed to origin — CI will build agent binaries + desktop app"
   echo ""
   echo -e "  ${BOLD}CI will:${NC}"
-  echo "    1. Build agent SEA binaries (linux-x64, linux-arm64)"
-  echo "    2. Build desktop app (.dmg, .msi, .AppImage, .deb)"
+  echo "    1. Bundle CLI (.mjs)"
+  echo "    2. Build desktop app (.dmg)"
   echo "    3. Create GitHub Release with all artifacts + changelog"
   echo "    4. Update manifest.json with git hash"
   echo ""
