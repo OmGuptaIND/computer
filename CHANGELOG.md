@@ -12,6 +12,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [1.0.32] - 2026-04-06
 
+### Fixes
+- manifest
+---
+
+## [1.0.32] - 2026-04-06
+
 ### Features
 - add image attachment support to steering messages and implement a lightbox image viewer in the desktop UI.
 ---
@@ -273,6 +279,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ---
 
 [Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.32...HEAD
+[1.0.32]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.32
 [1.0.32]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.32
 [1.0.31]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.31
 [1.0.31]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.31
