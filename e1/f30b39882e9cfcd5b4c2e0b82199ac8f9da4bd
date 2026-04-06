@@ -1,0 +1,82 @@
+packages/cli/src/commands/computer-update.ts
+  bb29dce767e5ae9e 161-167
+packages/cli/src/commands/computer-setup.ts
+  bb29dce767e5ae9e 228-234
+sidecar/internal/middleware/auth.go
+  d11a0ffdeb63e870 13-19
+packages/cli/src/lib/version.ts
+  bb29dce767e5ae9e 115-120,123-132,139
+  d11a0ffdeb63e870 133-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "e1f30b39882e9cfcd5b4c2e0b82199ac8f9da4bd",
+  "prompts": {
+    "0a41d955db1b7478": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b0371636-2fb1-42a7-82a5-086b5da6ae86",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "7b82cbdeefcec3fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40d7e693-24ab-4dbd-89db-cfab867db69e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "b86c1b79f0b75756": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9ea7e932-7812-4d56-8f40-5115d6521554",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 112,
+      "overriden_lines": 0
+    },
+    "bb29dce767e5ae9e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b3ac7812-f833-4b2e-ba3e-45a34a7cd507",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 31,
+      "total_deletions": 11,
+      "accepted_lines": 31,
+      "overriden_lines": 0
+    },
+    "d11a0ffdeb63e870": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "55f21950-9f9f-4ad1-932e-61ffdec1793c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 0,
+      "accepted_lines": 18,
+      "overriden_lines": 0
+    }
+  }
+}
