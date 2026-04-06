@@ -257,6 +257,9 @@ ok "manifest.json → v${NEW_VERSION}"
 
 # ── 4. Commit + tag ───────────────────────────────────────────────
 
+step "Pulling latest from origin (CI may have pushed a manifest update)"
+git pull --rebase origin main 2>/dev/null || true
+
 step "Committing and tagging"
 
 git add -A
