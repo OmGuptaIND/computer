@@ -142,10 +142,12 @@ export async function computerUpdateCommand(
   // ── 3. Clone agent into staging ──────────────────────────────
   emitStep('downloading', 'Cloning into staging')
   try {
-    execSync(`sudo -u ${ANTON_USER} git clone --depth 1 --branch main ${REPO_URL} ${STAGING_DIR}`, {
+    // Clone as root (anton can't create dirs in /opt), then chown to anton
+    execSync(`git clone --depth 1 --branch main ${REPO_URL} ${STAGING_DIR}`, {
       stdio: 'pipe',
       timeout: 120_000,
     })
+    execSync(`chown -R ${ANTON_USER}:${ANTON_USER} ${STAGING_DIR}`, { stdio: 'pipe' })
     emitDone('downloading', 'Cloned')
   } catch (err) {
     emitFail('downloading', 'Clone failed', (err as Error).message)
