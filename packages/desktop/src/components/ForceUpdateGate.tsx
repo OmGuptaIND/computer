@@ -24,8 +24,7 @@ export function ForceUpdateGate({ children }: { children: ReactNode }) {
     FRONTEND_VERSION !== '0.0.0' &&
     semverGt(FRONTEND_VERSION, agentVersion)
 
-  const isUpdating =
-    updateStage === 'downloading' || updateStage === 'replacing' || updateStage === 'restarting'
+  const isUpdating = updateStage !== null && updateStage !== 'done' && updateStage !== 'error'
 
   const isError = updateStage === 'error'
 
@@ -40,7 +39,8 @@ export function ForceUpdateGate({ children }: { children: ReactNode }) {
   }
 
   const isDisconnectedForUpdate =
-    updateStage === 'restarting' && (status === 'disconnected' || status === 'connecting')
+    (updateStage === 'stopping' || updateStage === 'starting' || updateStage === 'verifying') &&
+    (status === 'disconnected' || status === 'connecting')
 
   return (
     <div className="force-update-gate">

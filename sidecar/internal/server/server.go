@@ -25,9 +25,10 @@ func Start(cfg *config.Config) error {
 	app.Get("/health", middleware.RateLimit(60), handlers.Health)
 	app.Get("/status", middleware.RateLimit(30), handlers.NewStatusHandler(cfg))
 
-	// Protected group (future endpoints).
-	// protected := app.Group("/", middleware.BearerAuth(cfg.Token))
-	// protected.Post("/restart-agent", restartHandler)
+	// Protected endpoints — require Bearer token auth.
+	protected := app.Group("/", middleware.BearerAuth(cfg.Token))
+	protected.Get("/update/check", handlers.NewUpdateCheckHandler(cfg))
+	protected.Post("/update/start", handlers.NewUpdateStartHandler(cfg))
 
 	addr := fmt.Sprintf("0.0.0.0:%d", cfg.Port)
 	log.Printf("anton-sidecar v%s starting on %s (agent_port=%d)",

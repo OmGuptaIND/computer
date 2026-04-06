@@ -85,7 +85,16 @@ export interface UpdateStartMessage {
 /** Agent streams progress as it updates */
 export interface UpdateProgressMessage {
   type: 'update_progress'
-  stage: 'downloading' | 'replacing' | 'restarting' | 'done' | 'error'
+  stage:
+    | 'checking'
+    | 'stopping'
+    | 'downloading'
+    | 'installing'
+    | 'building'
+    | 'starting'
+    | 'verifying'
+    | 'done'
+    | 'error'
   message: string
 }
 

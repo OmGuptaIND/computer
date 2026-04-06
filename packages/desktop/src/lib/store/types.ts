@@ -78,16 +78,34 @@ export interface UpdateInfo {
   releaseUrl: string | null
 }
 
-export type UpdateStage = 'downloading' | 'replacing' | 'restarting' | 'done' | 'error' | null
+export type UpdateStage =
+  | 'checking'
+  | 'stopping'
+  | 'downloading'
+  | 'installing'
+  | 'building'
+  | 'starting'
+  | 'verifying'
+  | 'done'
+  | 'error'
+  | null
 
 export function updateStageLabel(stage: string | null): string {
   switch (stage) {
+    case 'checking':
+      return 'Checking for updates...'
+    case 'stopping':
+      return 'Stopping agent...'
     case 'downloading':
-      return 'Downloading update...'
-    case 'replacing':
-      return 'Installing binary...'
-    case 'restarting':
-      return 'Restarting your machine...'
+      return 'Pulling latest code...'
+    case 'installing':
+      return 'Installing dependencies...'
+    case 'building':
+      return 'Building...'
+    case 'starting':
+      return 'Starting agent...'
+    case 'verifying':
+      return 'Verifying health...'
     default:
       return 'Updating...'
   }

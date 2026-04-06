@@ -42,8 +42,7 @@ export function UpdateBanner() {
   }, [updateStage, dismissUpdate])
 
   // Determine which state to show
-  const isUpdating =
-    updateStage === 'downloading' || updateStage === 'replacing' || updateStage === 'restarting'
+  const isUpdating = updateStage !== null && updateStage !== 'done' && updateStage !== 'error'
   const isDone = updateStage === 'done'
   const isError = updateStage === 'error'
   const hasUpdate = updateInfo?.updateAvailable && !updateDismissed && !updateStage
@@ -52,7 +51,8 @@ export function UpdateBanner() {
 
   // When disconnected during restarting phase, override the label
   const isDisconnectedForUpdate =
-    updateStage === 'restarting' && (status === 'disconnected' || status === 'connecting')
+    (updateStage === 'stopping' || updateStage === 'starting' || updateStage === 'verifying') &&
+    (status === 'disconnected' || status === 'connecting')
 
   if (!visible) return null
 

@@ -1,40 +1,56 @@
 /**
- * Self-update checker and executor for the anton.computer agent.
+ * Update proxy — delegates to the sidecar HTTP endpoints.
  *
- * Repo-clone model:
- *   1. On startup + every UPDATE_CHECK_INTERVAL, fetch the manifest from GitHub
- *   2. Compare versions — if newer, cache in memory
- *   3. Client can trigger update_start → agent does git pull + pnpm build + restart
+ * The sidecar (a stable Go binary) handles the actual update lifecycle:
+ * stop agent → git pull → pnpm install → build → start agent → verify health.
+ *
+ * This module:
+ *   1. Periodically checks for updates via the sidecar
+ *   2. Proxies update_start requests to the sidecar's streaming endpoint
+ *   3. Relays progress back to the desktop/CLI via WebSocket
  */
 
-import { execSync } from 'node:child_process'
-import { existsSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import {
-  UPDATE_CHECK_INTERVAL,
-  UPDATE_MANIFEST_URL,
-  type UpdateManifest,
-  VERSION,
-  getAntonDir,
-  semverGt,
-} from '@anton/agent-config'
+import { UPDATE_CHECK_INTERVAL, type UpdateManifest, VERSION } from '@anton/agent-config'
 import { createLogger } from '@anton/logger'
 
-export type UpdateStage = 'downloading' | 'replacing' | 'restarting' | 'done' | 'error'
+export type UpdateStage =
+  | 'checking'
+  | 'stopping'
+  | 'downloading'
+  | 'installing'
+  | 'building'
+  | 'starting'
+  | 'verifying'
+  | 'done'
+  | 'error'
 export type UpdateProgress = { stage: UpdateStage; message: string }
-
-/** Where the repo lives on disk */
-const REPO_DIR = '/opt/anton'
 
 const log = createLogger('updater')
 
+/** Default sidecar port */
+const SIDECAR_PORT = Number(process.env.SIDECAR_PORT) || 9878
+const SIDECAR_BASE = `http://127.0.0.1:${SIDECAR_PORT}`
+
+interface SidecarCheckResult {
+  updateAvailable: boolean
+  currentVersion: string
+  latestVersion?: string
+  changelog?: string
+  releaseUrl?: string
+}
+
 export class Updater {
-  private cachedManifest: UpdateManifest | null = null
+  private cachedCheck: SidecarCheckResult | null = null
   private checkTimer: ReturnType<typeof setInterval> | null = null
   private updating = false
+  private token: string
 
   /** Called when a periodic check discovers a new version */
   onUpdateFound?: (manifest: UpdateManifest) => void
+
+  constructor(token?: string) {
+    this.token = token ?? process.env.ANTON_TOKEN ?? ''
+  }
 
   /** Start periodic update checks */
   start() {
@@ -58,51 +74,64 @@ export class Updater {
 
   /** Get cached update info (for auth_ok handshake) */
   getUpdateAvailable(): UpdateManifest | null {
-    if (!this.cachedManifest) return null
-    if (semverGt(this.cachedManifest.version, VERSION)) {
-      return this.cachedManifest
+    if (!this.cachedCheck?.updateAvailable || !this.cachedCheck.latestVersion) return null
+    return {
+      version: this.cachedCheck.latestVersion,
+      changelog: this.cachedCheck.changelog ?? '',
+      releaseUrl: this.cachedCheck.releaseUrl ?? '',
+      gitHash: '',
     }
-    return null
   }
 
-  /** Check the manifest URL for a newer version */
+  /** Check for updates via the sidecar */
   async checkForUpdates(): Promise<{
     updateAvailable: boolean
     manifest: UpdateManifest | null
   }> {
     try {
-      const res = await fetch(UPDATE_MANIFEST_URL, {
-        signal: AbortSignal.timeout(10_000),
-        headers: { 'User-Agent': `anton-agent/${VERSION}` },
+      const res = await fetch(`${SIDECAR_BASE}/update/check`, {
+        signal: AbortSignal.timeout(15_000),
+        headers: { Authorization: `Bearer ${this.token}` },
       })
 
       if (!res.ok) {
+        log.warn({ status: res.status }, 'sidecar update check failed')
         return { updateAvailable: false, manifest: null }
       }
 
-      const manifest = (await res.json()) as UpdateManifest
+      const result = (await res.json()) as SidecarCheckResult
+      this.cachedCheck = result
 
-      if (semverGt(manifest.version, VERSION)) {
-        const isNew = !this.cachedManifest || this.cachedManifest.version !== manifest.version
-        this.cachedManifest = manifest
-        log.info({ current: VERSION, available: manifest.version }, 'update available')
+      if (result.updateAvailable && result.latestVersion) {
+        log.info(
+          { current: result.currentVersion, available: result.latestVersion },
+          'update available',
+        )
 
-        if (isNew && this.onUpdateFound) {
+        const manifest: UpdateManifest = {
+          version: result.latestVersion,
+          changelog: result.changelog ?? '',
+          releaseUrl: result.releaseUrl ?? '',
+          gitHash: '',
+        }
+
+        if (this.onUpdateFound) {
           this.onUpdateFound(manifest)
         }
 
         return { updateAvailable: true, manifest }
       }
 
-      this.cachedManifest = null
-      return { updateAvailable: false, manifest }
-    } catch {
-      return { updateAvailable: false, manifest: this.cachedManifest }
+      return { updateAvailable: false, manifest: null }
+    } catch (err) {
+      log.warn({ err }, 'sidecar update check error')
+      return { updateAvailable: false, manifest: null }
     }
   }
 
   /**
-   * Execute self-update: git pull + pnpm install + build + restart.
+   * Execute update via the sidecar's streaming endpoint.
+   * Yields progress events as they arrive from the sidecar.
    */
   async *selfUpdate(): AsyncGenerator<UpdateProgress> {
     if (this.updating) {
@@ -113,107 +142,75 @@ export class Updater {
     this.updating = true
 
     try {
-      // If no manifest cached, do a fresh check
-      if (!this.cachedManifest) {
-        yield { stage: 'downloading', message: 'Checking for updates...' }
-        await this.checkForUpdates()
-      }
+      const res = await fetch(`${SIDECAR_BASE}/update/start`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.token}` },
+        signal: AbortSignal.timeout(600_000), // 10 min max
+      })
 
-      const manifest = this.cachedManifest
-      if (!manifest) {
-        yield { stage: 'error', message: 'No update available.' }
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        yield { stage: 'error', message: `Sidecar error: ${res.status} ${body}` }
         return
       }
 
-      yield* this.repoUpdate(manifest)
+      if (!res.body) {
+        yield { stage: 'error', message: 'No response body from sidecar' }
+        return
+      }
+
+      // Stream newline-delimited JSON from the sidecar
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed) continue
+          try {
+            const progress = JSON.parse(trimmed) as UpdateProgress
+            log.info({ stage: progress.stage }, progress.message)
+            yield progress
+          } catch {
+            log.warn({ line: trimmed }, 'failed to parse sidecar progress')
+          }
+        }
+      }
+
+      // Process any remaining buffer
+      if (buffer.trim()) {
+        try {
+          const progress = JSON.parse(buffer.trim()) as UpdateProgress
+          yield progress
+        } catch {
+          // ignore
+        }
+      }
     } catch (err: unknown) {
       yield { stage: 'error', message: `Update failed: ${(err as Error).message}` }
     } finally {
       this.updating = false
+      this.cachedCheck = null
     }
   }
 
   /** Get current update status */
   getStatus() {
-    const manifest = this.getUpdateAvailable()
+    const check = this.cachedCheck
     return {
       currentVersion: VERSION,
-      latestVersion: manifest?.version ?? null,
-      updateAvailable: manifest !== null,
-      changelog: manifest?.changelog ?? null,
-      releaseUrl: manifest?.releaseUrl ?? null,
+      latestVersion: check?.latestVersion ?? null,
+      updateAvailable: check?.updateAvailable ?? false,
+      changelog: check?.changelog ?? null,
+      releaseUrl: check?.releaseUrl ?? null,
     }
-  }
-
-  // ── Private ────────────────────────────────────────────────────
-
-  private async *repoUpdate(manifest: UpdateManifest): AsyncGenerator<UpdateProgress> {
-    const antonDir = getAntonDir()
-
-    // Check if repo exists
-    if (!existsSync(join(REPO_DIR, '.git'))) {
-      yield {
-        stage: 'error',
-        message: `Repo not found at ${REPO_DIR}. Run 'anton computer setup' first.`,
-      }
-      return
-    }
-
-    // 1. Git pull
-    yield { stage: 'downloading', message: `Pulling v${manifest.version}...` }
-    try {
-      execSync('git fetch origin', { cwd: REPO_DIR, stdio: 'pipe', timeout: 60_000 })
-      execSync('git reset --hard origin/main', { cwd: REPO_DIR, stdio: 'pipe', timeout: 30_000 })
-    } catch (err) {
-      yield { stage: 'error', message: `Git pull failed: ${(err as Error).message}` }
-      return
-    }
-    yield { stage: 'downloading', message: 'Code updated' }
-
-    // 2. Install deps
-    yield { stage: 'replacing', message: 'Installing dependencies...' }
-    try {
-      execSync('pnpm install', { cwd: REPO_DIR, stdio: 'pipe', timeout: 300_000 })
-    } catch (err) {
-      yield { stage: 'error', message: `pnpm install failed: ${(err as Error).message}` }
-      return
-    }
-
-    // 3. Build
-    yield { stage: 'replacing', message: 'Building...' }
-    try {
-      execSync('pnpm -r build', { cwd: REPO_DIR, stdio: 'pipe', timeout: 120_000 })
-    } catch (err) {
-      yield { stage: 'error', message: `Build failed: ${(err as Error).message}` }
-      return
-    }
-    yield { stage: 'replacing', message: 'Build complete' }
-
-    // 4. Write version.json
-    writeFileSync(
-      join(antonDir, 'version.json'),
-      JSON.stringify({
-        version: manifest.version,
-        gitHash: manifest.gitHash,
-        deployedAt: new Date().toISOString(),
-        deployedBy: 'self-update',
-      }),
-    )
-
-    // 5. Clear cached manifest
-    this.cachedManifest = null
-
-    // 6. Restart
-    yield { stage: 'restarting', message: 'Restarting anton-agent service...' }
-    try {
-      execSync('sudo systemctl restart anton-agent', { stdio: 'pipe', timeout: 30_000 })
-    } catch {
-      yield {
-        stage: 'restarting',
-        message: 'No systemd — process will exit. Restart manually or use a process manager.',
-      }
-    }
-
-    yield { stage: 'done', message: `Updated to v${manifest.version} (${manifest.gitHash})` }
   }
 }

@@ -1409,6 +1409,18 @@ button {
   background: rgba(var(--overlay), 0.05);
 }
 
+.connector-banner__main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
 .connector-banner__left {
   display: flex;
   align-items: center;

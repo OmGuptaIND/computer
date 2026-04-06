@@ -106,19 +106,38 @@ The install script:
 ## Update Flow
 
 ```bash
-anton update
-# or: anton computer update
+anton computer update    # from VM or remote
 ```
 
-What it does:
-1. `cd /opt/anton`
-2. `git fetch origin && git reset --hard origin/main`
-3. `pnpm install`
-4. `pnpm -r build`
-5. `sudo systemctl restart anton-agent`
-6. Health check
+Updates are orchestrated by the **sidecar** (a stable Go binary), not the agent.
+The agent never updates its own running code.
 
-No binary download. No atomic replace. Just pull, build, restart.
+```
+CLI / Desktop
+    │
+    ▼
+Sidecar (HTTP)            ← stable Go binary, never restarts during update
+    │
+    ├─ GET  /update/check  → fetch manifest, compare versions
+    └─ POST /update/start  → execute update, stream progress (NDJSON)
+         │
+         ├─ 1. Stop agent service
+         ├─ 2. git fetch + reset --hard origin/main
+         ├─ 3. pnpm install (CI=true, non-interactive)
+         ├─ 4. pnpm -r build
+         ├─ 5. Start agent service
+         ├─ 6. Poll /health until healthy (30s timeout)
+         └─ 7. On failure: rollback (restart agent with previous code)
+```
+
+**Desktop flow:** Agent receives `update_start` via WebSocket → proxies to sidecar
+HTTP endpoint → relays streamed progress back to client.
+
+**CLI flow (on VM):** Calls sidecar directly at `http://localhost:9878/update/*`.
+
+**CLI flow (remote):** Calls sidecar via Caddy at `https://{domain}/_anton/update/*`.
+
+Both endpoints require `Authorization: Bearer {ANTON_TOKEN}`.
 
 ## Dev Deploy (make sync)
 
@@ -142,7 +161,9 @@ Alternative for unpushed code: rsync the local tree directly.
 | `packages/cli/src/commands/computer-common.ts` | `AGENT_BIN` → `AGENT_ENTRY`, add `REPO_DIR` |
 | `packages/cli/src/commands/computer-setup.ts` | Clone repo instead of downloading binary |
 | `packages/cli/src/commands/computer-lifecycle.ts` | Update uninstall to remove repo dir |
-| `packages/agent-server/src/updater.ts` | `git pull + build` instead of binary download |
+| `packages/agent-server/src/updater.ts` | Thin proxy — delegates to sidecar HTTP endpoints |
+| `sidecar/internal/update/update.go` | Core update logic (stop → pull → build → start → verify) |
+| `sidecar/internal/handlers/update.go` | HTTP handlers for `/update/check` and `/update/start` |
 | `packages/agent-server/src/workflows/builtin-registry.ts` | Simplify — just read from disk, no SEA fallback |
 | `Makefile` sync target | `git push + ssh git pull + build + restart` |
 | `infra-providers/huddle/cloud-init.sh` | Clone repo instead of downloading binary |

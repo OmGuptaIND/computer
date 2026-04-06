@@ -58,7 +58,7 @@ export const updateStore = create<UpdateState>((set, get) => ({
 
   resetKeepIfUpdating: () => {
     const { updateStage, updateInfo, updateMessage } = get()
-    const isUpdating = updateStage === 'restarting'
+    const isUpdating = updateStage !== null && updateStage !== 'done' && updateStage !== 'error'
     set({
       agentVersion: null,
       agentGitHash: null,

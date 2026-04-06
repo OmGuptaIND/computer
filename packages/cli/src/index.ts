@@ -194,54 +194,117 @@ async function main() {
           }
         }
       } else if (subcommand === 'update') {
-        // Trigger agent self-update via the protocol
-        const m = getDefaultMachine()
-        if (!m) {
-          console.log(`\n  No machines configured. Run ${theme.bold('anton connect')} first.\n`)
-          break
-        }
-        const { Connection } = await import('./lib/connection.js')
-        const { Channel } = await import('@anton/protocol')
-        const conn = new Connection()
-        try {
-          await conn.connect({ host: m.host, port: m.port, token: m.token, useTLS: m.useTLS })
-          console.log(`\n  Connected to ${conn.agentId} (v${conn.agentVersion})`)
-          console.log('  Triggering update...\n')
+        // Update via sidecar HTTP endpoint (local or remote)
+        const { readTokenFromEnv, DEFAULT_SIDECAR_PORT } = await import(
+          './commands/computer-common.js'
+        )
+        const localToken = readTokenFromEnv()
 
-          // Listen for progress messages
-          conn.onMessage((channel, msg: unknown) => {
-            const m = msg as Record<string, unknown>
-            if (channel === Channel.CONTROL && m.type === 'update_progress') {
-              const stage = m.stage as string
-              const message = m.message as string
-              if (stage === 'done') {
-                console.log(`  ${theme.success(message)}`)
-                conn.disconnect()
-                process.exit(0)
-              } else if (stage === 'error') {
-                console.log(`  ${theme.error(message)}`)
-                conn.disconnect()
-                process.exit(1)
-              } else {
-                console.log(`  [${stage}] ${message}`)
-              }
-            } else if (channel === Channel.CONTROL && m.type === 'update_check_response') {
-              if (!(m.updateAvailable as boolean)) {
-                console.log(`  ${theme.success('Agent is already up to date.')}`)
-                conn.disconnect()
-                process.exit(0)
-              }
-              console.log(`  Update available: v${m.currentVersion} → v${m.latestVersion}`)
-              console.log('  Starting update...')
-              conn.send(Channel.CONTROL, { type: 'update_start' })
-            }
+        let sidecarUrl: string
+        let token: string
+
+        if (localToken) {
+          // On the VM — call sidecar directly
+          sidecarUrl = `http://localhost:${DEFAULT_SIDECAR_PORT}`
+          token = localToken
+        } else {
+          const m = getDefaultMachine()
+          if (!m) {
+            console.log(`\n  No machines configured. Run ${theme.bold('anton connect')} first.\n`)
+            break
+          }
+          // Remote — go through Caddy's /_anton/ prefix
+          const protocol = m.useTLS ? 'https' : 'http'
+          sidecarUrl = `${protocol}://${m.host}/_anton`
+          token = m.token
+        }
+
+        console.log('\n  Checking for updates...\n')
+
+        try {
+          // 1. Check for updates
+          const checkRes = await fetch(`${sidecarUrl}/update/check`, {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(15_000),
           })
 
-          // First check if update is available
-          conn.send(Channel.CONTROL, { type: 'update_check' })
+          if (!checkRes.ok) {
+            console.log(`  ${theme.error(`Sidecar returned ${checkRes.status}`)}`)
+            const body = await checkRes.text().catch(() => '')
+            if (body) console.log(`  ${theme.dim(body)}`)
+            console.log()
+            break
+          }
 
-          // Wait for completion (timeout after 5 min)
-          await new Promise((resolve) => setTimeout(resolve, 300_000))
+          const check = (await checkRes.json()) as {
+            updateAvailable: boolean
+            currentVersion: string
+            latestVersion?: string
+            changelog?: string
+          }
+
+          if (!check.updateAvailable) {
+            console.log(`  ${theme.success(`Already up to date (v${check.currentVersion})`)}\n`)
+            break
+          }
+
+          console.log(`  Update available: v${check.currentVersion} → v${check.latestVersion}`)
+          if (check.changelog) console.log(`  ${theme.dim(check.changelog)}`)
+          console.log()
+
+          // 2. Start update (stream progress)
+          const updateRes = await fetch(`${sidecarUrl}/update/start`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(600_000),
+          })
+
+          if (!updateRes.ok) {
+            const body = await updateRes.text().catch(() => '')
+            console.log(`  ${theme.error(`Update failed: ${updateRes.status} ${body}`)}\n`)
+            break
+          }
+
+          if (!updateRes.body) {
+            console.log(`  ${theme.error('No response stream from sidecar')}\n`)
+            break
+          }
+
+          // Stream newline-delimited JSON progress
+          const reader = updateRes.body.getReader()
+          const decoder = new TextDecoder()
+          let buffer = ''
+          let exitCode = 0
+
+          while (true) {
+            const { done: streamDone, value } = await reader.read()
+            if (streamDone) break
+
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split('\n')
+            buffer = lines.pop() ?? ''
+
+            for (const line of lines) {
+              const trimmed = line.trim()
+              if (!trimmed) continue
+              try {
+                const p = JSON.parse(trimmed) as { stage: string; message: string }
+                if (p.stage === 'done') {
+                  console.log(`  ${theme.success(p.message)}`)
+                } else if (p.stage === 'error') {
+                  console.log(`  ${theme.error(p.message)}`)
+                  exitCode = 1
+                } else {
+                  console.log(`  ${theme.dim(`[${p.stage}]`)} ${p.message}`)
+                }
+              } catch {
+                // ignore parse errors
+              }
+            }
+          }
+
+          console.log()
+          process.exit(exitCode)
         } catch (err: unknown) {
           console.log(`\n  ${theme.error(`Failed: ${(err as Error).message}`)}\n`)
         }

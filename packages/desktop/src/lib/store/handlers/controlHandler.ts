@@ -14,7 +14,7 @@ export function handleControlMessage(msg: ControlMessage): void {
       const us = updateStore.getState()
       us.setAgentVersionInfo(msg.version || '', msg.gitHash || '')
 
-      if (us.updateStage === 'restarting') {
+      if (us.updateStage === 'verifying' || us.updateStage === 'starting') {
         us.setUpdateProgress('done', `Updated to v${msg.version}`)
         us.setUpdateInfo({
           currentVersion: msg.version,

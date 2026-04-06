@@ -151,7 +151,7 @@ export class AgentServer {
   private scheduler: Scheduler | null = null
   private workflowDbs: Map<string, WorkflowStateDb> = new Map()
   private agentManager: import('./agents/agent-manager.js').AgentManager | null = null
-  private updater: Updater = new Updater()
+  private updater: Updater
   private mcpManager: McpManager = new McpManager()
   private oauthFlow: OAuthFlow
   private tokenStore: TokenStore
@@ -161,6 +161,9 @@ export class AgentServer {
 
   constructor(config: AgentConfig) {
     this.config = config
+
+    // Initialize updater (proxies to sidecar)
+    this.updater = new Updater(config.token)
 
     // Initialize OAuth infrastructure
     this.tokenStore = new TokenStore(getAntonDir(), config.token)

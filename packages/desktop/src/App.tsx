@@ -211,7 +211,9 @@ export function App() {
   }
 
   const isDisconnected = status === 'disconnected' || status === 'error'
-  const isDisconnectedForUpdate = isDisconnected && updateStage === 'restarting'
+  const isDisconnectedForUpdate =
+    isDisconnected &&
+    (updateStage === 'stopping' || updateStage === 'starting' || updateStage === 'verifying')
 
   const formatTokens = (n: number): string => {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
