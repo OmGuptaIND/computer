@@ -10,6 +10,13 @@ import (
 // against the provided token. Used for protected endpoints only.
 func BearerAuth(token string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		// If no token configured, protected endpoints are unavailable
+		if token == "" {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": "ANTON_TOKEN not configured — add it to agent.env and restart sidecar",
+			})
+		}
+
 		auth := c.Get("Authorization")
 		if auth == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "missing authorization header"})

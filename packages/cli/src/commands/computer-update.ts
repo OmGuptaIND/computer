@@ -158,10 +158,13 @@ export async function computerUpdateCommand(
   // ── 4. Install dependencies ──────────────────────────────────
   emitStep('installing', 'Installing dependencies')
   try {
-    execSync(`sudo -u ${ANTON_USER} bash -c "cd ${STAGING_DIR} && CI=true pnpm install"`, {
-      stdio: 'pipe',
-      timeout: 300_000,
-    })
+    execSync(
+      `sudo -u ${ANTON_USER} bash -c "cd ${STAGING_DIR} && CI=true pnpm install --frozen-lockfile"`,
+      {
+        stdio: 'pipe',
+        timeout: 600_000,
+      },
+    )
     emitDone('installing', 'Dependencies installed')
   } catch (err) {
     emitFail('installing', 'pnpm install failed', (err as Error).message)

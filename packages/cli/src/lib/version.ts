@@ -112,11 +112,31 @@ export async function checkForUpdate(): Promise<{
 }
 
 /**
- * Download and replace the current CLI binary.
- * Only works when running as a standalone binary (not from source).
+ * Download and replace the current CLI script.
+ *
+ * The CLI runs as `node ~/.anton/bin/anton-cli.mjs`, so process.execPath
+ * points to the *node* binary — NOT the CLI script. We must update
+ * process.argv[1] (the script) instead, otherwise we'd overwrite the
+ * system node binary and break everything.
  */
 export async function selfUpdate(downloadUrl: string): Promise<void> {
-  const binaryPath = process.execPath
+  const scriptPath = process.argv[1]
+  if (!scriptPath || !existsSync(scriptPath)) {
+    throw new Error('Cannot determine CLI script path for self-update')
+  }
+
+  // Safety: never overwrite the node/bun runtime binary
+  if (scriptPath === process.execPath) {
+    throw new Error('Refusing to overwrite runtime binary — CLI must run as a script')
+  }
+
+  // Safety: only update files that look like our CLI
+  const basename = scriptPath.split('/').pop() ?? ''
+  if (!basename.includes('anton')) {
+    throw new Error(`Refusing to update unexpected file: ${scriptPath}`)
+  }
+
+  const binaryPath = scriptPath
   const tempPath = `${binaryPath}.update-${Date.now()}`
 
   // Download

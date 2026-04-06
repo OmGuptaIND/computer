@@ -225,10 +225,13 @@ export async function computerSetupCommand(args: ComputerSetupArgs): Promise<voi
 
   step('Installing dependencies')
   try {
-    execSync(`sudo -u ${ANTON_USER} bash -c "cd ${REPO_DIR} && pnpm install"`, {
-      stdio: 'pipe',
-      timeout: 300_000,
-    })
+    execSync(
+      `sudo -u ${ANTON_USER} bash -c "cd ${REPO_DIR} && CI=true pnpm install --frozen-lockfile"`,
+      {
+        stdio: 'pipe',
+        timeout: 600_000,
+      },
+    )
     done('Dependencies installed')
   } catch (err) {
     fail('Dependencies', (err as Error).message)
