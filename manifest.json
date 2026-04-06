@@ -1,6 +1,6 @@
 {
   "version": "1.0.32",
-  "gitHash": "",
+  "gitHash": "ac64859",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
   "changelog": "Features:\n- add image attachment support to steering messages and implement a lightbox image viewer in the desktop UI.",
   "publishedAt": "2026-04-06T12:30:12.236Z",
