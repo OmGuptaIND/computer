@@ -1,6 +1,6 @@
 {
   "version": "1.0.34",
-  "gitHash": "",
+  "gitHash": "2553b7d",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
   "changelog": "Fixes:\n- issues\n\nOther:\n- rm: useless readme",
   "publishedAt": "2026-04-06T19:38:40.077Z",
