@@ -317,8 +317,9 @@ export function readTokenFromEnvFile(envPath = ENV_FILE_PATH): string | null {
 }
 
 /**
- * Write ANTON_TOKEN to agent.env, replacing any existing line or appending.
- * Creates the file if it doesn't exist.
+ * Write ANTON_TOKEN to agent.env. Removes any duplicate ANTON_TOKEN lines
+ * (defensive — past bad commands may have appended garbage) and writes a
+ * single canonical line. Creates the file if it doesn't exist.
  */
 export function writeTokenToEnvFile(token: string, envPath = ENV_FILE_PATH): void {
   let content = ''
@@ -330,12 +331,12 @@ export function writeTokenToEnvFile(token: string, envPath = ENV_FILE_PATH): voi
     // file unreadable, will overwrite
   }
 
-  if (/^ANTON_TOKEN=/m.test(content)) {
-    content = content.replace(/^ANTON_TOKEN=.*$/m, `ANTON_TOKEN=${token}`)
-  } else {
-    content = content.endsWith('\n') || content === '' ? content : `${content}\n`
-    content += `ANTON_TOKEN=${token}\n`
-  }
+  // Strip ALL existing ANTON_TOKEN= lines (handles duplicates)
+  content = content.replace(/^ANTON_TOKEN=.*\n?/gm, '')
+
+  // Append the canonical line
+  content = content.endsWith('\n') || content === '' ? content : `${content}\n`
+  content += `ANTON_TOKEN=${token}\n`
 
   writeFileSync(envPath, content, { mode: 0o600 })
 }
@@ -361,6 +362,71 @@ export function syncTokenToEnvFile(
   } catch {
     return 'skipped'
   }
+}
+
+/**
+ * Update the `token:` field in config.yaml without disturbing other fields.
+ * Uses regex replace to preserve formatting/comments.
+ */
+export function writeTokenToConfigFile(token: string, configPath = CONFIG_PATH): void {
+  if (!existsSync(configPath)) return
+  let content = readFileSync(configPath, 'utf-8')
+  if (/^token:\s*.*$/m.test(content)) {
+    content = content.replace(/^token:\s*.*$/m, `token: ${token}`)
+  } else {
+    content = content.endsWith('\n') ? content : `${content}\n`
+    content += `token: ${token}\n`
+  }
+  writeFileSync(configPath, content, 'utf-8')
+}
+
+/**
+ * Validate that a string looks like a real anton token: `ak_` prefix followed
+ * by 48 hex characters. Rejects placeholders, empty strings, and garbage.
+ */
+export function isValidToken(token: string | null | undefined): boolean {
+  if (!token) return false
+  return /^ak_[0-9a-f]{48}$/.test(token)
+}
+
+/**
+ * Single source of truth: ensure both config.yaml and agent.env have the
+ * same token. Validates each candidate before propagating it. Prefers env
+ * over config when both are valid.
+ *
+ * Returns the resolved (valid) token, or null if neither file has one.
+ */
+export function reconcileToken(
+  configToken: string | undefined,
+  envPath = ENV_FILE_PATH,
+  configPath = CONFIG_PATH,
+): string | null {
+  const envToken = readTokenFromEnvFile(envPath)
+
+  // Pick the first VALID token: env > config
+  // Skip invalid candidates (empty, placeholders, garbage from bad past commands)
+  let resolved: string | null = null
+  if (isValidToken(envToken)) {
+    resolved = envToken
+  } else if (isValidToken(configToken)) {
+    resolved = configToken ?? null
+  }
+
+  if (!resolved) return null
+
+  // Write to both files unconditionally — cheap and idempotent
+  try {
+    writeTokenToEnvFile(resolved, envPath)
+  } catch {
+    // env file unwritable — skip
+  }
+  try {
+    writeTokenToConfigFile(resolved, configPath)
+  } catch {
+    // config file unwritable — skip
+  }
+
+  return resolved
 }
 
 // ── Load / Save / Migrate ───────────────────────────────────────────
@@ -428,9 +494,12 @@ export function loadConfig(): AgentConfig {
   if (tokenOverride) config.token = tokenOverride
   if (flags.port) config.port = flags.port
 
-  // Sync token to agent.env so the sidecar (which only reads env) stays in sync.
-  // Best-effort — fails silently if env file isn't writable.
-  syncTokenToEnvFile(config.token)
+  // Reconcile token across config.yaml and agent.env so they always match.
+  // Both the agent and sidecar read from agent.env via systemd EnvironmentFile,
+  // so env wins over config.yaml when they disagree. We then write the resolved
+  // value back to BOTH files so future starts are consistent.
+  const reconciled = reconcileToken(config.token)
+  if (reconciled) config.token = reconciled
 
   // OAuth env var overrides
   if (process.env.OAUTH_PROXY_URL || process.env.OAUTH_CALLBACK_BASE_URL) {

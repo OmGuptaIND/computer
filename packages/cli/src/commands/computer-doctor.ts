@@ -332,59 +332,79 @@ function readEnvToken(): string | null {
 function checkTokenSync(): CheckResult {
   const configToken = readConfigToken()
   const envToken = readEnvToken()
+  const configValid = isValidToken(configToken)
+  const envValid = isValidToken(envToken)
 
-  if (!configToken && !envToken) {
-    return { name: 'Token consistency', status: 'error', detail: 'no token in either file' }
+  // Pick the valid one to fix with — env first, then config
+  const resolveValid = (): string | null => {
+    if (envValid && envToken) return envToken
+    if (configValid && configToken) return configToken
+    return null
   }
 
-  if (configToken && !envToken) {
+  const fixWith = (token: string | null) => () => {
+    try {
+      if (!token) return false
+      syncToken(token)
+      syncConfigYamlToken(token)
+      execSilent(`systemctl restart ${SIDECAR_SERVICE}`)
+      execSilent(`systemctl restart ${AGENT_SERVICE}`)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  // Neither file has a valid token
+  if (!configValid && !envValid) {
     return {
       name: 'Token consistency',
       status: 'error',
-      detail: 'config.yaml has token, agent.env does not',
-      fixDescription: 'Syncing token to agent.env',
-      fix: () => {
-        try {
-          syncToken(configToken)
-          execSilent(`systemctl restart ${SIDECAR_SERVICE}`)
-          return true
-        } catch {
-          return false
-        }
-      },
+      detail: 'no valid token in either file (expected ak_<48 hex>)',
     }
   }
 
-  if (!configToken && envToken) {
+  // One side has a garbage token — fix with the valid one
+  if (configValid && !envValid) {
     return {
       name: 'Token consistency',
-      status: 'warn',
-      detail: 'agent.env has token, config.yaml does not (will sync on next agent restart)',
+      status: 'error',
+      detail: envToken
+        ? 'agent.env has invalid token (config.yaml is valid)'
+        : 'agent.env missing token',
+      fixDescription: 'Writing valid token from config.yaml to agent.env',
+      fix: fixWith(resolveValid()),
     }
   }
 
+  if (!configValid && envValid) {
+    return {
+      name: 'Token consistency',
+      status: 'error',
+      detail: configToken
+        ? 'config.yaml has invalid token (agent.env is valid)'
+        : 'config.yaml missing token',
+      fixDescription: 'Writing valid token from agent.env to config.yaml',
+      fix: fixWith(resolveValid()),
+    }
+  }
+
+  // Both valid but different
   if (configToken !== envToken) {
     return {
       name: 'Token consistency',
       status: 'error',
-      detail: 'config.yaml and agent.env have different tokens',
-      fixDescription: 'Syncing config.yaml token to agent.env',
-      fix: () => {
-        try {
-          // Trust config.yaml since the agent reads from there at startup
-          if (!configToken) return false
-          syncToken(configToken)
-          execSilent(`systemctl restart ${AGENT_SERVICE}`)
-          execSilent(`systemctl restart ${SIDECAR_SERVICE}`)
-          return true
-        } catch {
-          return false
-        }
-      },
+      detail: 'config.yaml and agent.env have different valid tokens',
+      fixDescription: 'Syncing tokens (env wins, both files updated)',
+      fix: fixWith(resolveValid()),
     }
   }
 
   return { name: 'Token consistency', status: 'ok' }
+}
+
+function isValidToken(token: string | null): boolean {
+  return !!token && /^ak_[0-9a-f]{48}$/.test(token)
 }
 
 function syncToken(token: string): void {
@@ -392,14 +412,25 @@ function syncToken(token: string): void {
   if (existsSync(ENV_FILE)) {
     content = readFileSync(ENV_FILE, 'utf-8')
   }
-  if (/^ANTON_TOKEN=/m.test(content)) {
-    content = content.replace(/^ANTON_TOKEN=.*$/m, `ANTON_TOKEN=${token}`)
-  } else {
-    content = content.endsWith('\n') || content === '' ? content : `${content}\n`
-    content += `ANTON_TOKEN=${token}\n`
-  }
+  // Strip ALL existing ANTON_TOKEN= lines (handles duplicates from past bad state)
+  content = content.replace(/^ANTON_TOKEN=.*\n?/gm, '')
+  content = content.endsWith('\n') || content === '' ? content : `${content}\n`
+  content += `ANTON_TOKEN=${token}\n`
   writeFileSync(ENV_FILE, content, { mode: 0o600 })
   execSilent(`chown ${ANTON_USER}:${ANTON_USER} ${ENV_FILE}`)
+}
+
+function syncConfigYamlToken(token: string): void {
+  if (!existsSync(CONFIG_PATH)) return
+  let content = readFileSync(CONFIG_PATH, 'utf-8')
+  if (/^token:\s*.*$/m.test(content)) {
+    content = content.replace(/^token:\s*.*$/m, `token: ${token}`)
+  } else {
+    content = content.endsWith('\n') ? content : `${content}\n`
+    content += `token: ${token}\n`
+  }
+  writeFileSync(CONFIG_PATH, content, 'utf-8')
+  execSilent(`chown ${ANTON_USER}:${ANTON_USER} ${CONFIG_PATH}`)
 }
 
 async function checkAgentHealth(): Promise<CheckResult> {
