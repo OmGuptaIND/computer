@@ -1,6 +1,6 @@
 {
   "version": "1.0.39",
-  "gitHash": "",
+  "gitHash": "b43992d",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
   "changelog": "Features:\n- auto-elevate to root via sudo in computer commands instead of exiting",
   "publishedAt": "2026-04-07T07:51:36.120Z",
