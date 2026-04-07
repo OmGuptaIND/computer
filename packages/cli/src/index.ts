@@ -199,6 +199,9 @@ async function main() {
           yes: hasFlag('--yes') || hasFlag('-y'),
           json: hasFlag('--json'),
         })
+      } else if (subcommand === 'doctor') {
+        const { computerDoctorCommand } = await import('./commands/computer-doctor.js')
+        await computerDoctorCommand({ fix: hasFlag('--fix') })
       } else if (subcommand === 'status') {
         await computerStatusCommand()
       } else if (subcommand === 'stop') {
@@ -243,6 +246,9 @@ async function main() {
           `    ${theme.brand('anton computer sidecar')}      Install/update sidecar binary`,
         )
         console.log(`    ${theme.brand('anton computer update')}       Update agent binary`)
+        console.log(
+          `    ${theme.brand('anton computer doctor')}       Diagnose & fix machine setup`,
+        )
         console.log(`    ${theme.brand('anton computer version')}      Show agent version`)
         console.log(
           `    ${theme.brand('anton computer uninstall')}    Remove agent from this machine\n`,
@@ -338,6 +344,10 @@ function showHelp() {
   console.log(`    ${theme.brand('anton computer stop')}               Stop services`)
   console.log(`    ${theme.brand('anton computer restart')}            Restart services`)
   console.log(`    ${theme.brand('anton computer update')}             Update agent binary`)
+  console.log(
+    `    ${theme.brand('anton computer doctor')}             Diagnose & fix machine setup`,
+  )
+  console.log(`      ${theme.dim('--fix')}                            Auto-remediate issues`)
   console.log(`    ${theme.brand('anton computer version')}            Show agent version`)
   console.log(`    ${theme.brand('anton computer uninstall')}          Remove agent`)
   console.log(`      ${theme.dim('--purge')}                         Also delete user + data`)

@@ -197,6 +197,7 @@ export interface ConnectorConfig {
 
 const ANTON_DIR = join(homedir(), '.anton')
 const CONFIG_PATH = join(ANTON_DIR, 'config.yaml')
+const ENV_FILE_PATH = join(ANTON_DIR, 'agent.env')
 const CONVERSATIONS_DIR = join(ANTON_DIR, 'conversations')
 const PROMPTS_DIR = join(ANTON_DIR, 'prompts')
 const PROJECT_TYPES_DIR = join(PROMPTS_DIR, 'project-types')
@@ -298,6 +299,70 @@ const DEFAULT_PROVIDERS: ProvidersMap = {
   },
 }
 
+// ── Token sync ──────────────────────────────────────────────────────
+
+/**
+ * Read ANTON_TOKEN from agent.env file (if it exists).
+ * Returns null if file is missing or token line is absent.
+ */
+export function readTokenFromEnvFile(envPath = ENV_FILE_PATH): string | null {
+  try {
+    if (!existsSync(envPath)) return null
+    const content = readFileSync(envPath, 'utf-8')
+    const match = content.match(/^ANTON_TOKEN=(.+)$/m)
+    return match?.[1]?.trim() || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Write ANTON_TOKEN to agent.env, replacing any existing line or appending.
+ * Creates the file if it doesn't exist.
+ */
+export function writeTokenToEnvFile(token: string, envPath = ENV_FILE_PATH): void {
+  let content = ''
+  try {
+    if (existsSync(envPath)) {
+      content = readFileSync(envPath, 'utf-8')
+    }
+  } catch {
+    // file unreadable, will overwrite
+  }
+
+  if (/^ANTON_TOKEN=/m.test(content)) {
+    content = content.replace(/^ANTON_TOKEN=.*$/m, `ANTON_TOKEN=${token}`)
+  } else {
+    content = content.endsWith('\n') || content === '' ? content : `${content}\n`
+    content += `ANTON_TOKEN=${token}\n`
+  }
+
+  writeFileSync(envPath, content, { mode: 0o600 })
+}
+
+/**
+ * Ensure agent.env has the same ANTON_TOKEN as config.yaml.
+ * Called at agent startup so the sidecar (which only reads env) stays in sync.
+ *
+ * Returns 'created' if env file was created, 'synced' if updated,
+ * 'ok' if already in sync, 'skipped' if env file is unwritable.
+ */
+export function syncTokenToEnvFile(
+  configToken: string,
+  envPath = ENV_FILE_PATH,
+): 'created' | 'synced' | 'ok' | 'skipped' {
+  if (!configToken) return 'skipped'
+  try {
+    const existing = readTokenFromEnvFile(envPath)
+    if (existing === configToken) return 'ok'
+    const created = !existsSync(envPath)
+    writeTokenToEnvFile(configToken, envPath)
+    return created ? 'created' : 'synced'
+  } catch {
+    return 'skipped'
+  }
+}
+
 // ── Load / Save / Migrate ───────────────────────────────────────────
 
 /**
@@ -332,6 +397,7 @@ export function loadConfig(): AgentConfig {
     if (tokenOverride) defaultConfig.token = tokenOverride
     if (flags.port) defaultConfig.port = flags.port
     writeFileSync(CONFIG_PATH, stringifyYaml(defaultConfig), 'utf-8')
+    syncTokenToEnvFile(defaultConfig.token)
     console.log(`\n  Config created: ${CONFIG_PATH}`)
     console.log(`  Token: ${defaultConfig.token}`)
     console.log('  Save this token — you need it to connect from the desktop app.\n')
@@ -361,6 +427,10 @@ export function loadConfig(): AgentConfig {
   // Apply CLI/env overrides (these take precedence over config file)
   if (tokenOverride) config.token = tokenOverride
   if (flags.port) config.port = flags.port
+
+  // Sync token to agent.env so the sidecar (which only reads env) stays in sync.
+  // Best-effort — fails silently if env file isn't writable.
+  syncTokenToEnvFile(config.token)
 
   // OAuth env var overrides
   if (process.env.OAUTH_PROXY_URL || process.env.OAUTH_CALLBACK_BASE_URL) {

@@ -729,7 +729,7 @@ export class AgentServer {
     try {
       const res = await fetch(`http://127.0.0.1:${sidecarPort}/update/start`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${this.config.token}` },
+        headers: { Authorization: `Bearer ${process.env.ANTON_TOKEN ?? this.config.token}` },
         signal: AbortSignal.timeout(600_000),
       })
 

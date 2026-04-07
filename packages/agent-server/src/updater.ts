@@ -31,7 +31,8 @@ export class Updater {
   onUpdateFound?: (manifest: UpdateManifest) => void
 
   constructor(token?: string) {
-    this.token = token ?? process.env.ANTON_TOKEN ?? ''
+    // Prefer env var (matches what the sidecar reads) over config token
+    this.token = process.env.ANTON_TOKEN ?? token ?? ''
   }
 
   /** Start periodic update checks */
