@@ -10,6 +10,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
+## [1.0.35] - 2026-04-07
+
+Maintenance release.
+---
+
 ## [1.0.34] - 2026-04-07
 
 ### Fixes
@@ -319,7 +324,8 @@ Maintenance release.
 
 ---
 
-[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.34...HEAD
+[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.35...HEAD
+[1.0.35]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.35
 [1.0.34]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.34
 [1.0.34]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.34
 [1.0.34]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.34
