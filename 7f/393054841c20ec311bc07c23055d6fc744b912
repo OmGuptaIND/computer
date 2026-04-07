@@ -1,0 +1,25 @@
+sidecar/internal/handlers/update.go
+  d11a0ffdeb63e870 54-69,95-98
+packages/cli/src/commands/computer-sidecar.ts
+  d11a0ffdeb63e870 62-65,67,71-72,76-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "7f393054841c20ec311bc07c23055d6fc744b912",
+  "prompts": {
+    "d11a0ffdeb63e870": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "55f21950-9f9f-4ad1-932e-61ffdec1793c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 31,
+      "total_deletions": 7,
+      "accepted_lines": 31,
+      "overriden_lines": 0
+    }
+  }
+}
