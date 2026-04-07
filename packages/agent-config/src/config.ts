@@ -381,20 +381,11 @@ export function writeTokenToConfigFile(token: string, configPath = CONFIG_PATH):
 }
 
 /**
- * Validate that a string looks like a real anton token: `ak_` prefix followed
- * by 48 hex characters. Rejects placeholders, empty strings, and garbage.
- */
-export function isValidToken(token: string | null | undefined): boolean {
-  if (!token) return false
-  return /^ak_[0-9a-f]{48}$/.test(token)
-}
-
-/**
  * Single source of truth: ensure both config.yaml and agent.env have the
- * same token. Validates each candidate before propagating it. Prefers env
- * over config when both are valid.
+ * same token. Prefers env over config when they disagree (since systemd
+ * loads env for both processes).
  *
- * Returns the resolved (valid) token, or null if neither file has one.
+ * Returns the resolved token, or null if neither file has one.
  */
 export function reconcileToken(
   configToken: string | undefined,
@@ -402,16 +393,8 @@ export function reconcileToken(
   configPath = CONFIG_PATH,
 ): string | null {
   const envToken = readTokenFromEnvFile(envPath)
-
-  // Pick the first VALID token: env > config
-  // Skip invalid candidates (empty, placeholders, garbage from bad past commands)
-  let resolved: string | null = null
-  if (isValidToken(envToken)) {
-    resolved = envToken
-  } else if (isValidToken(configToken)) {
-    resolved = configToken ?? null
-  }
-
+  // Prefer env (loaded by systemd for both agent + sidecar) over config.yaml
+  const resolved = envToken || configToken || null
   if (!resolved) return null
 
   // Write to both files unconditionally — cheap and idempotent

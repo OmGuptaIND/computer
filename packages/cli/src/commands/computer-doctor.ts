@@ -332,15 +332,6 @@ function readEnvToken(): string | null {
 function checkTokenSync(): CheckResult {
   const configToken = readConfigToken()
   const envToken = readEnvToken()
-  const configValid = isValidToken(configToken)
-  const envValid = isValidToken(envToken)
-
-  // Pick the valid one to fix with — env first, then config
-  const resolveValid = (): string | null => {
-    if (envValid && envToken) return envToken
-    if (configValid && configToken) return configToken
-    return null
-  }
 
   const fixWith = (token: string | null) => () => {
     try {
@@ -355,56 +346,42 @@ function checkTokenSync(): CheckResult {
     }
   }
 
-  // Neither file has a valid token
-  if (!configValid && !envValid) {
+  if (!configToken && !envToken) {
+    return { name: 'Token consistency', status: 'error', detail: 'no token in either file' }
+  }
+
+  if (configToken && !envToken) {
     return {
       name: 'Token consistency',
       status: 'error',
-      detail: 'no valid token in either file (expected ak_<48 hex>)',
+      detail: 'config.yaml has token, agent.env does not',
+      fixDescription: 'Writing token from config.yaml to agent.env',
+      fix: fixWith(configToken),
     }
   }
 
-  // One side has a garbage token — fix with the valid one
-  if (configValid && !envValid) {
+  if (!configToken && envToken) {
     return {
       name: 'Token consistency',
       status: 'error',
-      detail: envToken
-        ? 'agent.env has invalid token (config.yaml is valid)'
-        : 'agent.env missing token',
-      fixDescription: 'Writing valid token from config.yaml to agent.env',
-      fix: fixWith(resolveValid()),
+      detail: 'agent.env has token, config.yaml does not',
+      fixDescription: 'Writing token from agent.env to config.yaml',
+      fix: fixWith(envToken),
     }
   }
 
-  if (!configValid && envValid) {
-    return {
-      name: 'Token consistency',
-      status: 'error',
-      detail: configToken
-        ? 'config.yaml has invalid token (agent.env is valid)'
-        : 'config.yaml missing token',
-      fixDescription: 'Writing valid token from agent.env to config.yaml',
-      fix: fixWith(resolveValid()),
-    }
-  }
-
-  // Both valid but different
   if (configToken !== envToken) {
     return {
       name: 'Token consistency',
       status: 'error',
-      detail: 'config.yaml and agent.env have different valid tokens',
+      detail: 'config.yaml and agent.env have different tokens',
       fixDescription: 'Syncing tokens (env wins, both files updated)',
-      fix: fixWith(resolveValid()),
+      // Env wins since systemd loads it for both processes
+      fix: fixWith(envToken),
     }
   }
 
   return { name: 'Token consistency', status: 'ok' }
-}
-
-function isValidToken(token: string | null): boolean {
-  return !!token && /^ak_[0-9a-f]{48}$/.test(token)
 }
 
 function syncToken(token: string): void {
