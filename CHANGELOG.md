@@ -10,6 +10,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
+## [1.0.42] - 2026-04-07
+
+### Fixes
+- update CLI updater
+---
+
 ## [1.0.41] - 2026-04-07
 
 Maintenance release.
@@ -359,7 +365,8 @@ Maintenance release.
 
 ---
 
-[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.41...HEAD
+[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.42...HEAD
+[1.0.42]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.42
 [1.0.41]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.41
 [1.0.40]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.40
 [1.0.39]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.39

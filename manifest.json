@@ -1,12 +1,12 @@
 {
-  "version": "1.0.41",
-  "gitHash": "980be12",
+  "version": "1.0.42",
+  "gitHash": "",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
-  "changelog": "",
-  "publishedAt": "2026-04-07T09:20:23.220Z",
-  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.41/anton-cli.mjs",
+  "changelog": "Fixes:\n- update CLI updater",
+  "publishedAt": "2026-04-07T09:33:34.370Z",
+  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.42/anton-cli.mjs",
   "sidecar": {
-    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.41/anton-sidecar-linux-arm64",
-    "linux-amd64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.41/anton-sidecar-linux-amd64"
+    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.42/anton-sidecar-linux-arm64",
+    "linux-amd64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.42/anton-sidecar-linux-amd64"
   }
 }
