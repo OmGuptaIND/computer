@@ -79,7 +79,7 @@ export function handleChatMessage(msg: AiMessage, ctx: MessageContext): boolean 
         role: 'tool',
         content: msg.task,
         toolName: 'sub_agent',
-        toolInput: { task: msg.task },
+        toolInput: { task: msg.task, ...(msg.agentType && { type: msg.agentType }) },
         timestamp: Date.now(),
       })
       return true

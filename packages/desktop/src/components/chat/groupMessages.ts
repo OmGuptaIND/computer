@@ -12,6 +12,7 @@ export type GroupedItem =
       type: 'sub_agent'
       toolCallId: string
       task: string
+      agentType?: 'research' | 'execute' | 'verify'
       actions: ToolAction[]
       result: ChatMessage | null // the final sub_agent tool_result from the parent
       id: string
@@ -70,9 +71,10 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
   const unmatchedCalls = new Map<string, number>()
 
   // Track active sub-agent groups: toolCallId -> sub-agent state
+  type AgentType = 'research' | 'execute' | 'verify'
   const subAgentGroups = new Map<
     string,
-    { task: string; actions: ToolAction[]; pendingCall: ChatMessage | null }
+    { task: string; agentType?: AgentType; actions: ToolAction[]; pendingCall: ChatMessage | null }
   >()
 
   function flushActions() {
@@ -130,8 +132,11 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
           ? msg.id.slice('tc_'.length)
           : msg.id
 
+      const rawType = msg.toolInput?.type as string | undefined
+      const validTypes = new Set<AgentType>(['research', 'execute', 'verify'])
       subAgentGroups.set(toolCallId, {
         task: (msg.toolInput?.task as string) || msg.content,
+        agentType: rawType && validTypes.has(rawType as AgentType) ? (rawType as AgentType) : undefined,
         actions: [],
         pendingCall: null,
       })
@@ -181,6 +186,7 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
             type: 'sub_agent',
             toolCallId,
             task: group.task,
+            agentType: group.agentType,
             actions: group.actions,
             result: msg,
             id: `sub_agent_${toolCallId}`,
@@ -263,6 +269,7 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
       type: 'sub_agent',
       toolCallId,
       task: group.task,
+      agentType: group.agentType as 'research' | 'execute' | 'verify' | undefined,
       actions: group.actions,
       result: null,
       id: `sub_agent_${toolCallId}`,

@@ -7,15 +7,22 @@ import { ToolTreeItem, getGroupHeader } from './ActionsGroup.js'
 import { ArtifactCard } from './ArtifactCard.js'
 import type { ToolAction } from './groupMessages.js'
 
+const AGENT_TYPE_LABELS: Record<string, string> = {
+  research: 'Research Agent',
+  execute: 'Execute Agent',
+  verify: 'Verify Agent',
+}
+
 interface Props {
   toolCallId: string
   task: string
+  agentType?: 'research' | 'execute' | 'verify'
   actions: ToolAction[]
   result: ChatMessage | null
   defaultExpanded?: boolean
 }
 
-export function SubAgentGroup({ task, actions, result, defaultExpanded = false }: Props) {
+export function SubAgentGroup({ task, agentType, actions, result, defaultExpanded = false }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const artifacts = artifactStore((s) => s.artifacts)
 
@@ -52,7 +59,7 @@ export function SubAgentGroup({ task, actions, result, defaultExpanded = false }
         ) : (
           <ChevronRight size={14} strokeWidth={1.5} className="tool-tree__chevron" />
         )}
-        <span className="sub-agent__label">Agent</span>
+        <span className="sub-agent__label">{agentType ? AGENT_TYPE_LABELS[agentType] : 'Agent'}</span>
         <span className="sub-agent__task">{taskPreview}</span>
       </button>
 
