@@ -1,0 +1,31 @@
+packages/agent-core/src/session.ts
+  5ee357071d5f102c 38-62,65-66,79-80
+packages/agent-config/src/config.ts
+  5ee357071d5f102c 255-258,306-310
+packages/desktop/src/index.css
+  5ee357071d5f102c 4927-4929,4932,4935-4941,4944-4947,4950,4953,4957-4978,4982-4984,4987-4992,4995-5010,5013-5016,5019-5072
+packages/agent-core/src/anton-models.ts
+  5ee357071d5f102c 297-334
+packages/desktop/src/components/settings/SettingsModal.tsx
+  5ee357071d5f102c 442,457-480,482-502,504-517,519-537,539-574,576-577
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "ff073c706347d338ed2e3de3344f51c35e111e4e",
+  "prompts": {
+    "5ee357071d5f102c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8df8d656-4825-49a1-baf6-f4d24821121d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 327,
+      "total_deletions": 100,
+      "accepted_lines": 322,
+      "overriden_lines": 0
+    }
+  }
+}
