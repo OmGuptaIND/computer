@@ -1,0 +1,37 @@
+packages/agent-config/src/projects.ts
+  d76ecee9285ba5a2 762-776
+packages/agent-core/src/commands.ts
+  d76ecee9285ba5a2 1-237
+packages/agent-core/src/index.ts
+  d76ecee9285ba5a2 47-54
+specs/features/webhook-commands-and-project-scoping.md
+  d76ecee9285ba5a2 1-193
+packages/agent-server/src/server.ts
+  d76ecee9285ba5a2 3196-3197
+packages/agent-server/src/webhooks/agent-runner.ts
+  d76ecee9285ba5a2 11-12,16-20,23,26,65-67,76-79,201-203,210-220,222-239,246,253,259-278
+packages/agent-server/src/webhooks/providers/telegram.ts
+  d76ecee9285ba5a2 9,255-281
+packages/agent-server/src/webhooks/bindings.ts
+  d76ecee9285ba5a2 1-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "f2c8a2b698f857314baa09ca93a4bd24f983f6e0",
+  "prompts": {
+    "d76ecee9285ba5a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "da500671-a8df-4e3d-9992-6a3841f6e735",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 722,
+      "total_deletions": 67,
+      "accepted_lines": 666,
+      "overriden_lines": 0
+    }
+  }
+}
