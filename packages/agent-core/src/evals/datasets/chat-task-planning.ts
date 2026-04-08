@@ -24,7 +24,7 @@ export const taskPlanningDataset: EvalDataset = {
       expected:
         'Should propose a plan first (use plan tool or describe approach) before making changes. Should NOT immediately start editing files. A refactor of this scope needs user alignment.',
       expectedTool: 'plan',
-      acceptableTools: ['filesystem'],
+      acceptableTools: ['read', 'edit'],
       tags: ['planning', 'refactoring', 'complex'],
     },
 
@@ -34,7 +34,7 @@ export const taskPlanningDataset: EvalDataset = {
       expected:
         'Should first read the test output or run tests (shell) to understand what is failing, then read the relevant source files (filesystem), then fix. Should NOT guess at fixes without reading the errors first.',
       expectedTool: 'shell',
-      acceptableTools: ['filesystem', 'code_search'],
+      acceptableTools: ['read', 'grep'],
       tags: ['debugging', 'read-first', 'testing'],
     },
 
@@ -52,9 +52,9 @@ export const taskPlanningDataset: EvalDataset = {
     {
       input: 'Rename the function `getUserData` to `fetchUserProfile` everywhere in the codebase.',
       expected:
-        'Should first search the codebase (code_search) to find all occurrences, then systematically rename each one. Should NOT blindly edit files without knowing where the function is used.',
-      expectedTool: 'code_search',
-      acceptableTools: ['filesystem'],
+        'Should first search the codebase (grep) to find all occurrences, then systematically rename each one. Should NOT blindly edit files without knowing where the function is used.',
+      expectedTool: 'grep',
+      acceptableTools: ['read', 'edit'],
       tags: ['refactoring', 'search-first', 'codebase-wide'],
     },
 
@@ -80,8 +80,8 @@ export const taskPlanningDataset: EvalDataset = {
       input:
         'Find all TODO comments in the codebase, count them, and give me a summary of what needs to be done.',
       expected:
-        'Should search for TODO comments (code_search), then summarize findings. Tool chain: code_search → text response with analysis. Should NOT just search and dump raw results.',
-      expectedTool: 'code_search',
+        'Should search for TODO comments (grep), then summarize findings. Tool chain: grep → text response with analysis. Should NOT just search and dump raw results.',
+      expectedTool: 'grep',
       tags: ['multi-tool', 'analysis', 'summarization'],
     },
 

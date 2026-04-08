@@ -530,26 +530,24 @@ export class Session {
           }
         }
 
-        // Filesystem write: check for dangerous target paths
-        if (ctx.toolCall.name === 'filesystem') {
-          const args = ctx.args as { operation: string; path: string }
-          if (args.operation === 'write') {
-            const { isDangerousFsWrite } = await import('./tools/security.js')
-            if (isDangerousFsWrite(args.path)) {
-              if (this.confirmHandler) {
-                const approved = await this.confirmHandler(
-                  `Write to ${args.path}`,
-                  'Writing to a critical system directory',
-                )
-                if (!approved) {
-                  return { block: true, reason: 'File write denied by user.' }
-                }
-              } else {
-                return {
-                  block: true,
-                  reason:
-                    'Write to system directory requires confirmation but no handler available.',
-                }
+        // Write/edit tools: check for dangerous target paths
+        if (ctx.toolCall.name === 'write' || ctx.toolCall.name === 'edit') {
+          const args = ctx.args as { file_path?: string }
+          const writePath = args.file_path || ''
+          const { isDangerousFsWrite } = await import('./tools/security.js')
+          if (isDangerousFsWrite(writePath)) {
+            if (this.confirmHandler) {
+              const approved = await this.confirmHandler(
+                `Write to ${writePath}`,
+                'Writing to a critical system directory',
+              )
+              if (!approved) {
+                return { block: true, reason: 'File write denied by user.' }
+              }
+            } else {
+              return {
+                block: true,
+                reason: 'Write to system directory requires confirmation but no handler available.',
               }
             }
           }
@@ -1413,9 +1411,9 @@ export class Session {
         })
       }
 
-      // File writes
-      if (call.toolName === 'filesystem' && toolInput.operation === 'write' && toolInput.content) {
-        const filepath = toolInput.path as string
+      // File writes (write tool)
+      if (call.toolName === 'write' && toolInput.file_path && toolInput.content) {
+        const filepath = toolInput.file_path as string
         const filename = filepath?.split('/').pop() || 'untitled'
         const ext = filename.split('.').pop()?.toLowerCase() || ''
         const langMap: Record<string, string> = {
@@ -1766,9 +1764,9 @@ export class Session {
       }
     }
 
-    // File writes
-    if (toolName === 'filesystem' && toolInput.operation === 'write' && toolInput.content) {
-      const filepath = toolInput.path as string
+    // File writes (write tool)
+    if (toolName === 'write' && toolInput.file_path && toolInput.content) {
+      const filepath = toolInput.file_path as string
       const filename = filepath?.split('/').pop() || 'untitled'
       const language = langFromPath(filepath || '')
       return {

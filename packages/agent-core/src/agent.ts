@@ -8,7 +8,7 @@
  * - Streaming, retries, parallel tool calls
  *
  * We add:
- * - Custom tools (shell, filesystem, browser, process, network, artifact, git, etc.)
+ * - Custom tools (shell, read, write, edit, glob, grep, browser, artifact, git, etc.)
  * - Skills system
  * - Desktop confirmation flow
  */
@@ -29,23 +29,38 @@ import { executeClipboard } from './tools/clipboard.js'
 import { executeCodeSearch } from './tools/code-search.js'
 import { executeDatabase } from './tools/database.js'
 import type { DeliverResultHandler } from './tools/deliver-result.js'
-import { executeDiff } from './tools/diff.js'
-import { executeFilesystem, setForbiddenPaths } from './tools/filesystem.js'
+import { executeEdit } from './tools/edit.js'
 import { executeGit } from './tools/git.js'
+import { executeGlob, executeList, executeTree } from './tools/glob.js'
 import { executeHttpApi } from './tools/http-api.js'
 import { executeImage } from './tools/image.js'
 import type { JobActionHandler, JobToolInput } from './tools/job.js'
 import { executeMemory } from './tools/memory.js'
-import { executeNetwork } from './tools/network.js'
 import { executeNotification } from './tools/notification.js'
 import { executePlan } from './tools/plan.js'
-import { executeProcess } from './tools/process.js'
+// process and network tools removed — shell handles ps/kill/ping/curl
 import { executePublish } from './tools/publish.js'
+import { executeRead } from './tools/read.js'
+import { setForbiddenPaths } from './tools/security.js'
 import type { SharedStateHandler } from './tools/shared-state.js'
 import { executeShell } from './tools/shell.js'
 import { type TasksUpdateCallback, executeTaskTracker } from './tools/task-tracker.js'
 import { executeTodo } from './tools/todo.js'
 import { executeWebSearch } from './tools/web-search.js'
+import { executeWrite } from './tools/write.js'
+
+// ── Tool name constants ────────────────────────────────────────────
+// Use these everywhere so descriptions auto-update if a tool is renamed.
+export const SHELL_TOOL_NAME = 'shell'
+export const READ_TOOL_NAME = 'read'
+export const WRITE_TOOL_NAME = 'write'
+export const EDIT_TOOL_NAME = 'edit'
+export const GLOB_TOOL_NAME = 'glob'
+export const LIST_TOOL_NAME = 'list'
+export const GREP_TOOL_NAME = 'grep'
+export const GIT_TOOL_NAME = 'git'
+export const HTTP_API_TOOL_NAME = 'http_api'
+export const BROWSER_TOOL_NAME = 'browser'
 
 // Re-export for session.ts
 export { needsConfirmation } from './tools/shell.js'
@@ -69,7 +84,7 @@ RULES (non-negotiable):
 2. Do NOT emit text between tool calls. Use tools silently, then report once at the end.
 3. Do NOT converse, ask questions, or suggest next steps.
 4. Focus on FINDING and ORGANIZING information, not on making changes.
-5. Use web_search, browser (fetch/extract), filesystem (read/search), code_search, and http_api to gather data.
+5. Use web_search, browser (fetch/extract), ${READ_TOOL_NAME}, ${GREP_TOOL_NAME}, ${GLOB_TOOL_NAME}, and ${HTTP_API_TOOL_NAME} to gather data.
 6. Do NOT create, modify, or delete files unless the task explicitly asks you to save results somewhere.
 7. Do NOT run shell commands that modify system state (installs, service changes).
 8. If you find conflicting information, note the discrepancy rather than silently picking one.
@@ -268,16 +283,15 @@ export function buildTools(
   surface?: string,
 ): AgentTool[] {
   // Initialize security settings for tools
-  setForbiddenPaths(config.security?.forbiddenPaths ?? [])
+  const forbiddenPaths = config.security?.forbiddenPaths ?? []
+  setForbiddenPaths(forbiddenPaths)
 
   const tools: AgentTool[] = [
-    // ── Core tools ──────────────────────────────────────────────────
+    // ── Shell ───────────────────────────────────────────────────────
     defineTool({
-      name: 'shell',
+      name: SHELL_TOOL_NAME,
       label: 'Shell',
-      description:
-        'Execute a shell command on the server. Returns stdout/stderr. ' +
-        'Use for running programs, installing packages, deploying code.',
+      description: `Executes a shell command and returns its output.\n\nIMPORTANT: Avoid using this tool to run \`find\`, \`grep\`, \`cat\`, \`head\`, \`tail\`, \`sed\`, \`awk\`, or \`echo\` commands. Instead, use the appropriate dedicated tool:\n- File search: Use **${GLOB_TOOL_NAME}** (NOT find or ls)\n- Content search: Use **${GREP_TOOL_NAME}** (NOT grep or rg)\n- Read files: Use **${READ_TOOL_NAME}** (NOT cat/head/tail)\n- Edit files: Use **${EDIT_TOOL_NAME}** (NOT sed/awk)\n- Write files: Use **${WRITE_TOOL_NAME}** (NOT echo/cat redirection)\n- Git operations: Use **${GIT_TOOL_NAME}** (NOT shell with git commands)\n- HTTP APIs: Use **${HTTP_API_TOOL_NAME}** (NOT shell with curl)\n\nReserve shell exclusively for: running programs, installing packages, build commands, deploying code, and system operations that have no dedicated tool.`,
       parameters: Type.Object({
         command: Type.String({ description: 'Shell command to execute' }),
         timeout_seconds: Type.Optional(
@@ -295,43 +309,116 @@ export function buildTools(
         return toolResult(output)
       },
     }),
+
+    // ── Read ────────────────────────────────────────────────────────
     defineTool({
-      name: 'filesystem',
-      label: 'Filesystem',
-      description:
-        'Read, write, list, search, or tree files. ' +
-        'Operations: read, write, list, search, tree.',
+      name: READ_TOOL_NAME,
+      label: 'Read',
+      description: `Reads a file from the filesystem. ALWAYS use this tool to read files. NEVER use ${SHELL_TOOL_NAME} with cat, head, or tail.\n\nUsage:\n- Returns file contents with line numbers (cat -n format)\n- Reads up to 2000 lines by default from the start of the file\n- Use offset and limit for large files to read specific sections\n- Can detect image files and report their metadata\n- The file_path should be an absolute path when possible`,
       parameters: Type.Object({
-        operation: Type.Union(
-          [
-            Type.Literal('read'),
-            Type.Literal('write'),
-            Type.Literal('list'),
-            Type.Literal('search'),
-            Type.Literal('tree'),
-          ],
-          { description: 'Operation to perform' },
+        file_path: Type.String({ description: 'Absolute path to the file to read' }),
+        offset: Type.Optional(
+          Type.Number({
+            description:
+              'Line number to start reading from (1-based). Only provide for large files.',
+          }),
         ),
-        path: Type.String({ description: 'File or directory path' }),
-        content: Type.Optional(Type.String({ description: 'Content for write' })),
-        pattern: Type.Optional(Type.String({ description: 'Pattern for search' })),
-        maxDepth: Type.Optional(Type.Number({ description: 'Depth for tree/search' })),
+        limit: Type.Optional(
+          Type.Number({ description: 'Number of lines to read. Only provide for large files.' }),
+        ),
       }),
       async execute(_toolCallId, params) {
-        const output = executeFilesystem(params)
+        const output = executeRead(params)
+        return toolResult(output)
+      },
+    }),
+
+    // ── Write ───────────────────────────────────────────────────────
+    defineTool({
+      name: WRITE_TOOL_NAME,
+      label: 'Write',
+      description: `Writes a file to the filesystem. Creates parent directories automatically.\n\nUsage:\n- This tool will overwrite the existing file if there is one at the provided path\n- Prefer the **${EDIT_TOOL_NAME}** tool for modifying existing files — it only changes the specific part you need\n- Use this tool to create new files or for complete rewrites\n- NEVER use ${SHELL_TOOL_NAME} with echo/cat redirection to write files`,
+      parameters: Type.Object({
+        file_path: Type.String({ description: 'Absolute path to the file to write' }),
+        content: Type.String({ description: 'The content to write to the file' }),
+      }),
+      async execute(_toolCallId, params) {
+        const output = executeWrite(params)
+        return toolResult(output)
+      },
+    }),
+
+    // ── Edit ────────────────────────────────────────────────────────
+    defineTool({
+      name: EDIT_TOOL_NAME,
+      label: 'Edit',
+      description: `Performs exact string replacements in files. ALWAYS prefer this over ${WRITE_TOOL_NAME} for modifying existing files.\n\nUsage:\n- You must use ${READ_TOOL_NAME} first before editing to know the exact content to replace\n- Provide the exact string to find (old_string) and the replacement (new_string)\n- The edit will FAIL if old_string is not found or appears multiple times (unless replace_all is true)\n- Preserve exact indentation (tabs/spaces) when specifying old_string\n- Use replace_all for renaming variables or replacing all occurrences\n- NEVER use ${SHELL_TOOL_NAME} with sed or awk to edit files`,
+      parameters: Type.Object({
+        file_path: Type.String({ description: 'Absolute path to the file to modify' }),
+        old_string: Type.String({ description: 'The exact text to find and replace' }),
+        new_string: Type.String({
+          description: 'The text to replace it with (must be different from old_string)',
+        }),
+        replace_all: Type.Optional(
+          Type.Boolean({ description: 'Replace all occurrences of old_string (default: false)' }),
+        ),
+      }),
+      async execute(_toolCallId, params) {
+        const output = executeEdit(params)
+        return toolResult(output)
+      },
+    }),
+
+    // ── Glob ────────────────────────────────────────────────────────
+    defineTool({
+      name: GLOB_TOOL_NAME,
+      label: 'Glob',
+      description: `Fast file pattern matching. ALWAYS use this to find files. NEVER use ${SHELL_TOOL_NAME} with find or ls.\n\n- Supports glob patterns like "*.js", "**/*.ts", "src/**/*.tsx"\n- Auto-excludes node_modules, .git, dist, build\n- Returns matching file paths sorted alphabetically\n- Use when you need to find files by name or extension pattern`,
+      parameters: Type.Object({
+        pattern: Type.String({
+          description: 'Glob pattern to match files (e.g. "*.ts", "**/*.tsx")',
+        }),
+        path: Type.Optional(
+          Type.String({
+            description: 'Directory to search in. Defaults to current working directory.',
+          }),
+        ),
+      }),
+      async execute(_toolCallId, params) {
+        const output = executeGlob(params)
+        return toolResult(output)
+      },
+    }),
+
+    // ── List (directory listing + tree) ─────────────────────────────
+    defineTool({
+      name: LIST_TOOL_NAME,
+      label: 'List',
+      description:
+        'List directory contents or show directory tree structure.\n\n' +
+        '- "list" operation: shows files with type and size (like ls -la)\n' +
+        '- "tree" operation: shows nested directory structure\n' +
+        '- Use for understanding project layout and directory contents',
+      parameters: Type.Object({
+        operation: Type.Union([Type.Literal('list'), Type.Literal('tree')], {
+          description: '"list" for directory contents, "tree" for directory structure',
+        }),
+        path: Type.String({ description: 'Directory path' }),
+        maxDepth: Type.Optional(Type.Number({ description: 'Max depth for tree (default: 3)' })),
+      }),
+      async execute(_toolCallId, params) {
+        if (params.operation === 'tree') {
+          const output = executeTree({ path: params.path, maxDepth: params.maxDepth })
+          return toolResult(output)
+        }
+        const output = executeList({ path: params.path, maxDepth: params.maxDepth })
         return toolResult(output)
       },
     }),
     defineTool({
-      name: 'browser',
+      name: BROWSER_TOOL_NAME,
       label: 'Browser',
-      description:
-        'Web browsing and browser automation. Two modes:\n' +
-        '• **fetch/extract** — Fast, lightweight. Use for reading articles, docs, APIs behind the scenes. No JS execution.\n' +
-        '• **open/snapshot/click/fill/scroll/screenshot/get/wait/close** — Full browser with live screenshots shown in the user sidebar. ' +
-        'Use `open` when the user asks to visit, browse, scrape, or interact with a website. ' +
-        'Chromium auto-installs on first use.\n' +
-        'For local files, use the filesystem tool.',
+      description: `Web browsing and browser automation. Two modes:\n• **fetch/extract** — Fast, lightweight. Use for reading articles, docs, APIs behind the scenes. No JS execution.\n• **open/snapshot/click/fill/scroll/screenshot/get/wait/close** — Full browser with live screenshots shown in the user sidebar. Use \`open\` when the user asks to visit, browse, scrape, or interact with a website. Chromium auto-installs on first use.\nFor local files, use the ${READ_TOOL_NAME} tool.`,
       parameters: Type.Object({
         operation: Type.Union(
           [
@@ -385,57 +472,11 @@ export function buildTools(
         return toolResult(output)
       },
     }),
-    defineTool({
-      name: 'process',
-      label: 'Process',
-      description: 'List, inspect, or kill processes. Operations: list, info, kill.',
-      parameters: Type.Object({
-        operation: Type.Union([Type.Literal('list'), Type.Literal('kill'), Type.Literal('info')], {
-          description: 'Operation to perform',
-        }),
-        pid: Type.Optional(Type.Number({ description: 'Process ID' })),
-        name: Type.Optional(Type.String({ description: 'Filter by name' })),
-      }),
-      async execute(_toolCallId, params) {
-        const output = executeProcess(params)
-        return toolResult(output)
-      },
-    }),
-    defineTool({
-      name: 'network',
-      label: 'Network',
-      description:
-        'Network ops: scan ports, HTTP requests, DNS, ping. Operations: ports, curl, dns, ping.',
-      parameters: Type.Object({
-        operation: Type.Union(
-          [Type.Literal('ports'), Type.Literal('curl'), Type.Literal('dns'), Type.Literal('ping')],
-          { description: 'Operation to perform' },
-        ),
-        url: Type.Optional(Type.String({ description: 'URL for curl' })),
-        host: Type.Optional(Type.String({ description: 'Host for dns/ping' })),
-        method: Type.Optional(Type.String({ description: 'HTTP method' })),
-        headers: Type.Optional(
-          Type.Record(Type.String(), Type.String(), { description: 'HTTP headers' }),
-        ),
-        body: Type.Optional(Type.String({ description: 'Request body' })),
-      }),
-      async execute(_toolCallId, params) {
-        const output = await executeNetwork(params)
-        return toolResult(output)
-      },
-    }),
-
     // ── Artifact ────────────────────────────────────────────────────
     defineTool({
       name: 'artifact',
       label: 'Artifact',
-      description:
-        'Create a visual artifact displayed in the desktop side panel. ' +
-        'Use for HTML pages/apps, rendered markdown, code files, SVG graphics, or mermaid diagrams. ' +
-        'The content renders live in a preview panel next to the chat. ' +
-        'Always use this for visual content the user should see rendered, not as raw text. ' +
-        'When the user asks to "open", "view", or "show" a local file (.html, .svg, .md, .css, .js, .ts, etc.), ' +
-        'read the file with the filesystem tool first, then display it here as an artifact — do NOT use the browser tool for local files.',
+      description: `Create a visual artifact displayed in the desktop side panel. Use for HTML pages/apps, rendered markdown, code files, SVG graphics, or mermaid diagrams. The content renders live in a preview panel next to the chat. Always use this for visual content the user should see rendered, not as raw text. When the user asks to "open", "view", or "show" a local file (.html, .svg, .md, .css, .js, .ts, etc.), read the file with the ${READ_TOOL_NAME} tool first, then display it here as an artifact — do NOT use the ${BROWSER_TOOL_NAME} tool for local files.`,
       parameters: Type.Object({
         title: Type.String({ description: 'Display title (e.g. "Landing Page", "README.md")' }),
         type: Type.Union(
@@ -506,12 +547,9 @@ export function buildTools(
 
     // ── Git ─────────────────────────────────────────────────────────
     defineTool({
-      name: 'git',
+      name: GIT_TOOL_NAME,
       label: 'Git',
-      description:
-        'Safe, structured git operations. Prefer this over shell for git commands. ' +
-        'Operations: status, diff, log, commit, branch, checkout, stash, add, reset. ' +
-        'Blocks dangerous operations like force-push and hard reset.',
+      description: `ALWAYS use this tool for git operations. NEVER use ${SHELL_TOOL_NAME} with git commands.\n\nOperations: status, diff, log, commit, branch, checkout, stash, add, reset. Has safety guards that block dangerous operations like force-push and hard reset.`,
       parameters: Type.Object({
         operation: Type.Union(
           [
@@ -537,41 +575,44 @@ export function buildTools(
       },
     }),
 
-    // ── Code search ─────────────────────────────────────────────────
+    // ── Grep (content search) ──────────────────────────────────────
     defineTool({
-      name: 'code_search',
-      label: 'Code Search',
-      description:
-        'Search code using ripgrep. Supports regex patterns, file type filtering, and context lines. ' +
-        'Better than grep — excludes node_modules, .git, dist by default. ' +
-        'Use for finding function definitions, references, patterns across a codebase.',
+      name: GREP_TOOL_NAME,
+      label: 'Grep',
+      description: `A powerful content search tool built on ripgrep.\n\nALWAYS use this tool for searching code and text content in files. NEVER invoke \`grep\` or \`rg\` as a ${SHELL_TOOL_NAME} command — this tool is optimized with correct exclusions and result formatting.\n\n- Supports full regex syntax (e.g. "log.*Error", "function\\s+\\w+")\n- Filter by file type (e.g. "ts", "py", "rs")\n- Auto-excludes node_modules, .git, dist, build\n- Shows context lines around matches\n- Use for finding function definitions, references, imports, patterns across a codebase`,
       parameters: Type.Object({
-        query: Type.String({ description: 'Search pattern (supports regex)' }),
+        pattern: Type.String({ description: 'Search pattern — supports regex' }),
         path: Type.Optional(
-          Type.String({ description: 'Directory to search (default: current dir)' }),
+          Type.String({ description: 'File or directory to search in (default: current dir)' }),
         ),
         file_type: Type.Optional(
           Type.String({ description: 'Filter by extension, e.g. "ts", "py", "rs"' }),
         ),
         context_lines: Type.Optional(
-          Type.Number({ description: 'Lines of context before/after (default: 2)' }),
+          Type.Number({ description: 'Lines of context before/after each match (default: 2)' }),
         ),
-        max_results: Type.Optional(Type.Number({ description: 'Max matches (default: 20)' })),
+        max_results: Type.Optional(
+          Type.Number({ description: 'Max matches to return (default: 20)' }),
+        ),
       }),
       async execute(_toolCallId, params) {
-        const output = executeCodeSearch(params)
+        // Map 'pattern' to 'query' for the existing executeCodeSearch implementation
+        const output = executeCodeSearch({
+          query: params.pattern,
+          path: params.path,
+          file_type: params.file_type,
+          context_lines: params.context_lines,
+          max_results: params.max_results,
+        })
         return toolResult(output)
       },
     }),
 
     // ── HTTP API ────────────────────────────────────────────────────
     defineTool({
-      name: 'http_api',
+      name: HTTP_API_TOOL_NAME,
       label: 'HTTP API',
-      description:
-        'Make structured HTTP API calls with JSON parsing and response extraction. ' +
-        'Better than curl for API work: auto-parses JSON, supports JSONPath extraction. ' +
-        'Use for REST APIs, webhooks, and structured HTTP requests.',
+      description: `ALWAYS use this tool for HTTP API calls. NEVER use ${SHELL_TOOL_NAME} with curl or wget.\n\nMakes structured HTTP API calls with JSON parsing and response extraction. Auto-parses JSON, supports JSONPath extraction. Use for REST APIs, webhooks, and structured HTTP requests.`,
       parameters: Type.Object({
         method: Type.Union(
           [
@@ -804,30 +845,6 @@ export function buildTools(
       }),
       async execute(_toolCallId, params) {
         const output = executeImage(params)
-        return toolResult(output)
-      },
-    }),
-
-    // ── Diff ────────────────────────────────────────────────────────
-    defineTool({
-      name: 'diff',
-      label: 'Diff',
-      description:
-        'Compare files or apply patches. Produces unified diff output. ' +
-        'Operations: compare (diff two files), patch (apply a patch to a file). ' +
-        'Use for reviewing changes, comparing versions, or applying modifications.',
-      parameters: Type.Object({
-        operation: Type.Union([Type.Literal('compare'), Type.Literal('patch')], {
-          description: 'Diff operation',
-        }),
-        file_a: Type.String({ description: 'First file path (or target for patch)' }),
-        file_b: Type.Optional(Type.String({ description: 'Second file path (for compare)' })),
-        patch_content: Type.Optional(
-          Type.String({ description: 'Unified diff patch content (for patch)' }),
-        ),
-      }),
-      async execute(_toolCallId, params) {
-        const output = executeDiff(params)
         return toolResult(output)
       },
     }),

@@ -14,23 +14,23 @@ export const toolSelectionDataset: EvalDataset = {
     // ── Filesystem ──────────────────────────────────────────────────
     {
       input: 'Read the contents of /etc/hosts',
-      expectedTool: 'filesystem',
+      expectedTool: 'read',
       tags: ['filesystem'],
     },
     {
       input: 'Create a new file called notes.txt with "Hello World" in it',
-      expectedTool: 'filesystem',
+      expectedTool: 'write',
       tags: ['filesystem'],
     },
     {
       input: 'List all files in the /tmp directory',
-      expectedTool: 'filesystem',
-      acceptableTools: ['shell'],
+      expectedTool: 'list',
+      acceptableTools: ['glob', 'shell'],
       tags: ['filesystem'],
     },
     {
       input: 'What is the size of the file at ~/report.pdf?',
-      expectedTool: 'filesystem',
+      expectedTool: 'read',
       acceptableTools: ['shell'],
       tags: ['filesystem'],
     },
@@ -64,25 +64,24 @@ export const toolSelectionDataset: EvalDataset = {
     {
       input: 'Kill the process running on port 8080',
       expectedTool: 'shell',
-      acceptableTools: ['process'],
       tags: ['shell'],
     },
 
     // ── Code search ─────────────────────────────────────────────────
     {
       input: 'Find all files that contain the function handleSubmit',
-      expectedTool: 'code_search',
-      tags: ['code_search'],
+      expectedTool: 'grep',
+      tags: ['grep'],
     },
     {
       input: 'Search for all TODO comments in the codebase',
-      expectedTool: 'code_search',
-      tags: ['code_search'],
+      expectedTool: 'grep',
+      tags: ['grep'],
     },
     {
       input: 'Find where the UserProfile component is defined',
-      expectedTool: 'code_search',
-      tags: ['code_search'],
+      expectedTool: 'grep',
+      tags: ['grep'],
     },
 
     // ── Git ─────────────────────────────────────────────────────────
@@ -168,28 +167,25 @@ export const toolSelectionDataset: EvalDataset = {
       tags: ['database'],
     },
 
-    // ── Process ─────────────────────────────────────────────────────
+    // ── Process (via shell) ──────────────────────────────────────────
     {
       input: 'Show me all running processes',
-      expectedTool: 'process',
-      acceptableTools: ['shell'],
-      tags: ['process'],
+      expectedTool: 'shell',
+      tags: ['shell'],
     },
 
-    // ── Network ─────────────────────────────────────────────────────
+    // ── Network (via shell) ──────────────────────────────────────────
     {
       input: 'Check if google.com is reachable',
-      expectedTool: 'network',
-      acceptableTools: ['shell'],
-      tags: ['network'],
+      expectedTool: 'shell',
+      tags: ['shell'],
     },
 
-    // ── Diff ────────────────────────────────────────────────────────
+    // ── Editing (apply changes) ─────────────────────────────────────
     {
       input: 'Apply this diff to fix the bug in server.ts',
-      expectedTool: 'diff',
-      acceptableTools: ['filesystem'],
-      tags: ['diff'],
+      expectedTool: 'edit',
+      tags: ['edit'],
     },
 
     // ── Image ───────────────────────────────────────────────────────
