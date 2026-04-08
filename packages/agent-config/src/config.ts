@@ -24,6 +24,20 @@ export interface ProviderConfig {
 
 export type ProvidersMap = Record<string, ProviderConfig>
 
+// ── Session sync ────────────────────────────────────────────────────
+
+/** A single change to the session index (Insert, Update, Delete) */
+export interface SyncDelta {
+  action: 'I' | 'U' | 'D'
+  syncVersion: number
+  sessionId: string
+  session?: SessionMeta // present for I and U
+  timestamp: number
+}
+
+/** Callback for sync change notifications */
+export type SyncChangeListener = (delta: SyncDelta, syncVersion: number) => void
+
 // ── Session persistence ─────────────────────────────────────────────
 
 /** Session metadata — stored in meta.json, no messages */
@@ -72,7 +86,9 @@ export interface SessionMessage {
 /** Session index — lightweight listing of all sessions */
 interface SessionIndex {
   version: number
+  syncVersion: number // monotonic counter, increments on every mutation
   sessions: SessionMeta[]
+  deltas: SyncDelta[] // ring buffer of recent changes (max DELTA_BUFFER_SIZE)
 }
 
 /** Full session data for backward compat and session.ts */
@@ -1181,13 +1197,40 @@ export function cleanExpiredSessions(ttlDays = 30): number {
 
 // ── Index management ────────────────────────────────────────────────
 
+const DELTA_BUFFER_SIZE = 200
+
+/** Listeners notified on every index mutation (for server push) */
+const syncChangeListeners: SyncChangeListener[] = []
+
+export function onSyncChange(listener: SyncChangeListener): () => void {
+  syncChangeListeners.push(listener)
+  return () => {
+    const idx = syncChangeListeners.indexOf(listener)
+    if (idx >= 0) syncChangeListeners.splice(idx, 1)
+  }
+}
+
+function notifySyncListeners(delta: SyncDelta, syncVersion: number): void {
+  for (const listener of syncChangeListeners) {
+    try {
+      listener(delta, syncVersion)
+    } catch (err) {
+      console.error('[SessionSync] Sync change listener error:', err)
+    }
+  }
+}
+
 function loadIndex(): SessionIndex {
   mkdirSync(CONVERSATIONS_DIR, { recursive: true })
   if (existsSync(INDEX_PATH)) {
     try {
-      return JSON.parse(readFileSync(INDEX_PATH, 'utf-8')) as SessionIndex
-    } catch {
-      // Corrupt index — rebuild
+      const raw = JSON.parse(readFileSync(INDEX_PATH, 'utf-8')) as SessionIndex
+      // Migrate old index format (no syncVersion/deltas)
+      if (raw.syncVersion == null) raw.syncVersion = 0
+      if (!raw.deltas) raw.deltas = []
+      return raw
+    } catch (err) {
+      console.error('[SessionSync] Corrupt index.json, rebuilding:', err)
     }
   }
   return rebuildIndex()
@@ -1197,21 +1240,53 @@ function saveIndex(index: SessionIndex): void {
   writeFileSync(INDEX_PATH, JSON.stringify(index, null, 2), 'utf-8')
 }
 
+function pushDelta(
+  index: SessionIndex,
+  action: 'I' | 'U' | 'D',
+  sessionId: string,
+  session?: SessionMeta,
+): SyncDelta {
+  index.syncVersion++
+  const delta: SyncDelta = {
+    action,
+    syncVersion: index.syncVersion,
+    sessionId,
+    session: action !== 'D' ? session : undefined,
+    timestamp: Date.now(),
+  }
+  index.deltas.push(delta)
+  // Trim ring buffer
+  if (index.deltas.length > DELTA_BUFFER_SIZE) {
+    index.deltas = index.deltas.slice(-DELTA_BUFFER_SIZE)
+  }
+  return delta
+}
+
 function updateIndex(meta: SessionMeta): void {
   const index = loadIndex()
   const existing = index.sessions.findIndex((s) => s.id === meta.id)
+  const action = existing >= 0 ? 'U' : 'I'
   if (existing >= 0) {
     index.sessions[existing] = meta
   } else {
     index.sessions.push(meta)
   }
+  const delta = pushDelta(index, action as 'I' | 'U', meta.id, meta)
   saveIndex(index)
+  notifySyncListeners(delta, index.syncVersion)
 }
 
 function removeFromIndex(id: string): void {
   const index = loadIndex()
+  const hadSession = index.sessions.some((s) => s.id === id)
   index.sessions = index.sessions.filter((s) => s.id !== id)
-  saveIndex(index)
+  if (hadSession) {
+    const delta = pushDelta(index, 'D', id)
+    saveIndex(index)
+    notifySyncListeners(delta, index.syncVersion)
+  } else {
+    saveIndex(index)
+  }
 }
 
 /** Rebuild index by scanning conversation directories */
@@ -1232,9 +1307,30 @@ function rebuildIndex(): SessionIndex {
     }
   }
 
-  const index: SessionIndex = { version: 1, sessions }
+  const index: SessionIndex = { version: 1, syncVersion: 0, sessions, deltas: [] }
   saveIndex(index)
   return index
+}
+
+// ── Sync query APIs ─────────────────────────────────────────────────
+
+/** Get the current sync version */
+export function getSyncVersion(): number {
+  return loadIndex().syncVersion
+}
+
+/** Get deltas since a given sync version. Returns null if the version is too old (requires full bootstrap). */
+export function getDeltasSince(sinceVersion: number): SyncDelta[] | null {
+  const index = loadIndex()
+  if (sinceVersion >= index.syncVersion) return []
+  if (sinceVersion === 0) return null // force full bootstrap
+
+  const deltas = index.deltas.filter((d) => d.syncVersion > sinceVersion)
+  // If the oldest available delta is newer than sinceVersion+1, we have a gap
+  if (deltas.length === 0 || deltas[0].syncVersion > sinceVersion + 1) {
+    return null // gap in deltas, need full bootstrap
+  }
+  return deltas
 }
 
 // ── Conversation workspace helpers ──────────────────────────────────

@@ -109,8 +109,15 @@ export class Connection {
 
   connect(config: ConnectionConfig) {
     // Clear persisted UI state so every connection starts fresh,
-    // but preserve machine credentials and model preference
-    const preserve = ['anton.machines', 'anton.lastMachineId', 'anton.selectedModel']
+    // but preserve machine credentials, model preference, session cache, and active conversation
+    const preserve = [
+      'anton.machines',
+      'anton.lastMachineId',
+      'anton.selectedModel',
+      'anton.sessionCache',
+      'anton.activeConversationId',
+      'anton.conversations', // keep until migration to sessionCache is complete
+    ]
     const saved = preserve.map((k) => [k, localStorage.getItem(k)] as const)
     localStorage.clear()
     for (const [k, v] of saved) {
@@ -192,6 +199,10 @@ export class Connection {
 
   sendSessionsList() {
     this.send(Channel.AI, { type: 'sessions_list' })
+  }
+
+  sendSessionsSync(lastSyncVersion: number) {
+    this.send(Channel.AI, { type: 'sessions_sync', lastSyncVersion })
   }
 
   sendSessionDestroy(id: string) {

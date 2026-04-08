@@ -79,6 +79,8 @@ export function handleWsMessage(channel: number, msg: IncomingMessage): void {
   const syncExempt = new Set([
     'session_history_response',
     'sessions_list_response',
+    'sessions_sync_response',
+    'session_sync',
     'session_created',
     'session_destroyed',
     'context_info',

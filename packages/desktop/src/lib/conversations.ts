@@ -36,6 +36,7 @@ export interface Conversation {
   provider?: string // model provider for this conversation
   model?: string // model name for this conversation
   contextInfo?: ConversationContextInfo // loaded context/memory info from server
+  pendingCreation?: boolean // true until server confirms session_created
 }
 
 const STORAGE_KEY = 'anton.conversations'
@@ -50,14 +51,13 @@ export function loadConversations(): Conversation[] {
 }
 
 export function saveConversations(conversations: Conversation[]) {
-  const sanitized = conversations.map((conversation) => ({
-    ...conversation,
-    messages: conversation.messages.map((message) => ({
-      ...message,
-      attachments: message.attachments?.map(({ data: _data, ...attachment }) => attachment),
-    })),
+  // Persist metadata only — messages are never stored in localStorage.
+  // They live in-memory (zustand) and are fetched from server on demand.
+  const metadataOnly = conversations.map(({ messages: _msgs, contextInfo: _ctx, ...rest }) => ({
+    ...rest,
+    messages: [], // always empty in storage
   }))
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized))
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(metadataOnly))
 }
 
 export function createConversation(
@@ -68,10 +68,10 @@ export function createConversation(
   model?: string,
   agentSessionId?: string,
 ): Conversation {
-  const id = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const resolvedSessionId = sessionId || `sess_${Date.now().toString(36)}`
   return {
-    id,
-    sessionId: sessionId || `sess_${Date.now().toString(36)}`,
+    id: resolvedSessionId, // id === sessionId — single identity
+    sessionId: resolvedSessionId,
     title: title || 'New conversation',
     messages: [],
     createdAt: Date.now(),
@@ -80,6 +80,7 @@ export function createConversation(
     agentSessionId,
     provider,
     model,
+    pendingCreation: true,
   }
 }
 

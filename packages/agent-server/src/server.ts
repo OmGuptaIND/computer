@@ -28,9 +28,11 @@ import {
   ensureDefaultProject,
   getAntonDir,
   getConversationMemoryDir,
+  getDeltasSince,
   getGlobalMemoryDir,
   getProjectSessionsDir,
   getProvidersList,
+  getSyncVersion,
   listProjectIndex,
   listProjectSessions,
   listProjectWorkflows,
@@ -41,6 +43,7 @@ import {
   loadProjectPreferences,
   loadProjects,
   loadUserRules,
+  onSyncChange,
   saveConfig,
   saveProjectInstructions,
   setDefault,
@@ -259,6 +262,21 @@ export class AgentServer {
     if (cleaned > 0) {
       log.info({ cleaned }, 'Cleaned expired sessions')
     }
+
+    // Push session index changes to connected clients in real-time
+    onSyncChange((delta, syncVersion) => {
+      if (this.activeClient) {
+        log.info(
+          { action: delta.action, sessionId: delta.sessionId, syncVersion },
+          'Pushing session sync delta to client',
+        )
+        this.sendToClient(Channel.AI, {
+          type: 'session_sync',
+          syncVersion,
+          delta,
+        })
+      }
+    })
   }
 
   setScheduler(scheduler: Scheduler) {
@@ -1261,6 +1279,10 @@ export class AgentServer {
         this.handleSessionsList()
         break
 
+      case 'sessions_sync':
+        this.handleSessionsSync(msg as { lastSyncVersion: number })
+        break
+
       case 'usage_stats':
         this.handleUsageStats()
         break
@@ -1610,8 +1632,8 @@ export class AgentServer {
     }
   }
 
-  private handleSessionsList() {
-    // Fast listing from index.json (no message loading)
+  /** Build enriched session list from disk + in-memory sessions */
+  private buildSessionList() {
     const metas = listSessionMetas()
 
     const sessions = metas.map((m) => ({
@@ -1623,7 +1645,8 @@ export class AgentServer {
       createdAt: m.createdAt,
       lastActiveAt: m.lastActiveAt,
       usage: m.usage,
-      // Persisted sessions not in memory: completed if they have messages, idle otherwise
+      archived: m.archived,
+      tags: m.tags,
       status: (this.activeTurns.has(m.id)
         ? 'working'
         : m.messageCount > 0
@@ -1644,6 +1667,8 @@ export class AgentServer {
           createdAt: info.createdAt,
           lastActiveAt: info.lastActiveAt,
           usage: info.usage,
+          archived: false,
+          tags: [],
           status: (this.activeTurns.has(id)
             ? 'working'
             : info.messageCount > 0
@@ -1654,11 +1679,52 @@ export class AgentServer {
     }
 
     sessions.sort((a, b) => b.lastActiveAt - a.lastActiveAt)
+    return sessions
+  }
 
+  private handleSessionsList() {
     this.sendToClient(Channel.AI, {
       type: 'sessions_list_response',
-      sessions,
+      sessions: this.buildSessionList(),
     })
+  }
+
+  private handleSessionsSync(msg: { lastSyncVersion: number }) {
+    const currentVersion = getSyncVersion()
+    const deltas = msg.lastSyncVersion > 0 ? getDeltasSince(msg.lastSyncVersion) : null
+
+    if (deltas !== null) {
+      log.info(
+        {
+          clientVersion: msg.lastSyncVersion,
+          serverVersion: currentVersion,
+          deltaCount: deltas.length,
+        },
+        'Session sync: incremental',
+      )
+      this.sendToClient(Channel.AI, {
+        type: 'sessions_sync_response',
+        syncVersion: currentVersion,
+        full: false,
+        deltas,
+      })
+    } else {
+      const sessions = this.buildSessionList()
+      log.info(
+        {
+          clientVersion: msg.lastSyncVersion,
+          serverVersion: currentVersion,
+          sessionCount: sessions.length,
+        },
+        'Session sync: full bootstrap',
+      )
+      this.sendToClient(Channel.AI, {
+        type: 'sessions_sync_response',
+        syncVersion: currentVersion,
+        full: true,
+        sessions,
+      })
+    }
   }
 
   private handleUsageStats() {

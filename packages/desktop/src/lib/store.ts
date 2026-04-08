@@ -1,6 +1,7 @@
 import { Channel } from '@anton/protocol'
 import { create } from 'zustand'
 import { type ConnectionStatus, connection } from './connection.js'
+import { migrateFromLegacyConversations } from './conversationCache.js'
 import {
   type Conversation,
   autoTitle,
@@ -178,6 +179,9 @@ interface AppState {
 }
 
 export const useStore = create<AppState>((set, get) => {
+  // Migrate from old conversation format if needed (conv_xxx IDs + messages → sessionId + metadata only)
+  migrateFromLegacyConversations()
+
   // Load persisted conversations
   const persisted = loadConversations()
   const savedActiveConvId = localStorage.getItem(ACTIVE_CONV_KEY)
@@ -363,7 +367,6 @@ export const useStore = create<AppState>((set, get) => {
           return { ...c, messages, title, updatedAt: Date.now() }
         })
 
-        saveConversations(conversations)
         return { conversations }
       })
     },
@@ -381,7 +384,6 @@ export const useStore = create<AppState>((set, get) => {
           return { ...c, messages, title, updatedAt: Date.now() }
         })
 
-        saveConversations(conversations)
         return { conversations }
       })
     },
@@ -428,7 +430,6 @@ export const useStore = create<AppState>((set, get) => {
           state._sessionAssistantMsgIds.set(sessionId, newMsgId)
         }
 
-        saveConversations(conversations)
         // Associate pending citation sources from per-session state
         const citationUpdate: Record<string, unknown> = {}
         if (newMsgId && sessionId) {
@@ -485,7 +486,6 @@ export const useStore = create<AppState>((set, get) => {
           state._sessionAssistantMsgIds.set(sessionId, newMsgId)
         }
 
-        saveConversations(conversations)
         // Associate pending citation sources from per-session state
         const citationUpdate: Record<string, unknown> = {}
         if (newMsgId) {
@@ -569,7 +569,6 @@ export const useStore = create<AppState>((set, get) => {
           return { ...c, messages, updatedAt: Date.now() }
         })
 
-        saveConversations(conversations)
         return { conversations }
       })
     },
@@ -598,7 +597,6 @@ export const useStore = create<AppState>((set, get) => {
           return { ...c, messages, updatedAt: Date.now() }
         })
 
-        saveConversations(conversations)
         return { conversations }
       })
     },
@@ -636,7 +634,6 @@ export const useStore = create<AppState>((set, get) => {
           if (c.sessionId !== sessionId) return c
           return { ...c, messages: serverMessages }
         })
-        saveConversations(conversations)
         return { conversations }
       })
 
@@ -689,7 +686,6 @@ export const useStore = create<AppState>((set, get) => {
           if (c.sessionId !== sessionId) return c
           return { ...c, messages: [...newMessages, ...c.messages] }
         })
-        saveConversations(conversations)
         return { conversations }
       })
 
