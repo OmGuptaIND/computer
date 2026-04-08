@@ -1,19 +1,25 @@
 // Shared model display utilities used by ModelSelector, SettingsModal, etc.
 
 import anthropicIcon from '../../assets/llm/anthropic_light.svg'
+import antonIcon from '../../assets/llm/anton.svg'
 import deepseekIcon from '../../assets/llm/deepseek.svg'
 import geminiIcon from '../../assets/llm/gemini.svg'
+import groqIcon from '../../assets/llm/groq.svg'
 import kimiIcon from '../../assets/llm/kimi_light.svg'
 import metaIcon from '../../assets/llm/meta_light.svg'
 import mistralIcon from '../../assets/llm/mistral.svg'
+import openaiIcon from '../../assets/llm/openai.svg'
 import openrouterIcon from '../../assets/llm/openrouter_light.svg'
 import xaiIcon from '../../assets/llm/xai_light.svg'
 
 export const providerIcons: Record<string, string> = {
   anthropic: anthropicIcon,
+  openai: openaiIcon,
   google: geminiIcon,
+  groq: groqIcon,
   openrouter: openrouterIcon,
   mistral: mistralIcon,
+  anton: antonIcon,
   deepseek: deepseekIcon,
   meta: metaIcon,
   xai: xaiIcon,
