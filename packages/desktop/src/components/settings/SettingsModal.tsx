@@ -191,20 +191,49 @@ function ProviderIcon({ provider, size = 16 }: { provider: string; size?: number
   )
 }
 
-/** Group models by prefix for providers like openrouter (e.g. "anthropic/..." → "Anthropic") */
+/** Well-known model prefix → group label for providers without slash-based grouping */
+const MODEL_PREFIX_GROUPS: [RegExp, string][] = [
+  [/^gpt-|^o[34]/i, 'OpenAI'],
+  [/^claude-/i, 'Anthropic'],
+  [/^gemini-/i, 'Google'],
+  [/^deepseek-/i, 'DeepSeek'],
+  [/^grok-/i, 'xAI'],
+  [/^qwen/i, 'Qwen'],
+  [/^minimax-/i, 'MiniMax'],
+  [/^kimi-/i, 'Kimi'],
+  [/^llama-|^llama\d/i, 'Meta'],
+  [/^mistral-|^codestral/i, 'Mistral'],
+  [/^glm-/i, 'GLM'],
+]
+
+function inferGroup(modelId: string): string {
+  for (const [re, label] of MODEL_PREFIX_GROUPS) {
+    if (re.test(modelId)) return label
+  }
+  return 'Other'
+}
+
+/** Group models by provider — uses slash prefix (openrouter) or name heuristics (anton) */
 function groupModels(modelIds: string[]): { label: string | null; models: string[] }[] {
-  const hasSlash = modelIds.some((m) => m.includes('/'))
-  if (!hasSlash) return [{ label: null, models: modelIds }]
+  if (modelIds.length <= 6) return [{ label: null, models: modelIds }]
 
   const groups = new Map<string, string[]>()
+  const hasSlash = modelIds.some((m) => m.includes('/'))
+
   for (const m of modelIds) {
-    const slash = m.indexOf('/')
-    const prefix = slash > 0 ? m.slice(0, slash) : '_other'
-    if (!groups.has(prefix)) groups.set(prefix, [])
-    groups.get(prefix)!.push(m)
+    let key: string
+    if (hasSlash) {
+      const slash = m.indexOf('/')
+      key = slash > 0 ? m.slice(0, slash) : '_other'
+    } else {
+      key = inferGroup(m)
+    }
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(m)
   }
+
   return Array.from(groups.entries()).map(([key, models]) => ({
-    label: key === '_other' ? 'Other' : key.charAt(0).toUpperCase() + key.slice(1),
+    label: key === '_other' ? 'Other' : hasSlash ? key.charAt(0).toUpperCase() + key.slice(1) : key,
     models,
   }))
 }
