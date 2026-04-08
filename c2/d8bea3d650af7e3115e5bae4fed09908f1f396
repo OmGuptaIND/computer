@@ -1,0 +1,25 @@
+packages/desktop/src/components/chat/ChatInput.tsx
+  169babc3f316cfcf 2,141-144,232-256,294,298-300,302,304-315
+packages/desktop/src/index.css
+  169babc3f316cfcf 1033-1036,1039,1043-1053,1056-1057,1060-1061,1064-1067,1069-1071,1074-1075,1078-1080,1083-1088,1091,1093-1099,1102-1127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "c2d8bea3d650af7e3115e5bae4fed09908f1f396",
+  "prompts": {
+    "169babc3f316cfcf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f69d7d7a-1868-41ff-9648-de950fb56398",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 119,
+      "total_deletions": 72,
+      "accepted_lines": 119,
+      "overriden_lines": 0
+    }
+  }
+}
