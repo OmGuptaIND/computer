@@ -1,0 +1,35 @@
+packages/desktop/src/index.css
+  3249194795ca79af 2176-2208
+packages/desktop/src/lib/store.ts
+  3249194795ca79af 36
+packages/desktop/src/components/AgentChat.tsx
+  3249194795ca79af 247,249
+packages/desktop/src/lib/store/handlers/sessionHandler.ts
+  3249194795ca79af 102-103,107,109
+packages/desktop/src/components/home/TaskDetailView.tsx
+  3249194795ca79af 127,129
+packages/desktop/src/lib/store/types.ts
+  3249194795ca79af 29
+packages/desktop/src/components/chat/MessageBubble.tsx
+  3249194795ca79af 73-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "684a525c2989611f8f3733663c27862879947c4d",
+  "prompts": {
+    "3249194795ca79af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f948cd8b-7d86-4b94-8d24-372b8f7a7a1e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 56,
+      "total_deletions": 16,
+      "accepted_lines": 56,
+      "overriden_lines": 0
+    }
+  }
+}
