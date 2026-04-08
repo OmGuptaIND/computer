@@ -230,7 +230,6 @@ export function AppSetup({
   const isConfigured = instances.length > 0
   const isOAuth = entry.type === 'oauth'
   const allEnvFilled = entry.requiredEnv.every((k: string) => envValues[k])
-  const allEnvFilled = entry.requiredEnv.every((k) => envValues[k])
   const canAddAnother = entry.multiAccount && isConfigured
 
   const startOAuthFlow = (instanceId: string, registryId?: string) => {

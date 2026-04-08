@@ -459,6 +459,10 @@ export class Connection {
     this.send(Channel.AI, { type: 'connector_oauth_disconnect', provider })
   }
 
+  sendSkillList() {
+    this.send(Channel.AI, { type: 'skill_list' })
+  }
+
   sendConnectorSetToolPermission(
     id: string,
     toolName: string,
