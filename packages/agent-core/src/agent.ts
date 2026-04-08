@@ -50,6 +50,47 @@ import { executeWebSearch } from './tools/web-search.js'
 // Re-export for session.ts
 export { needsConfirmation } from './tools/shell.js'
 
+// ── Sub-agent type specializations ──────────────────────────────
+
+export type SubAgentType = 'research' | 'execute' | 'verify'
+
+const SUB_AGENT_TYPE_PREFIXES: Record<SubAgentType, string> = {
+  research: `You are a research sub-agent. Your job is to thoroughly investigate and gather information, then return a clear, structured summary of your findings.
+
+Rules:
+- Focus on FINDING and ORGANIZING information, not on making changes.
+- Use web_search, browser (fetch/extract), filesystem (read/search), code_search, and http_api to gather data.
+- Do NOT create, modify, or delete files unless the task explicitly asks you to save results somewhere.
+- Do NOT run shell commands that modify system state (installs, service changes).
+- Structure your final response with clear sections: what you found, from which sources, and your assessment of confidence/completeness.
+- If you find conflicting information, note the discrepancy rather than silently picking one.
+
+Task:
+`,
+  execute: `You are an execution sub-agent. Your job is to carry out a specific task to completion, verify your work, and report the result.
+
+Rules:
+- Execute the task precisely as described. Do not expand scope beyond what is asked.
+- Verify your work: run the code, check the output, test the endpoint, read back the file. Never assume success.
+- If you encounter an error, diagnose and fix it. Retry up to 3 times before reporting failure.
+- Keep your response focused: what you did, what the result was, and any issues encountered.
+- Do NOT ask the user for clarification — work with what you have. If something is ambiguous, make a reasonable assumption and note it.
+
+Task:
+`,
+  verify: `You are a verification sub-agent. Your job is to check whether something works correctly and report a clear verdict.
+
+Rules:
+- Run concrete checks: execute tests, build commands, linters, curl endpoints, read logs. Do not just review code by eye.
+- Report a clear verdict: PASS (everything works), FAIL (something is broken — list what), or PARTIAL (some things work, some don't).
+- For each check, report: what you tested, the command/action you ran, and the result.
+- Do NOT fix problems. Report them clearly so the parent agent can decide what to do.
+- If the task does not specify what to check, look for: test suites, build scripts, linter configs, and verify each one.
+
+Task:
+`,
+}
+
 /** Turn a 5-field cron expression into a short human-readable string. */
 function humanizeCron(expr: string): string {
   const parts = expr.trim().split(/\s+/)
@@ -900,15 +941,31 @@ export function buildTools(
         name: 'sub_agent',
         label: 'Sub Agent',
         description:
-          'Spawn a sub-agent to handle a complex task independently. ' +
-          'The sub-agent has its own context and access to all tools including project files and MCP connectors. ' +
-          'Use for tasks that can be parallelized or need focused work — e.g. research, code analysis, file operations, API calls. ' +
-          'Multiple sub_agent calls in the same response run in parallel. ' +
-          'The sub-agent works autonomously until the task is complete, then returns its final output as the result.',
+          'Spawn a sub-agent for focused, independent work with its own context and full tool access. ' +
+          'Use proactively for: parallel research (one sub-agent per topic), multi-file changes, independent subtasks, and verification after non-trivial work. ' +
+          'Set `type` to specialize: "research" for information gathering, "execute" for carrying out specific tasks, "verify" for testing/validation. Omit for general-purpose. ' +
+          'Multiple sub_agent calls in the same response run in parallel — always launch independent work concurrently. ' +
+          'Write self-contained task descriptions: the sub-agent cannot see your conversation, so include all file paths, context, and requirements.',
         parameters: Type.Object({
           task: Type.String({
-            description: 'Detailed description of the task for the sub-agent to complete',
+            description: 'Detailed, self-contained description of the task. Include all file paths, context, constraints, and expected output format.',
           }),
+          type: Type.Optional(
+            Type.Union(
+              [
+                Type.Literal('research'),
+                Type.Literal('execute'),
+                Type.Literal('verify'),
+              ],
+              {
+                description:
+                  'Sub-agent specialization. ' +
+                  'research: deep information gathering from web/files/APIs — does not modify files. ' +
+                  'execute: carry out a specific build/change task to completion and verify the result. ' +
+                  'verify: run tests/builds/checks and report PASS/FAIL/PARTIAL verdict without fixing issues.',
+              },
+            ),
+          ),
         }),
         async execute(toolCallId, params) {
           const onEvent = callbacks?.onSubAgentEvent
@@ -918,6 +975,7 @@ export function buildTools(
             type: 'sub_agent_start',
             toolCallId,
             task: params.task,
+            agentType: params.type,
             parentToolCallId: toolCallId,
           })
 
@@ -971,7 +1029,10 @@ export function buildTools(
               subSession.setConfirmHandler(confirmHandler)
             }
 
-            for await (const event of subSession.processMessage(params.task)) {
+            const typePrefix = params.type ? SUB_AGENT_TYPE_PREFIXES[params.type] : ''
+            const subAgentMessage = typePrefix ? `${typePrefix}${params.task}` : params.task
+
+            for await (const event of subSession.processMessage(subAgentMessage)) {
               // Forward intermediate events to client, tagged with parentToolCallId
               if (onEvent && event.type !== 'done' && event.type !== 'title_update') {
                 onEvent({

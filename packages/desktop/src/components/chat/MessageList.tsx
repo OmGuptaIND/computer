@@ -202,6 +202,7 @@ export function MessageList({ messages }: Props) {
                   key={item.id}
                   toolCallId={item.toolCallId}
                   task={item.task}
+                  agentType={item.agentType}
                   actions={item.actions}
                   result={item.result}
                   defaultExpanded={idx === grouped.length - 1 && agentStatus === 'working'}

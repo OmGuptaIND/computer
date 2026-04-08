@@ -556,6 +556,7 @@ export interface AiSubAgentStartMessage {
   type: 'sub_agent_start'
   toolCallId: string // the parent tool_call ID that spawned this sub-agent
   task: string
+  agentType?: 'research' | 'execute' | 'verify'
   sessionId?: string
 }
 
