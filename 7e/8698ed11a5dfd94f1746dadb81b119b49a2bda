@@ -1,0 +1,33 @@
+packages/desktop/src/components/skills/SkillDetail.tsx
+  fed50073ee076fcb 17,59-65,104,110,124
+packages/desktop/src/components/connectors/ConnectorsView.tsx
+  fed50073ee076fcb 446
+packages/agent-config/src/skills.ts
+  fed50073ee076fcb 24-25
+packages/agent-config/src/references.ts
+  fed50073ee076fcb 30-31
+packages/agent-config/src/projects.ts
+  fed50073ee076fcb 39-40,44-45
+packages/desktop/src/components/connectors/ConnectorsPage.tsx
+  fed50073ee076fcb 276,387
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "7e8698ed11a5dfd94f1746dadb81b119b49a2bda",
+  "prompts": {
+    "fed50073ee076fcb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f0f954b-bbba-4701-9e75-2118e12c75fd",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 60,
+      "total_deletions": 86,
+      "accepted_lines": 44,
+      "overriden_lines": 0
+    }
+  }
+}
