@@ -144,11 +144,8 @@ export function Sidebar({ onViewChange, onOpenSettings }: Props) {
     }
   }
 
-  const handleDelete = (e: React.MouseEvent, convId: string, sessionId: string) => {
+  const handleDelete = (e: React.MouseEvent, convId: string) => {
     e.stopPropagation()
-    if (sessionId) {
-      sessionStore.getState().destroySession(sessionId)
-    }
     deleteConversation(convId)
   }
 
@@ -381,7 +378,7 @@ export function Sidebar({ onViewChange, onOpenSettings }: Props) {
                                 uiStore.getState().setActiveView('chat')
                               }
                             }}
-                            onDelete={(e) => handleDelete(e, conv.id, conv.sessionId)}
+                            onDelete={(e) => handleDelete(e, conv.id)}
                           />
                         ))}
                       </>
@@ -405,7 +402,7 @@ export function Sidebar({ onViewChange, onOpenSettings }: Props) {
                                 uiStore.getState().setActiveView('chat')
                               }
                             }}
-                            onDelete={(e) => handleDelete(e, conv.id, conv.sessionId)}
+                            onDelete={(e) => handleDelete(e, conv.id)}
                           />
                         ))}
                       </>
@@ -432,7 +429,7 @@ export function Sidebar({ onViewChange, onOpenSettings }: Props) {
                                 uiStore.getState().setActiveView('chat')
                               }
                             }}
-                            onDelete={(e) => handleDelete(e, conv.id, conv.sessionId)}
+                            onDelete={(e) => handleDelete(e, conv.id)}
                           />
                         ))}
                       </>
