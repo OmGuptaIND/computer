@@ -223,6 +223,7 @@ function ProviderPanel({
   const [apiKey, setApiKey] = useState('')
   const [keySaved, setKeySaved] = useState(false)
   const [showKey, setShowKey] = useState(false)
+  const [showKeyInput, setShowKeyInput] = useState(false)
   const [models, setModels] = useState<string[]>([...provider.models])
   const [newModel, setNewModel] = useState('')
   const [modelsSaved, setModelsSaved] = useState(false)
@@ -233,6 +234,7 @@ function ProviderPanel({
     setApiKey('')
     setKeySaved(false)
     setShowKey(false)
+    setShowKeyInput(false)
     setModels([...provider.models])
     setModelsSaved(false)
     setNewModel('')
@@ -287,52 +289,80 @@ function ProviderPanel({
 
   const modelGroups = groupModels(provider.models)
 
+  const keyForm = (
+    <form onSubmit={handleKeySubmit} className="provider-detail__key-form">
+      <div className="provider-detail__key-input-wrap">
+        <input
+          type={showKey ? 'text' : 'password'}
+          className="provider-detail__key-input"
+          placeholder={
+            provider.hasApiKey ? 'Enter new API key...' : 'Paste your API key to get started'
+          }
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <button
+          type="button"
+          className="provider-detail__key-eye"
+          onClick={() => setShowKey(!showKey)}
+          tabIndex={-1}
+        >
+          {showKey ? <EyeOff size={14} strokeWidth={1.5} /> : <Eye size={14} strokeWidth={1.5} />}
+        </button>
+      </div>
+      <button
+        type="submit"
+        disabled={!apiKey.trim()}
+        className={`provider-detail__key-save ${keySaved ? 'provider-detail__key-save--saved' : ''}`}
+      >
+        {keySaved ? (
+          <>
+            <Check size={14} strokeWidth={1.5} /> Saved
+          </>
+        ) : (
+          'Save'
+        )}
+      </button>
+      {provider.hasApiKey && showKeyInput && (
+        <button
+          type="button"
+          className="provider-detail__key-cancel"
+          onClick={() => {
+            setShowKeyInput(false)
+            setApiKey('')
+          }}
+        >
+          Cancel
+        </button>
+      )}
+    </form>
+  )
+
   return (
     <div className="provider-detail">
-      {/* API Key */}
-      <div className="provider-detail__key">
-        <div className="provider-detail__key-label">API Key</div>
-        <form onSubmit={handleKeySubmit} className="provider-detail__key-form">
-          <div className="provider-detail__key-input-wrap">
-            <input
-              type={showKey ? 'text' : 'password'}
-              className="provider-detail__key-input"
-              placeholder={
-                provider.hasApiKey ? 'Replace existing key...' : 'Paste your API key to get started'
-              }
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-            />
-            <button
-              type="button"
-              className="provider-detail__key-eye"
-              onClick={() => setShowKey(!showKey)}
-              tabIndex={-1}
-            >
-              {showKey ? (
-                <EyeOff size={14} strokeWidth={1.5} />
-              ) : (
-                <Eye size={14} strokeWidth={1.5} />
-              )}
-            </button>
+      {/* API Key — collapsed when already configured */}
+      {provider.hasApiKey && !showKeyInput ? (
+        <div className="provider-detail__key-status">
+          <div className="provider-detail__key-status-left">
+            <Check size={14} strokeWidth={1.5} className="provider-detail__key-status-icon" />
+            <span>API key configured</span>
           </div>
           <button
-            type="submit"
-            disabled={!apiKey.trim()}
-            className={`provider-detail__key-save ${keySaved ? 'provider-detail__key-save--saved' : ''}`}
+            type="button"
+            className="provider-detail__key-change"
+            onClick={() => setShowKeyInput(true)}
           >
-            {keySaved ? (
-              <>
-                <Check size={14} strokeWidth={1.5} /> Saved
-              </>
-            ) : (
-              'Save'
-            )}
+            Change key
           </button>
-        </form>
-      </div>
+        </div>
+      ) : (
+        <div className="provider-detail__key">
+          {!provider.hasApiKey && <div className="provider-detail__key-label">API Key</div>}
+          {keyForm}
+        </div>
+      )}
 
       {/* Models */}
       {(provider.hasApiKey || keySaved) && (
