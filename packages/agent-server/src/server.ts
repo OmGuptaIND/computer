@@ -3339,6 +3339,8 @@ export class AgentServer {
       } else {
         log.warn('Telegram token present but DOMAIN not set; webhook not registered')
       }
+      // Register slash commands with Telegram's Bot Commands menu (fire-and-forget)
+      this.telegramProvider.registerCommands().catch(() => {})
     }
 
     // ── Slack bot ────────────────────────────────────────────────

@@ -8,13 +8,22 @@
  *     parallel — agents aren't safe against the same Session at once)
  *   - bounded queue depth so a spammed channel can't grow memory unboundedly
  *   - response sanitization (strips <think> blocks some models emit)
+ *   - slash command interception (zero LLM tokens)
+ *   - project-aware sessions via webhook bindings
  */
 
 import type { AgentConfig } from '@anton/agent-config'
+import {
+  buildProjectContext,
+  ensureDefaultProject,
+  loadProject,
+} from '@anton/agent-config'
 import type { McpManager, Session, SurfaceInfo } from '@anton/agent-core'
 import { createSession, resumeSession } from '@anton/agent-core'
+import { executeCommand, type CommandContext } from '@anton/agent-core'
 import type { ConnectorManager } from '@anton/connectors'
 import { createLogger } from '@anton/logger'
+import { extractBindingKey, getBinding, saveBinding, saveModelOverride } from './bindings.js'
 import type { CanonicalEvent, OutboundImage, WebhookRunResult } from './provider.js'
 
 const log = createLogger('webhook-runner')
@@ -53,6 +62,9 @@ export class WebhookAgentRunner {
    * final text plus any outbound images the session emitted during the
    * turn (currently: the last browser screenshot, if any).
    *
+   * Slash commands (e.g. /help, /project) are intercepted before the
+   * queue — zero LLM tokens, instant response.
+   *
    * If the same session is already mid-flight, this call queues behind the
    * in-flight one and resolves once its turn runs. The router then calls
    * `provider.reply()` with this event's response, preserving FIFO order.
@@ -61,6 +73,10 @@ export class WebhookAgentRunner {
    * to protect memory) — the router treats empty text + no images as no-op.
    */
   run(event: CanonicalEvent): Promise<WebhookRunResult> {
+    // ── Command interception (before queue, before LLM) ──────────
+    const cmdResult = this.tryCommand(event)
+    if (cmdResult) return Promise.resolve(cmdResult)
+
     const existing = this.chains.get(event.sessionId)
     if (existing && existing.depth >= MAX_QUEUE_DEPTH) {
       log.warn({ sessionId: event.sessionId, depth: existing.depth }, 'queue full, dropping event')
@@ -184,9 +200,44 @@ export class WebhookAgentRunner {
     }
   }
 
+  /** Remove a session from memory. Next message will create a fresh one. */
+  evictSession(sessionId: string): void {
+    this.sessions.delete(sessionId)
+  }
+
   private getOrCreateSession(sessionId: string, surface?: SurfaceInfo): Session {
     let session = this.sessions.get(sessionId)
     if (session) return session
+
+    // ── Resolve project binding ────────────────────────────────────
+    const bindingKey = extractBindingKey(sessionId)
+    let binding = getBinding(bindingKey)
+
+    if (!binding) {
+      // No binding yet — default to "My Computer"
+      const defaultProject = ensureDefaultProject(this.config)
+      saveBinding(bindingKey, defaultProject.id)
+      binding = { projectId: defaultProject.id }
+      log.info({ sessionId, bindingKey, projectId: binding.projectId }, 'bound to default project')
+    }
+
+    const { projectId } = binding
+    const project = loadProject(projectId)
+    const projectContext = project ? buildProjectContext(project, projectId) : undefined
+    const projectWorkspacePath = project?.workspacePath
+    const projectType = project?.type
+
+    const sessionOpts = {
+      mcpManager: this.mcpManager,
+      connectorManager: this.connectorManager,
+      surface,
+      projectId,
+      projectContext,
+      projectWorkspacePath,
+      projectType,
+      // Apply model override from binding (e.g. from /model command)
+      ...(binding.model ? { model: binding.model } : {}),
+    }
 
     // resumeSession is a "try to rehydrate" helper — it can throw on
     // corrupted state, version skew, or filesystem errors. Historically we
@@ -194,27 +245,39 @@ export class WebhookAgentRunner {
     // Treat any throw the same as "no saved session" and fall through to a
     // fresh createSession so the conversation keeps flowing.
     try {
-      session =
-        resumeSession(sessionId, this.config, {
-          mcpManager: this.mcpManager,
-          connectorManager: this.connectorManager,
-          surface,
-        }) ?? undefined
+      session = resumeSession(sessionId, this.config, sessionOpts) ?? undefined
     } catch (err) {
       log.warn({ sessionId, err }, 'resumeSession threw, starting fresh')
       session = undefined
     }
 
     if (!session) {
-      session = createSession(sessionId, this.config, {
-        mcpManager: this.mcpManager,
-        connectorManager: this.connectorManager,
-        surface,
-      })
+      session = createSession(sessionId, this.config, sessionOpts)
     }
 
     this.sessions.set(sessionId, session)
     return session
+  }
+
+  /**
+   * Try to execute a slash command from the event text.
+   * Returns null if the text is not a command.
+   */
+  private tryCommand(event: CanonicalEvent): WebhookRunResult | null {
+    const bindingKey = extractBindingKey(event.sessionId)
+
+    const ctx: CommandContext = {
+      sessionId: event.sessionId,
+      evictSession: () => this.evictSession(event.sessionId),
+      getSession: () => this.sessions.get(event.sessionId),
+      getProjectId: () => getBinding(bindingKey)?.projectId,
+      saveProjectBinding: (projectId: string) => saveBinding(bindingKey, projectId),
+      saveModelOverride: (model: string) => saveModelOverride(bindingKey, model),
+    }
+
+    const result = executeCommand(event.text, ctx)
+    if (!result) return null
+    return { text: result.text, images: [] }
   }
 }
 
