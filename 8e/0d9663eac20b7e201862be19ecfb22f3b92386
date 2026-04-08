@@ -1,0 +1,41 @@
+packages/agent-server/src/server.ts
+  7680c3a06433b8ac 82,3299,3301-3306,3311-3315,3446,3451,3454-3455,3457-3460,3506-3509,3536,3540,3542-3545,3830-3834,3893-3908,3918-3920,3922-3935,3940-3945,3955-3963,3965
+packages/agent-server/src/oauth/account-identity.ts
+  7680c3a06433b8ac 1-107
+packages/agent-server/src/oauth/index.ts
+  7680c3a06433b8ac 4
+packages/desktop/src/lib/connection.ts
+  7680c3a06433b8ac 426-429,454-455
+packages/agent-config/src/config.ts
+  7680c3a06433b8ac 192-199,1463,1465,1517,1538,1546,1557,1565,1576,1601,1653,1671,1692,1734,1758,1803
+packages/desktop/src/lib/store/connectorStore.ts
+  7680c3a06433b8ac 69-72,79,121
+packages/desktop/src/components/connectors/ConnectorsPage.tsx
+  7680c3a06433b8ac 127-130,134,151-153,158,167-170,208,213,228-230,233,235,237-238,240,242,250,252,260-263,273,276-279,283-305,362-365,367,369,372,374-375,377-378,382,384-388,393,396,399,445-481,485-499,502-505,508,604-605,619
+packages/protocol/src/messages.ts
+  7680c3a06433b8ac 963-965,987-989,1010,1012,1104
+packages/desktop/src/components/connectors/ConnectorsView.tsx
+  7680c3a06433b8ac 263,268
+packages/connectors/src/connector-manager.ts
+  7680c3a06433b8ac 2,24-32,59-64,66,79-82,98-99,183-186,195-248,254-255,263-264,273-279,284-287,292-299,325-368
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "8e0d9663eac20b7e201862be19ecfb22f3b92386",
+  "prompts": {
+    "7680c3a06433b8ac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ea290e2-aaf6-49ab-af64-9aa636ec1d58",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 567,
+      "total_deletions": 149,
+      "accepted_lines": 532,
+      "overriden_lines": 0
+    }
+  }
+}
