@@ -1,12 +1,12 @@
 {
-  "version": "1.0.44",
-  "gitHash": "723a7c6",
+  "version": "1.0.45",
+  "gitHash": "",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
-  "changelog": "Fixes:\n- remove changelog from update modal so update button is visible\n- stop dropping Slack app_mention events in active threads\n- show connected email for Google OAuth connectors",
-  "publishedAt": "2026-04-08T16:35:15.446Z",
-  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.44/anton-cli.mjs",
+  "changelog": "Features:\n- model cleanup, thinking toggle, plan mode, timezone support\n\nFixes:\n- readme\n- delete task session from backend when conversation is removed",
+  "publishedAt": "2026-04-08T18:34:11.019Z",
+  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.45/anton-cli.mjs",
   "sidecar": {
-    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.44/anton-sidecar-linux-arm64",
-    "linux-amd64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.44/anton-sidecar-linux-amd64"
+    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.45/anton-sidecar-linux-arm64",
+    "linux-amd64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.45/anton-sidecar-linux-amd64"
   }
 }
