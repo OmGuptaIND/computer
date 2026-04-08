@@ -35,13 +35,13 @@ import { completeSimple, getModel as piGetModel } from '@mariozechner/pi-ai'
 import type { Api, ImageContent, Model, TextContent, ThinkingContent } from '@mariozechner/pi-ai'
 import { getAntonModel } from './anton-models.js'
 import {
+  type ExtractionResult,
+  advanceExtractionCursor,
   createExtractionState,
   createResumedExtractionState,
   extractMemories,
   shouldExtract,
   trackUserMessage,
-  advanceExtractionCursor,
-  type ExtractionResult,
 } from './memory-extraction.js'
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
@@ -146,7 +146,12 @@ export type SessionEvent =
       model?: string
     }
   | { type: 'error'; message: string }
-  | { type: 'sub_agent_start'; toolCallId: string; task: string; agentType?: import('./agent.js').SubAgentType }
+  | {
+      type: 'sub_agent_start'
+      toolCallId: string
+      task: string
+      agentType?: import('./agent.js').SubAgentType
+    }
   | { type: 'sub_agent_end'; toolCallId: string; success: boolean }
   | { type: 'sub_agent_progress'; toolCallId: string; content: string }
   | { type: 'tasks_update'; tasks: import('@anton/protocol').TaskItem[] }
@@ -525,26 +530,24 @@ export class Session {
           }
         }
 
-        // Filesystem write: check for dangerous target paths
-        if (ctx.toolCall.name === 'filesystem') {
-          const args = ctx.args as { operation: string; path: string }
-          if (args.operation === 'write') {
-            const { isDangerousFsWrite } = await import('./tools/security.js')
-            if (isDangerousFsWrite(args.path)) {
-              if (this.confirmHandler) {
-                const approved = await this.confirmHandler(
-                  `Write to ${args.path}`,
-                  'Writing to a critical system directory',
-                )
-                if (!approved) {
-                  return { block: true, reason: 'File write denied by user.' }
-                }
-              } else {
-                return {
-                  block: true,
-                  reason:
-                    'Write to system directory requires confirmation but no handler available.',
-                }
+        // Write/edit tools: check for dangerous target paths
+        if (ctx.toolCall.name === 'write' || ctx.toolCall.name === 'edit') {
+          const args = ctx.args as { file_path?: string }
+          const writePath = args.file_path || ''
+          const { isDangerousFsWrite } = await import('./tools/security.js')
+          if (isDangerousFsWrite(writePath)) {
+            if (this.confirmHandler) {
+              const approved = await this.confirmHandler(
+                `Write to ${writePath}`,
+                'Writing to a critical system directory',
+              )
+              if (!approved) {
+                return { block: true, reason: 'File write denied by user.' }
+              }
+            } else {
+              return {
+                block: true,
+                reason: 'Write to system directory requires confirmation but no handler available.',
               }
             }
           }
@@ -575,9 +578,10 @@ export class Session {
     // Initialize extraction state — for resumed sessions, set cursor to current
     // message count so we don't re-scan historical messages
     const existingMessageCount = (opts.existingMessages || []).length
-    this._extractionState = existingMessageCount > 0
-      ? createResumedExtractionState(existingMessageCount)
-      : createExtractionState()
+    this._extractionState =
+      existingMessageCount > 0
+        ? createResumedExtractionState(existingMessageCount)
+        : createExtractionState()
   }
 
   setConfirmHandler(handler: ConfirmHandler) {
@@ -1035,9 +1039,10 @@ export class Session {
     const messages = this.piAgent.state.messages
     // Clamp cursor — compaction can shrink the message array, making the old
     // index point past the end. In that case, reset to 0 (scan everything).
-    const sinceIndex = this._extractionState.lastProcessedIndex <= messages.length
-      ? this._extractionState.lastProcessedIndex
-      : 0
+    const sinceIndex =
+      this._extractionState.lastProcessedIndex <= messages.length
+        ? this._extractionState.lastProcessedIndex
+        : 0
 
     this.log.info(
       { sinceIndex, messageCount: messages.length - sinceIndex },
@@ -1406,9 +1411,9 @@ export class Session {
         })
       }
 
-      // File writes
-      if (call.toolName === 'filesystem' && toolInput.operation === 'write' && toolInput.content) {
-        const filepath = toolInput.path as string
+      // File writes (write tool)
+      if (call.toolName === 'write' && toolInput.file_path && toolInput.content) {
+        const filepath = toolInput.file_path as string
         const filename = filepath?.split('/').pop() || 'untitled'
         const ext = filename.split('.').pop()?.toLowerCase() || ''
         const langMap: Record<string, string> = {
@@ -1759,9 +1764,9 @@ export class Session {
       }
     }
 
-    // File writes
-    if (toolName === 'filesystem' && toolInput.operation === 'write' && toolInput.content) {
-      const filepath = toolInput.path as string
+    // File writes (write tool)
+    if (toolName === 'write' && toolInput.file_path && toolInput.content) {
+      const filepath = toolInput.file_path as string
       const filename = filepath?.split('/').pop() || 'untitled'
       const language = langFromPath(filepath || '')
       return {

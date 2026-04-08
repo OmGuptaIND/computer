@@ -45,7 +45,7 @@ export const contextAwarenessDataset: EvalDataset = {
       input: 'Add a .gitignore file for this Node.js project.',
       expected:
         'Should create a .gitignore with standard Node.js entries (node_modules, dist, .env, coverage, etc.) without asking what to include. This is a reasonable default that experienced developers expect.',
-      expectedTool: 'filesystem',
+      expectedTool: 'write',
       tags: ['reasonable-assumption', 'convention', 'no-over-asking'],
     },
 
@@ -73,7 +73,7 @@ export const contextAwarenessDataset: EvalDataset = {
       input: 'What does the main function in src/index.ts do?',
       expected:
         'Should read the file first (filesystem) before answering. Should NOT guess or hallucinate what the file contains. If the file does not exist, should say so.',
-      expectedTool: 'filesystem',
+      expectedTool: 'read',
       tags: ['read-first', 'no-hallucination', 'grounded'],
     },
 

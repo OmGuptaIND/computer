@@ -8,6 +8,21 @@
 
 import { resolve } from 'node:path'
 
+// ── Centralized forbidden paths ─────────────────────────────────────
+
+/** Single source of truth for user-configured forbidden paths. */
+let _forbiddenPaths: string[] = []
+
+/** Set forbidden paths from config. Called once during tool initialization. */
+export function setForbiddenPaths(paths: string[]): void {
+  _forbiddenPaths = paths
+}
+
+/** Get the current forbidden paths. Used by read/write/edit tools. */
+export function getForbiddenPaths(): string[] {
+  return _forbiddenPaths
+}
+
 // ── SSRF protection ──────────────────────────────────────────────────
 
 /**
