@@ -1,0 +1,123 @@
+packages/desktop/src/lib/store/handlers/projectHandler.ts
+  696e9ee0ca2913bf 40
+packages/desktop/src/index.css
+  696e9ee0ca2913bf 17215
+  39267b2ed0be3489 11861-12046,12385-12387
+packages/agent-config/src/config.ts
+  696e9ee0ca2913bf 15,56,61-62,820-821,824-829,835
+packages/agent-server/src/webhooks/format/telegram-md.ts
+  ed6b22bce12a4690 31,38-42,44,75-79
+packages/agent-config/src/index.ts
+  696e9ee0ca2913bf 2
+packages/desktop/src/components/projects/ProjectConfigPanel.tsx
+  696e9ee0ca2913bf 11,13,167,169-176,178-180,258
+packages/agent-core/src/tools/filesystem.ts
+  696e9ee0ca2913bf 11,14-25,90-96
+packages/agent-server/src/webhooks/providers/slack.ts
+  510d017e9bfc9711 45-51,126-186,424-438,478
+packages/agent-server/src/webhooks/format/slack-mrkdwn.ts
+  ed6b22bce12a4690 38,45-51,53-54,93-97
+packages/agent-server/src/webhooks/providers/telegram.ts
+  9457b11de62c2d61 222-224,242-245,266-273,275-276,294-301,303-304,406-440,461-463
+packages/agent-config/src/projects.ts
+  696e9ee0ca2913bf 461,463,465-468
+packages/agent-server/src/webhooks/agent-runner.ts
+  510d017e9bfc9711 226,231-240,520-525,546,554-557,563
+packages/agent-config/src/image-storage.ts
+  696e9ee0ca2913bf 1-84
+packages/desktop/src/components/files/ProjectFilesView.tsx
+  696e9ee0ca2913bf 56,134,217-228
+packages/desktop/src/components/connectors/ConnectorsView.tsx
+  39267b2ed0be3489 15-16,22,56-68,87-89,94-100,102-103,106,115,117-119,121-144,148,151-158,161-169,182-188,192-194,223,239,259-260,297,303,317-321,329,332,335-339,350-373,375,377-379,381,386-391,395-463,467-469,473-474,484,488,492,497,499-503,505,510-576,578,585-593,597,603,605,745
+packages/agent-server/src/server.ts
+  696e9ee0ca2913bf 13,16,241,1002-1044,1050-1051,1097-1111,1116,1118-1119,1143-1165,1167,1171,1173,1182-1191,1213-1222,1602-1604,2915-2920
+packages/desktop/src/lib/connection.ts
+  696e9ee0ca2913bf 492-499,508-509
+packages/agent-core/src/session.ts
+  696e9ee0ca2913bf 1810-1826
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "cc72f046df81da0518ae25fe1ab5ed1381d3e6e3",
+  "prompts": {
+    "39267b2ed0be3489": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "394ff8d9-9c41-4ea7-98e7-c853eead621c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 492,
+      "overriden_lines": 0
+    },
+    "510d017e9bfc9711": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f6a6625a-aa47-4012-8721-ffe1f7eed8ea",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 107,
+      "overriden_lines": 0
+    },
+    "539ebb297b59c119": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "43a33133-e0a1-4677-a5c2-1dab0fe80eea",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 65,
+      "overriden_lines": 0
+    },
+    "696e9ee0ca2913bf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf3ec9ff-af5f-4fd2-97fe-fba739c9be23",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 337,
+      "overriden_lines": 0
+    },
+    "9457b11de62c2d61": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "417edc1f-8c62-4eeb-ae17-8e575b3dcbbc",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 65,
+      "overriden_lines": 0
+    },
+    "ed6b22bce12a4690": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bd05d8c8-bee5-48b6-a1be-2cfb71669245",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 27,
+      "overriden_lines": 0
+    }
+  }
+}
