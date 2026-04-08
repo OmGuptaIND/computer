@@ -1,0 +1,47 @@
+packages/desktop/src/lib/store/handlers/interactionHandler.ts
+  3d1aa0c5b0f24a5b 6,70-81,107,222-224
+packages/desktop/src/lib/conversations.ts
+  3d1aa0c5b0f24a5b 39,54-58,60,71,73-74,83
+packages/desktop/src/lib/store.ts
+  3d1aa0c5b0f24a5b 182-184
+specs/features/session-sync-protocol.md
+  3d1aa0c5b0f24a5b 1-297
+packages/desktop/src/lib/store/handlers/sessionHandler.ts
+  3d1aa0c5b0f24a5b 3-4,7,10-16,27-131,149-159,178,186-222,226-313,318-328,529,532-543
+packages/agent-server/src/server.ts
+  3d1aa0c5b0f24a5b 265-279,1282-1285,1635-1636,1648-1649,1670-1671,1682-1683,1685,1688,1692-1700,1702-1716,1718-1729
+packages/desktop/src/lib/store/handlers/index.ts
+  3d1aa0c5b0f24a5b 82-83
+packages/desktop/src/components/Sidebar.tsx
+  3d1aa0c5b0f24a5b 350
+packages/agent-config/src/config.ts
+  3d1aa0c5b0f24a5b 27-40,89,91,1200-1222,1227-1233,1243-1246,1248-1262,1268,1274,1276,1281,1283-1289,1310,1315-1333
+packages/desktop/src/lib/conversationCache.ts
+  3d1aa0c5b0f24a5b 1-189
+packages/protocol/src/messages.ts
+  3d1aa0c5b0f24a5b 202-234,1271-1273
+packages/desktop/src/lib/connection.ts
+  3d1aa0c5b0f24a5b 112-120,204-207
+packages/desktop/src/lib/store/connectionStore.ts
+  3d1aa0c5b0f24a5b 14,61-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "cc86fecb0dfc52c5331cebbcdea83dae83939dae",
+  "prompts": {
+    "3d1aa0c5b0f24a5b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "570890c0-3d10-440e-8a98-e9722115a94c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 1347,
+      "total_deletions": 365,
+      "accepted_lines": 1024,
+      "overriden_lines": 3
+    }
+  }
+}
