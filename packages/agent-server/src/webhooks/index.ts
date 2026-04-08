@@ -6,9 +6,11 @@
  */
 
 export { WebhookAgentRunner } from './agent-runner.js'
+export type { InteractionResponse } from './agent-runner.js'
 export type {
   CanonicalEvent,
   CanonicalImageAttachment,
+  InteractionResult,
   OutboundImage,
   SurfaceInfo,
   WebhookHandshakeResponse,

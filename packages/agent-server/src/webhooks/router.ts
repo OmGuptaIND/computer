@@ -63,7 +63,9 @@ export class WebhookRouter {
     if (!url.startsWith(ROUTE_PREFIX)) return false
 
     const [path, queryString = ''] = url.slice(ROUTE_PREFIX.length).split('?', 2)
-    const slug = path.split('/')[0] ?? ''
+    const pathParts = path.split('/')
+    const slug = pathParts[0] ?? ''
+    const subPath = pathParts.slice(1).join('/')
     const provider = this.providers.get(slug)
 
     // Log every inbound hit — the single most useful log line for debugging
@@ -127,7 +129,7 @@ export class WebhookRouter {
       if (aborted) return
       const body = Buffer.concat(chunks, bodyBytes)
       log.debug({ slug, bodyBytes }, 'body fully received, dispatching')
-      this.dispatch(provider, body, req, res, queryString).catch((err) => {
+      this.dispatch(provider, body, req, res, queryString, subPath).catch((err) => {
         log.error({ err, slug }, 'dispatch failed')
         if (!res.headersSent) {
           res.writeHead(500, { 'Content-Type': 'text/plain' })
@@ -147,6 +149,7 @@ export class WebhookRouter {
     req: IncomingMessage,
     res: ServerResponse,
     queryString: string,
+    subPath = '',
   ): Promise<void> {
     const slug = provider.slug
     const headers: Record<string, string | undefined> = {}
@@ -193,6 +196,28 @@ export class WebhookRouter {
     // 3. Ack immediately — providers retry on >5s timeouts.
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end('{"ok":true}')
+
+    // 3b. If this is an interaction sub-path (e.g. /interact for Slack
+    //     block_actions), route to the provider's interaction handler
+    //     instead of the normal parse→run flow.
+    if (subPath === 'interact' && provider.handleInteraction) {
+      try {
+        const result = await provider.handleInteraction(webhookReq)
+        if (result) {
+          this.runner.resolveInteraction(result.sessionId, {
+            approved: result.approved,
+            feedback: result.feedback,
+          })
+          log.info(
+            { slug, sessionId: result.sessionId, approved: result.approved },
+            'interaction resolved via sub-path',
+          )
+        }
+      } catch (err) {
+        log.error({ err, slug }, 'handleInteraction failed')
+      }
+      return
+    }
 
     // 4. Parse + process out-of-band. Wrap in a timeout — a hung parse
     //    (e.g. slow connector metadata lookup) must not stall later events.
@@ -259,9 +284,22 @@ export class WebhookRouter {
 
     let result: Awaited<ReturnType<typeof this.runner.run>>
     try {
-      result = await this.runner.run(event)
+      result = await this.runner.run(event, provider)
     } catch (err) {
       log.error({ err, slug, sessionId: event.sessionId }, 'runner threw')
+      // Post an error message to the user so they know what went wrong
+      // (not just a silent `x` reaction). Fire-and-forget — if the reply
+      // itself fails we still surface the error to the onTurnEnd hook.
+      const errMsg = err instanceof Error ? err.message : String(err)
+      try {
+        await provider.reply(
+          event,
+          `:x: Something went wrong while processing your message.\n\`${errMsg}\``,
+          [],
+        )
+      } catch (replyErr) {
+        log.warn({ err: replyErr, slug, sessionId: event.sessionId }, 'failed to send error reply')
+      }
       if (provider.onTurnEnd) {
         try {
           await provider.onTurnEnd(event, { ok: false })
