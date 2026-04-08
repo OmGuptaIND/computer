@@ -559,6 +559,7 @@ export class Connection {
         handler(payload.path as string, !!payload.success, payload.error as string | undefined)
       }
     })
+  }
 
   private startPingLoop() {
     this.stopPingLoop()
