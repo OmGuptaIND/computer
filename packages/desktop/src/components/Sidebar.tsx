@@ -347,7 +347,7 @@ export function Sidebar({ onViewChange, onOpenSettings }: Props) {
                 <span>New chat</span>
               </button>
               <div className="sidebar-panel__inner">
-                {!sessionsLoaded ? (
+                {chatConversations.length === 0 && !sessionsLoaded ? (
                   <div className="sidebar-recent__list">
                     {['skel-0', 'skel-1', 'skel-2', 'skel-3', 'skel-4'].map((id, i) => (
                       <div key={id} className="sidebar-conv-item sidebar-conv-item--skeleton">

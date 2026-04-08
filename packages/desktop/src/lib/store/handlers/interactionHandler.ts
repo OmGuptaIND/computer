@@ -3,6 +3,7 @@
  */
 
 import type { AiMessage } from '@anton/protocol'
+import { updateCacheEntry } from '../../conversationCache.js'
 import { useStore } from '../../store.js'
 import { artifactStore } from '../artifactStore.js'
 import { projectStore } from '../projectStore.js'
@@ -66,11 +67,18 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
       }
 
       if (msg.code === 'session_not_found' && sid) {
-        const store = useStore.getState()
-        const staleConv = store.conversations.find((c) => c.sessionId === sid)
-        if (staleConv) {
-          store.deleteConversation(staleConv.id)
-        }
+        // Don't auto-delete — the session may reappear after a server restart/update.
+        // Just mark the session as error so the user sees feedback.
+        console.warn(`[SessionSync] session_not_found for ${sid} — marking as error, not deleting`)
+        ss.updateSessionState(sid, { isStreaming: false, status: 'error' })
+        ctx.addMsg({
+          id: `err_session_${Date.now()}`,
+          role: 'system',
+          content:
+            'Session not found on server. It may have been lost during an update. You can start a new conversation or try again after the server reconnects.',
+          isError: true,
+          timestamp: Date.now(),
+        })
         return true
       }
 
@@ -96,6 +104,7 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
       if (msg.sessionId) {
         const store = useStore.getState()
         store.updateConversationTitle(msg.sessionId, msg.title)
+        updateCacheEntry(msg.sessionId as string, { title: msg.title as string })
         const ps = projectStore.getState()
         if (ps.projectSessions.some((s: SessionMeta) => s.id === msg.sessionId)) {
           ps.setProjectSessions(
@@ -209,6 +218,9 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
           updates.lastResponseModel = msg.model
         }
         ss.updateSessionState(doneSessionId, updates)
+
+        // Update cache with latest timestamp
+        updateCacheEntry(doneSessionId, { updatedAt: Date.now() })
 
         // Clear per-session message tracking in app store
         store._sessionAssistantMsgIds.delete(doneSessionId)

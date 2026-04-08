@@ -11,6 +11,7 @@
 
 import { create } from 'zustand'
 import { connection } from '../connection.js'
+import { loadSessionCache } from '../conversationCache.js'
 import { projectStore } from './projectStore.js'
 import { sessionStore } from './sessionStore.js'
 
@@ -57,6 +58,15 @@ export const connectionStore = create<ConnectionStoreState>((set, get) => ({
 
     // Fire all initial list requests
     sessionStore.getState().sendProvidersList()
+    // Use incremental sync protocol — send lastSyncVersion from cache
+    // Falls back to full bootstrap if server can't serve deltas
+    const cache = loadSessionCache()
+    const lastVersion = cache?.syncVersion ?? 0
+    console.log(
+      `[SessionSync] Requesting sync, lastSyncVersion=${lastVersion} (${cache ? `${cache.entries.length} cached` : 'no cache'})`,
+    )
+    connection.sendSessionsSync(lastVersion)
+    // Also send legacy sessions_list for backward compatibility (server may not support sync yet)
     connection.sendSessionsList()
     projectStore.getState().listProjects()
     connection.sendConnectorsList()

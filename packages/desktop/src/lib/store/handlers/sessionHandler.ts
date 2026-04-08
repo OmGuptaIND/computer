@@ -1,11 +1,19 @@
 /**
  * AI channel: session_created, session_destroyed, sessions_list_response,
- * session_history_response, context_info, usage_stats_response.
+ * sessions_sync_response, session_sync, session_history_response,
+ * context_info, usage_stats_response.
  */
 
-import type { AiMessage, SessionHistoryEntry } from '@anton/protocol'
+import type { AiMessage, SessionHistoryEntry, SyncDelta } from '@anton/protocol'
 import type { ArtifactRenderType } from '../../artifacts.js'
 import { extractArtifact } from '../../artifacts.js'
+import {
+  type SessionCacheMeta,
+  cacheMetaFromServerSession,
+  loadSessionCache,
+  removeCacheEntry,
+  saveSessionCache,
+} from '../../conversationCache.js'
 import { type Conversation, saveConversations } from '../../conversations.js'
 import { useStore } from '../../store.js'
 import { artifactStore } from '../artifactStore.js'
@@ -15,6 +23,111 @@ import { sessionStore } from '../sessionStore.js'
 import type { ChatImageAttachment, ChatMessage, SessionMeta } from '../types.js'
 import { usageStore } from '../usageStore.js'
 import { parseCitationSources } from './citationParser.js'
+
+/** Apply sync deltas to conversations and cache */
+function applySyncDeltas(deltas: SyncDelta[], newSyncVersion: number): void {
+  if (deltas.length === 0) {
+    console.log(`[SessionSync] No deltas, updating cache syncVersion to ${newSyncVersion}`)
+    const cache = loadSessionCache() || { syncVersion: 0, entries: [] }
+    cache.syncVersion = newSyncVersion
+    saveSessionCache(cache)
+    return
+  }
+
+  console.log(`[SessionSync] Applying ${deltas.length} delta(s), version ${newSyncVersion}`)
+
+  const store = useStore.getState()
+  let conversations = [...store.conversations]
+  const cache = loadSessionCache() || { syncVersion: 0, entries: [] }
+  let conversationsChanged = false
+
+  for (const delta of deltas) {
+    const { action, sessionId, session } = delta
+
+    // Only manage sess_* conversations in the sidebar
+    if (!sessionId.startsWith('sess_')) continue
+
+    const idx = conversations.findIndex((c) => c.sessionId === sessionId)
+
+    if (action === 'I' && session && idx === -1 && session.messageCount > 0) {
+      console.log(`[SessionSync] Delta INSERT: ${sessionId} "${session.title}"`)
+      conversations.push({
+        id: sessionId,
+        sessionId,
+        title: session.title || 'New conversation',
+        messages: [],
+        createdAt: session.createdAt,
+        updatedAt: session.lastActiveAt,
+        provider: session.provider,
+        model: session.model,
+      })
+      if (!cache.entries.some((e) => e.sessionId === sessionId)) {
+        cache.entries.push(cacheMetaFromServerSession(session))
+      }
+      conversationsChanged = true
+    } else if (action === 'U' && session && idx >= 0) {
+      console.log(`[SessionSync] Delta UPDATE: ${sessionId} "${session.title}"`)
+
+      conversations[idx] = {
+        ...conversations[idx],
+        title: session.title || conversations[idx].title,
+        updatedAt: session.lastActiveAt,
+        provider: session.provider,
+        model: session.model,
+      }
+      const cacheIdx = cache.entries.findIndex((e) => e.sessionId === sessionId)
+      if (cacheIdx >= 0) {
+        cache.entries[cacheIdx] = {
+          ...cache.entries[cacheIdx],
+          title: session.title,
+          updatedAt: session.lastActiveAt,
+          provider: session.provider,
+          model: session.model,
+          messageCount: session.messageCount,
+        }
+      }
+      conversationsChanged = true
+    } else if (action === 'D' && idx >= 0) {
+      console.log(`[SessionSync] Delta DELETE: ${sessionId}`)
+
+      conversations = conversations.filter((c) => c.sessionId !== sessionId)
+      cache.entries = cache.entries.filter((e) => e.sessionId !== sessionId)
+      conversationsChanged = true
+    }
+  }
+
+  if (conversationsChanged) {
+    saveConversations(conversations)
+    useStore.setState({ conversations })
+  }
+
+  // Always persist cache with updated syncVersion
+  cache.syncVersion = newSyncVersion
+  saveSessionCache(cache)
+
+  // Update sessionStore with delta changes
+  const ss = sessionStore.getState()
+  const updatedSessionIds = new Set(deltas.map((d) => d.sessionId))
+  const updatedSessions = ss.sessions.map((s) => {
+    if (!updatedSessionIds.has(s.id)) return s
+    const delta = [...deltas].reverse().find((d: SyncDelta) => d.sessionId === s.id)
+    if (delta?.session) {
+      return { ...s, ...delta.session }
+    }
+    return s
+  })
+  for (const delta of deltas) {
+    if (
+      delta.action === 'I' &&
+      delta.session &&
+      !updatedSessions.some((s) => s.id === delta.sessionId)
+    ) {
+      updatedSessions.push(delta.session as SessionMeta)
+    }
+  }
+  const deletedIds = new Set(deltas.filter((d) => d.action === 'D').map((d) => d.sessionId))
+  ss.setSessions(updatedSessions.filter((s) => !deletedIds.has(s.id)))
+}
 
 function unwrapUserSteering(content: string): { content: string; isSteering: boolean } {
   const match = content.match(
@@ -33,6 +146,17 @@ export function handleSessionMessage(msg: AiMessage): boolean {
       ss.setCurrentSession(msg.id, msg.provider, msg.model)
       ss.resolvePendingSession(msg.id)
       useStore.getState().setCurrentSession(msg.id, msg.provider, msg.model)
+
+      // Clear pendingCreation — server has confirmed this session
+      const createdStore = useStore.getState()
+      const pendingConv = createdStore.conversations.find((c) => c.sessionId === msg.id)
+      if (pendingConv?.pendingCreation) {
+        console.log(`[SessionSync] Session confirmed by server: ${msg.id}`)
+        const updated = createdStore.conversations.map((c) =>
+          c.sessionId === msg.id ? { ...c, pendingCreation: false } : c,
+        )
+        useStore.setState({ conversations: updated })
+      }
       return true
     }
 
@@ -51,7 +175,7 @@ export function handleSessionMessage(msg: AiMessage): boolean {
             }
           : c,
       )
-      saveConversations(convs)
+      // contextInfo is transient — don't persist to localStorage
       useStore.setState({ conversations: convs })
       return true
     }
@@ -59,6 +183,146 @@ export function handleSessionMessage(msg: AiMessage): boolean {
     case 'sessions_list_response': {
       sessionStore.getState().setSessions(msg.sessions)
       connectionStore.getState().markSynced('sessions')
+
+      // Reconcile: surface server sessions that have no matching conversation in localStorage.
+      // Only include regular chat sessions (sess_*) — skip agent-runs, slack threads, etc.
+      const store = useStore.getState()
+      const knownSessionIds = new Set(store.conversations.map((c) => c.sessionId))
+      const defaultProjectId = projectStore.getState().projects.find((p) => p.isDefault)?.id
+      const newConvs: Conversation[] = []
+
+      for (const s of msg.sessions as SessionMeta[]) {
+        if (knownSessionIds.has(s.id)) continue
+        // Only reconcile regular session types — not agent-runs, slack, telegram, etc.
+        if (!s.id.startsWith('sess_')) continue
+        // Skip empty sessions with no messages
+        if (s.messageCount === 0) continue
+
+        newConvs.push({
+          id: s.id,
+          sessionId: s.id,
+          title: s.title || 'Restored conversation',
+          messages: [],
+          createdAt: s.createdAt,
+          updatedAt: s.lastActiveAt,
+          projectId: defaultProjectId,
+          provider: s.provider,
+          model: s.model,
+        })
+      }
+
+      if (newConvs.length > 0) {
+        console.log(
+          `[SessionSync] Legacy reconciliation: added ${newConvs.length} session(s) from server`,
+        )
+        const merged = [...store.conversations, ...newConvs]
+        saveConversations(merged)
+        useStore.setState({ conversations: merged })
+      }
+
+      return true
+    }
+
+    case 'sessions_sync_response': {
+      const syncVersion = msg.syncVersion as number
+      const full = msg.full as boolean
+
+      if (full) {
+        // Full bootstrap — server sent complete session list
+        const serverSessions = (msg.sessions || []) as SessionMeta[]
+        console.log(
+          `[SessionSync] Full bootstrap: ${serverSessions.length} session(s) from server, syncVersion=${syncVersion}`,
+        )
+        sessionStore.getState().setSessions(serverSessions)
+
+        // Full bidirectional reconciliation with conversations
+        const store = useStore.getState()
+        const serverById = new Map(serverSessions.map((s) => [s.id, s]))
+        const reconciled: Conversation[] = []
+
+        // Update existing conversations from server, remove ones server doesn't have
+        for (const conv of store.conversations) {
+          const serverMeta = serverById.get(conv.sessionId)
+          if (serverMeta) {
+            // Server has this session — update metadata (server wins)
+            reconciled.push({
+              ...conv,
+              title: serverMeta.title || conv.title,
+              updatedAt: serverMeta.lastActiveAt,
+              provider: serverMeta.provider,
+              model: serverMeta.model,
+            })
+            serverById.delete(conv.sessionId)
+          } else if (!conv.sessionId.startsWith('sess_') || conv.pendingCreation) {
+            // Keep non-sess_ conversations (managed elsewhere) and
+            // pendingCreation conversations (not yet confirmed by server)
+            reconciled.push(conv)
+          }
+          // else: sess_* not on server and not pending → dropped (deleted on server)
+        }
+
+        // Add new sessions from server that we don't have
+        for (const [, s] of serverById) {
+          if (!s.id.startsWith('sess_')) continue
+          if (s.messageCount === 0) continue
+          reconciled.push({
+            id: s.id,
+            sessionId: s.id,
+            title: s.title || 'New conversation',
+            messages: [],
+            createdAt: s.createdAt,
+            updatedAt: s.lastActiveAt,
+            provider: s.provider,
+            model: s.model,
+          })
+        }
+
+        const added = reconciled.length - store.conversations.length
+        const removed = store.conversations.filter(
+          (c) =>
+            c.sessionId.startsWith('sess_') && !reconciled.some((r) => r.sessionId === c.sessionId),
+        ).length
+        console.log(
+          `[SessionSync] Bootstrap reconciled: ${reconciled.length} conversations (added ${Math.max(0, added)}, removed ${removed})`,
+        )
+
+        saveConversations(reconciled)
+        useStore.setState({ conversations: reconciled })
+
+        // Update cache
+        const cacheEntries: SessionCacheMeta[] = reconciled.map((c) => ({
+          sessionId: c.sessionId,
+          title: c.title,
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+          projectId: c.projectId,
+          provider: c.provider,
+          model: c.model,
+          messageCount: serverSessions.find((s) => s.id === c.sessionId)?.messageCount ?? 0,
+          agentSessionId: c.agentSessionId,
+        }))
+        saveSessionCache({ syncVersion, entries: cacheEntries })
+      } else {
+        // Incremental sync — apply deltas only
+        const deltas = (msg.deltas || []) as SyncDelta[]
+        console.log(
+          `[SessionSync] Incremental sync: ${deltas.length} delta(s), syncVersion=${syncVersion}`,
+        )
+        applySyncDeltas(deltas, syncVersion)
+      }
+
+      connectionStore.getState().markSynced('sessions')
+      return true
+    }
+
+    case 'session_sync': {
+      // Real-time push from server — apply single delta
+      const delta = msg.delta as SyncDelta
+      const syncVersion = msg.syncVersion as number
+      console.log(
+        `[SessionSync] Push: ${delta.action} ${delta.sessionId}, syncVersion=${syncVersion}`,
+      )
+      applySyncDeltas([delta], syncVersion)
       return true
     }
 
@@ -262,9 +526,21 @@ export function handleSessionMessage(msg: AiMessage): boolean {
       const ss = sessionStore.getState()
       ss.setSessions(ss.sessions.filter((s: SessionMeta) => s.id !== msg.id))
       const ps = projectStore.getState()
-      if (ps.projectSessions.some((s: SessionMeta) => s.id !== msg.id)) {
+      if (ps.projectSessions.some((s: SessionMeta) => s.id === msg.id)) {
         ps.setProjectSessions(ps.projectSessions.filter((s: SessionMeta) => s.id !== msg.id))
       }
+
+      // Also remove the conversation from the UI store and cache
+      const destroyStore = useStore.getState()
+      const destroyedConv = destroyStore.conversations.find((c) => c.sessionId === msg.id)
+      if (destroyedConv) {
+        console.log(`[SessionSync] Session destroyed, removing conversation: ${msg.id}`)
+        const updated = destroyStore.conversations.filter((c) => c.sessionId !== msg.id)
+        saveConversations(updated)
+        useStore.setState({ conversations: updated })
+      }
+      removeCacheEntry(msg.id as string)
+
       return true
     }
 

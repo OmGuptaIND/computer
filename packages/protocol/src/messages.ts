@@ -199,6 +199,39 @@ export interface SessionsListResponse {
   sessions: SessionMeta[]
 }
 
+// ── Session sync protocol ──────────────────────────────────────────
+
+/** A single change to the session index */
+export interface SyncDelta {
+  action: 'I' | 'U' | 'D'
+  syncVersion: number
+  sessionId: string
+  session?: SessionMeta
+  timestamp: number
+}
+
+/** Client -> Server: request sync (replaces sessions_list for incremental sync) */
+export interface SessionsSyncRequest {
+  type: 'sessions_sync'
+  lastSyncVersion: number // 0 = full bootstrap
+}
+
+/** Server -> Client: sync response (full list or deltas only) */
+export interface SessionsSyncResponse {
+  type: 'sessions_sync_response'
+  syncVersion: number
+  full: boolean
+  sessions?: SessionMeta[] // present when full=true
+  deltas?: SyncDelta[] // present when full=false
+}
+
+/** Server -> Client: real-time push when a session changes */
+export interface SessionSyncPush {
+  type: 'session_sync'
+  syncVersion: number
+  delta: SyncDelta
+}
+
 export interface SessionDestroyMessage {
   type: 'session_destroy'
   id: string
@@ -1236,6 +1269,9 @@ export type AiMessage =
   | SessionCreatedMessage
   | SessionsListMessage
   | SessionsListResponse
+  | SessionsSyncRequest
+  | SessionsSyncResponse
+  | SessionSyncPush
   | SessionDestroyMessage
   | SessionDestroyedMessage
   | SessionHistoryMessage
