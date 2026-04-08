@@ -1,0 +1,47 @@
+packages/agent-core/src/tools/security.ts
+  0b75669bcdd1b1a8 11-25
+packages/agent-core/src/evals/datasets/tool-selection.ts
+  0b75669bcdd1b1a8 17,22,27-28,33,73-74,78-79,83-84,170,173-174,177,180-181,184,187-188
+packages/agent-config/prompts/system.md
+  0b75669bcdd1b1a8 8-13,23-24,40-55,130,437
+packages/agent-core/src/evals/datasets/chat-task-planning.ts
+  0b75669bcdd1b1a8 27,37,55-57,83-84
+packages/agent-core/src/tools/write.ts
+  0b75669bcdd1b1a8 1-29
+packages/agent-core/src/tools/glob.ts
+  0b75669bcdd1b1a8 1-3,5-104
+packages/agent-core/src/evals/datasets/chat-context-awareness.ts
+  0b75669bcdd1b1a8 48,76
+packages/agent-core/src/agent.ts
+  0b75669bcdd1b1a8 11,32,41,51-63,77,245-246,249,251,271-272,274-275,278-281,283-286,290,294-295,297-298,300-313,315-318,320-334,336-337,339-341,343-355,357-362,365-366,369-373,378,509,537,539-540,543,545,551,558-565,572
+packages/agent-core/src/tools/edit.ts
+  0b75669bcdd1b1a8 1-69
+packages/agent-core/src/evals/scorers/chat-context-awareness.ts
+  0b75669bcdd1b1a8 54
+packages/agent-core/src/evals/scorers/chat-task-planning.ts
+  0b75669bcdd1b1a8 62-63,68,70
+packages/agent-core/src/session.ts
+  0b75669bcdd1b1a8 533-550,1414-1416,1767-1769
+packages/agent-core/src/tools/read.ts
+  0b75669bcdd1b1a8 1-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "ee65a20010cd041be65daa1733ccbb39c9fc3dd6",
+  "prompts": {
+    "0b75669bcdd1b1a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f9cd3dd9-f03b-4190-8ca7-061d93050ea2",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 667,
+      "total_deletions": 310,
+      "accepted_lines": 497,
+      "overriden_lines": 15
+    }
+  }
+}
