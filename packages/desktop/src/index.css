@@ -4924,43 +4924,152 @@ button {
 }
 
 /* Models page — provider list */
+/* ── Models grid page ──────────────────────────────────────── */
+
+.models-grid-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.models-grid-section__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.models-provider-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.models-provider-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+
+.models-provider-card:hover {
+  background: rgba(var(--overlay), 0.05);
+}
+
+.models-provider-card--active {
+  background: rgba(74, 158, 255, 0.06);
+}
+
+.models-provider-card__icon-wrap {
+  flex-shrink: 0;
+}
+
+.models-provider-card__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.models-provider-card__name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.models-provider-card__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+}
+
+.models-provider-card__count {
+  font-size: 11.5px;
+  color: var(--text-subtle);
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.models-provider-card__active-badge {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(74, 158, 255, 0.12);
+  color: var(--accent);
+}
+
+.models-provider-card__chevron {
+  color: var(--text-subtle);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+/* ── Models detail view ──────────────────────────────────── */
+
+.models-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.models-detail__back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-subtle);
+  padding: 4px 0;
+  transition: color 0.12s ease;
+}
+
+.models-detail__back:hover {
+  color: var(--text);
+}
+
+.models-detail__back-icon {
+  transform: rotate(180deg);
+}
+
+.models-detail__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.models-detail__header-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.models-detail__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+/* keep old class names used in ProviderPanel */
 .settings-modal__models {
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-
-.settings-modal__provider-group {
-  border-radius: 10px;
-  border: 1px solid transparent;
-  transition: border-color 0.15s ease;
-}
-
-.settings-modal__provider-group--expanded {
-  border-color: var(--border);
-  background: rgba(var(--overlay), 0.01);
-}
-
-.settings-modal__provider-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 12px;
-  border-radius: 10px;
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--text);
-  transition: background 0.12s ease;
-  text-align: left;
-}
-
-.settings-modal__provider-header:hover {
-  background: rgba(var(--overlay), 0.04);
-}
-
-.settings-modal__provider-header--active {
-  background: rgba(var(--overlay), 0.03);
 }
 
 .settings-modal__provider-icon {
@@ -4980,11 +5089,6 @@ button {
   flex-shrink: 0;
 }
 
-.settings-modal__provider-name {
-  flex: 1;
-  min-width: 0;
-}
-
 .settings-modal__badge {
   font-size: 11px;
   font-weight: 500;
@@ -5001,21 +5105,6 @@ button {
 .settings-modal__badge--setup {
   color: var(--text-subtle);
   background: rgba(var(--overlay), 0.06);
-}
-
-.settings-modal__provider-chevron {
-  transition: transform 0.15s ease;
-  color: var(--text-subtle);
-  flex-shrink: 0;
-}
-
-.settings-modal__provider-chevron--open {
-  transform: rotate(90deg);
-}
-
-/* Provider expanded body */
-.settings-modal__provider-body {
-  overflow: hidden;
 }
 
 .settings-modal__panel {

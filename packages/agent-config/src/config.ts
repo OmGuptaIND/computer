@@ -252,6 +252,10 @@ const DEFAULT_PROVIDERS: ProvidersMap = {
       'minimax/minimax-m2.5',
       'minimax/minimax-m2.7',
       'meta-llama/llama-4-maverick',
+      'zhipu/glm-4-plus',
+      'zhipu/glm-4-long',
+      'zhipu/glm-4-flash',
+      'zhipu/glm-4-flashx',
     ],
   },
   mistral: {
@@ -299,6 +303,11 @@ const DEFAULT_PROVIDERS: ProvidersMap = {
       // Meta / Llama
       'llama-4-maverick',
       'llama-3.3-70b',
+      // GLM (Zhipu AI)
+      'glm-4-plus',
+      'glm-4-long',
+      'glm-4-flash',
+      'glm-4-flashx',
       // Mistral
       'mistral-large',
       'codestral',

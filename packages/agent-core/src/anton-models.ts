@@ -294,6 +294,44 @@ const ANTON_MODELS: AntonModelDef[] = [
     maxTokens: 8_192,
   },
 
+  // ── GLM (Zhipu AI) ────────────────────────────────────────
+  {
+    id: 'glm-4-plus',
+    name: 'GLM-4 Plus',
+    reasoning: false,
+    input: ['text', 'image'],
+    cost: { input: 0.7, output: 2.8, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128_000,
+    maxTokens: 16_384,
+  },
+  {
+    id: 'glm-4-long',
+    name: 'GLM-4 Long',
+    reasoning: false,
+    input: ['text'],
+    cost: { input: 0.14, output: 0.14, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 1_000_000,
+    maxTokens: 16_384,
+  },
+  {
+    id: 'glm-4-flash',
+    name: 'GLM-4 Flash',
+    reasoning: false,
+    input: ['text', 'image'],
+    cost: { input: 0.007, output: 0.007, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128_000,
+    maxTokens: 16_384,
+  },
+  {
+    id: 'glm-4-flashx',
+    name: 'GLM-4 FlashX',
+    reasoning: false,
+    input: ['text', 'image'],
+    cost: { input: 0.014, output: 0.014, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128_000,
+    maxTokens: 16_384,
+  },
+
   // ── Mistral ─────────────────────────────────────────────────
   {
     id: 'mistral-large',

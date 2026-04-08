@@ -439,7 +439,7 @@ function ModelsPage({ onClose }: { onClose: () => void }) {
   const currentProvider = sessionStore((s) => s.currentProvider)
   const currentModel = sessionStore((s) => s.currentModel)
   const providers = sessionStore((s) => s.providers)
-  const [expandedProvider, setExpandedProvider] = useState<string | null>(currentProvider)
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
 
   const handleSelect = (provider: string, model: string) => {
     const ss = sessionStore.getState()
@@ -449,70 +449,132 @@ function ModelsPage({ onClose }: { onClose: () => void }) {
   }
 
   const sortedProviders = [...providers].sort((a, b) => {
-    if (a.name === currentProvider) return -1
-    if (b.name === currentProvider) return 1
     if (a.hasApiKey && !b.hasApiKey) return -1
     if (!a.hasApiKey && b.hasApiKey) return 1
     return 0
   })
 
-  return (
-    <div className="settings-modal__models">
-      {sortedProviders.map((provider) => {
-        const isExpanded = expandedProvider === provider.name
-        const hasActiveModel = currentProvider === provider.name
+  const selected = providers.find((p) => p.name === selectedProvider)
 
-        return (
-          <div
-            key={provider.name}
-            className={`settings-modal__provider-group ${isExpanded ? 'settings-modal__provider-group--expanded' : ''}`}
-          >
-            <button
-              type="button"
-              className={`settings-modal__provider-header ${hasActiveModel ? 'settings-modal__provider-header--active' : ''}`}
-              onClick={() => setExpandedProvider(isExpanded ? null : provider.name)}
-            >
-              <ProviderIcon provider={provider.name} size={20} />
-              <span className="settings-modal__provider-name">
-                {provider.name.charAt(0).toUpperCase() + provider.name.slice(1)}
+  // Detail view for a selected provider
+  if (selected) {
+    return (
+      <div className="models-detail">
+        <button
+          type="button"
+          className="models-detail__back"
+          onClick={() => setSelectedProvider(null)}
+        >
+          <ChevronRight size={14} strokeWidth={1.5} className="models-detail__back-icon" />
+          All Providers
+        </button>
+
+        <div className="models-detail__header">
+          <ProviderIcon provider={selected.name} size={32} />
+          <div className="models-detail__header-info">
+            <h3 className="models-detail__title">
+              {selected.name.charAt(0).toUpperCase() + selected.name.slice(1)}
+            </h3>
+            {selected.hasApiKey ? (
+              <span className="settings-modal__badge settings-modal__badge--connected">
+                Connected
               </span>
-              {provider.hasApiKey ? (
-                <span className="settings-modal__badge settings-modal__badge--connected">
-                  Connected
-                </span>
-              ) : (
-                <span className="settings-modal__badge settings-modal__badge--setup">
-                  Setup required
-                </span>
-              )}
-              <ChevronRight
-                size={14}
-                strokeWidth={1.5}
-                className={`settings-modal__provider-chevron ${isExpanded ? 'settings-modal__provider-chevron--open' : ''}`}
-              />
-            </button>
-
-            <AnimatePresence initial={false}>
-              {isExpanded && (
-                <motion.div
-                  className="settings-modal__provider-body"
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  <ProviderPanel
-                    provider={provider}
-                    currentProvider={currentProvider}
-                    currentModel={currentModel}
-                    onSelectModel={handleSelect}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
+            ) : (
+              <span className="settings-modal__badge settings-modal__badge--setup">
+                Setup required
+              </span>
+            )}
           </div>
-        )
-      })}
+        </div>
+
+        <ProviderPanel
+          provider={selected}
+          currentProvider={currentProvider}
+          currentModel={currentModel}
+          onSelectModel={handleSelect}
+        />
+      </div>
+    )
+  }
+
+  // Provider grid view
+  const connected = sortedProviders.filter((p) => p.hasApiKey)
+  const available = sortedProviders.filter((p) => !p.hasApiKey)
+
+  return (
+    <div className="models-grid-page">
+      {connected.length > 0 && (
+        <div className="models-grid-section">
+          <div className="models-grid-section__label">Connected</div>
+          <div className="models-provider-grid">
+            {connected.map((provider) => {
+              const isActive = currentProvider === provider.name
+              return (
+                <button
+                  key={provider.name}
+                  type="button"
+                  className={`models-provider-card${isActive ? ' models-provider-card--active' : ''}`}
+                  onClick={() => setSelectedProvider(provider.name)}
+                >
+                  <div className="models-provider-card__icon-wrap">
+                    <ProviderIcon provider={provider.name} size={22} />
+                  </div>
+                  <div className="models-provider-card__info">
+                    <div className="models-provider-card__name">
+                      {provider.name.charAt(0).toUpperCase() + provider.name.slice(1)}
+                      <span className="models-provider-card__dot" title="Connected" />
+                    </div>
+                    <div className="models-provider-card__count">
+                      {provider.models.length} model{provider.models.length !== 1 ? 's' : ''}
+                      {isActive && (
+                        <span className="models-provider-card__active-badge">Active</span>
+                      )}
+                    </div>
+                  </div>
+                  <ChevronRight
+                    size={14}
+                    strokeWidth={1.5}
+                    className="models-provider-card__chevron"
+                  />
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {available.length > 0 && (
+        <div className="models-grid-section">
+          <div className="models-grid-section__label">Available</div>
+          <div className="models-provider-grid">
+            {available.map((provider) => (
+              <button
+                key={provider.name}
+                type="button"
+                className="models-provider-card"
+                onClick={() => setSelectedProvider(provider.name)}
+              >
+                <div className="models-provider-card__icon-wrap">
+                  <ProviderIcon provider={provider.name} size={22} />
+                </div>
+                <div className="models-provider-card__info">
+                  <div className="models-provider-card__name">
+                    {provider.name.charAt(0).toUpperCase() + provider.name.slice(1)}
+                  </div>
+                  <div className="models-provider-card__count">
+                    {provider.models.length} model{provider.models.length !== 1 ? 's' : ''}
+                  </div>
+                </div>
+                <ChevronRight
+                  size={14}
+                  strokeWidth={1.5}
+                  className="models-provider-card__chevron"
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {providers.length === 0 && (
         <div className="settings-modal__empty">No providers available from server.</div>

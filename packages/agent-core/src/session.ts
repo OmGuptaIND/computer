@@ -35,9 +35,35 @@ import { completeSimple, getModel as piGetModel } from '@mariozechner/pi-ai'
 import type { Api, ImageContent, Model, TextContent, ThinkingContent } from '@mariozechner/pi-ai'
 import { getAntonModel } from './anton-models.js'
 
+const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+
+/**
+ * Build a Model-compatible object for an OpenRouter model.
+ * OpenRouter uses the OpenAI-compatible completions API for all models.
+ * Model IDs are in "provider/model" format (e.g. "anthropic/claude-sonnet-4.6").
+ */
+function buildOpenRouterModel(modelId: string) {
+  // Detect reasoning models by well-known patterns
+  const reasoning = /\b(o[34]|r1|thinking|reason)\b/i.test(modelId) || /gemini.*pro/i.test(modelId)
+
+  return {
+    id: modelId,
+    name: modelId,
+    api: 'openai-completions' as const,
+    provider: 'openrouter',
+    baseUrl: OPENROUTER_BASE_URL,
+    reasoning,
+    input: ['text', 'image'],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128_000,
+    maxTokens: 16_384,
+  }
+}
+
 /**
  * Resolve a model by provider + ID.
- * Tries pi-ai's built-in registry first, then falls back to the anton catalog.
+ * Tries pi-ai's built-in registry first, then falls back to the anton catalog
+ * or OpenRouter's generic model builder.
  */
 function resolveModel(provider: string, modelId: string): Model<Api> | undefined {
   // pi-ai's registry (hardcoded at build time)
@@ -49,6 +75,9 @@ function resolveModel(provider: string, modelId: string): Model<Api> | undefined
 
   // Anton (GRU LiteLLM proxy) — custom runtime registry
   if (provider === 'anton') return getAntonModel(modelId)
+
+  // OpenRouter — any model ID is valid (it's a proxy for many providers)
+  if (provider === 'openrouter') return buildOpenRouterModel(modelId) as Model<Api>
 
   return undefined
 }
