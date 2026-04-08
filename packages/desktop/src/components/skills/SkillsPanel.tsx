@@ -105,7 +105,7 @@ export function SkillsPanel() {
   const [params, setParams] = useState<Record<string, string>>({})
 
   // Divider drag
-  const [leftWidth, setLeftWidth] = useState(280)
+  const [leftWidth, setLeftWidth] = useState(300)
   const [isDragging, setIsDragging] = useState(false)
   const dragRef = useRef<{ startX: number; startW: number } | null>(null)
 
