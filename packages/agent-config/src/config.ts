@@ -1571,6 +1571,7 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     oauthScopes: [
       'https://www.googleapis.com/auth/gmail.modify',
       'https://www.googleapis.com/auth/gmail.send',
+      'email',
     ],
     requiredEnv: [],
     featured: true,
@@ -1725,6 +1726,7 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     oauthScopes: [
       'https://www.googleapis.com/auth/drive.readonly',
       'https://www.googleapis.com/auth/drive.file',
+      'email',
     ],
     requiredEnv: [],
     featured: true,
@@ -1746,6 +1748,7 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     oauthScopes: [
       'https://www.googleapis.com/auth/calendar',
       'https://www.googleapis.com/auth/calendar.events',
+      'email',
     ],
     requiredEnv: [],
     featured: true,
@@ -1788,6 +1791,7 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     oauthScopes: [
       'https://www.googleapis.com/auth/documents',
       'https://www.googleapis.com/auth/drive.readonly',
+      'email',
     ],
     requiredEnv: [],
     featured: true,
@@ -1812,6 +1816,7 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     oauthScopes: [
       'https://www.googleapis.com/auth/spreadsheets',
       'https://www.googleapis.com/auth/drive.readonly',
+      'email',
     ],
     requiredEnv: [],
     featured: true,
@@ -1832,7 +1837,7 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     category: 'productivity',
     type: 'oauth',
     oauthProvider: 'google',
-    oauthScopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
+    oauthScopes: ['https://www.googleapis.com/auth/webmasters.readonly', 'email'],
     requiredEnv: [],
     featured: true,
     setupGuide: {

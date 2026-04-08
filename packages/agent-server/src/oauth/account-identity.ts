@@ -11,7 +11,7 @@ export async function fetchAccountIdentity(
     const provider = resolveProvider(registryId)
     switch (provider) {
       case 'google':
-        return await fetchGoogleIdentity(accessToken)
+        return await fetchGoogleIdentity(accessToken, registryId)
       case 'github':
         return await fetchGithubIdentity(accessToken)
       case 'notion':
@@ -46,13 +46,29 @@ function resolveProvider(registryId: string): string {
   return registryId
 }
 
-async function fetchGoogleIdentity(token: string): Promise<string | null> {
+async function fetchGoogleIdentity(token: string, registryId: string): Promise<string | null> {
+  // Try the standard userinfo endpoint first (requires 'email' scope)
   const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
     headers: { Authorization: `Bearer ${token}` },
   })
-  if (!res.ok) return null
-  const data = (await res.json()) as { email?: string }
-  return data.email ?? null
+  if (res.ok) {
+    const data = (await res.json()) as { email?: string }
+    if (data.email) return data.email
+  }
+
+  // Fallback: use service-specific profile endpoints for tokens that lack the
+  // 'email' scope (e.g. existing tokens created before we added it).
+  if (registryId === 'gmail') {
+    const gmailRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (gmailRes.ok) {
+      const data = (await gmailRes.json()) as { emailAddress?: string }
+      if (data.emailAddress) return data.emailAddress
+    }
+  }
+
+  return null
 }
 
 async function fetchGithubIdentity(token: string): Promise<string | null> {
