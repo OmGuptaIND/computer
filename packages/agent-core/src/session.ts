@@ -146,7 +146,12 @@ export type SessionEvent =
       model?: string
     }
   | { type: 'error'; message: string }
-  | { type: 'sub_agent_start'; toolCallId: string; task: string; agentType?: import('./agent.js').SubAgentType }
+  | {
+      type: 'sub_agent_start'
+      toolCallId: string
+      task: string
+      agentType?: import('./agent.js').SubAgentType
+    }
   | { type: 'sub_agent_end'; toolCallId: string; success: boolean }
   | { type: 'sub_agent_progress'; toolCallId: string; content: string }
   | { type: 'tasks_update'; tasks: import('@anton/protocol').TaskItem[] }

@@ -110,6 +110,8 @@ interface AppState {
   _sessionAssistantMsgIds: Map<string, string>
   // Per-session thinking message tracking (keyed by sessionId for isolation)
   _sessionThinkingMsgIds: Map<string, string>
+  // Sub-agent progress message tracking (keyed by toolCallId for accumulation)
+  _subAgentProgressMsgIds: Map<string, string>
 
   // Citations: maps assistant message ID → sources extracted from web_search
   citations: Map<string, CitationSource[]>
@@ -155,6 +157,13 @@ interface AppState {
   appendAssistantTextToSession: (sessionId: string, content: string) => void
   appendThinkingText: (content: string) => void
   appendThinkingTextToSession: (sessionId: string, content: string) => void
+  appendSubAgentProgress: (toolCallId: string, content: string, parentToolCallId: string) => void
+  appendSubAgentProgressToSession: (
+    sessionId: string,
+    toolCallId: string,
+    content: string,
+    parentToolCallId: string,
+  ) => void
   replaceAssistantText: (search: string, replacement: string, sessionId?: string) => void
   getActiveConversation: () => Conversation | null
   getActiveAgentSession: () => import('@anton/protocol').AgentSession | null
@@ -199,6 +208,7 @@ export const useStore = create<AppState>((set, get) => {
     searchQuery: '',
     _sessionAssistantMsgIds: new Map(),
     _sessionThinkingMsgIds: new Map(),
+    _subAgentProgressMsgIds: new Map(),
     citations: new Map(),
 
     setActiveMode: (mode) => {
@@ -501,6 +511,77 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
+    appendSubAgentProgress: (toolCallId, content, parentToolCallId) => {
+      set((state) => {
+        const activeId = state.activeConversationId
+        if (!activeId) return state
+
+        const conversations = state.conversations.map((c) => {
+          if (c.id !== activeId) return c
+          const messages = [...c.messages]
+
+          // Find existing progress message for this sub-agent
+          const targetId = state._subAgentProgressMsgIds.get(toolCallId) ?? null
+          const idx = targetId ? messages.findIndex((m) => m.id === targetId) : -1
+
+          if (idx >= 0) {
+            // Append to existing progress message
+            const target = messages[idx]
+            messages[idx] = { ...target, content: target.content + content }
+          } else {
+            // Create new progress message with stable ID
+            const newId = `sa_progress_${toolCallId}`
+            messages.push({
+              id: newId,
+              role: 'assistant',
+              content,
+              timestamp: Date.now(),
+              parentToolCallId,
+            })
+            state._subAgentProgressMsgIds.set(toolCallId, newId)
+          }
+          return { ...c, messages, updatedAt: Date.now() }
+        })
+
+        saveConversations(conversations)
+        return { conversations }
+      })
+    },
+
+    appendSubAgentProgressToSession: (sessionId, toolCallId, content, parentToolCallId) => {
+      set((state) => {
+        const conv = state.conversations.find((c) => c.sessionId === sessionId)
+        if (!conv) return state
+
+        const conversations = state.conversations.map((c) => {
+          if (c.sessionId !== sessionId) return c
+          const messages = [...c.messages]
+
+          const targetId = state._subAgentProgressMsgIds.get(toolCallId) ?? null
+          const idx = targetId ? messages.findIndex((m) => m.id === targetId) : -1
+
+          if (idx >= 0) {
+            const target = messages[idx]
+            messages[idx] = { ...target, content: target.content + content }
+          } else {
+            const newId = `sa_progress_${toolCallId}`
+            messages.push({
+              id: newId,
+              role: 'assistant',
+              content,
+              timestamp: Date.now(),
+              parentToolCallId,
+            })
+            state._subAgentProgressMsgIds.set(toolCallId, newId)
+          }
+          return { ...c, messages, updatedAt: Date.now() }
+        })
+
+        saveConversations(conversations)
+        return { conversations }
+      })
+    },
+
     appendThinkingText: (content) => {
       set((state) => {
         const activeId = state.activeConversationId
@@ -748,6 +829,7 @@ export const useStore = create<AppState>((set, get) => {
         // Clear conversation-level transient state
         _sessionAssistantMsgIds: new Map(),
         _sessionThinkingMsgIds: new Map(),
+        _subAgentProgressMsgIds: new Map(),
         citations: new Map(),
       })
 
@@ -767,6 +849,7 @@ export const useStore = create<AppState>((set, get) => {
         activeConversationId: null,
         _sessionAssistantMsgIds: new Map(),
         _sessionThinkingMsgIds: new Map(),
+        _subAgentProgressMsgIds: new Map(),
         citations: new Map(),
       })
 

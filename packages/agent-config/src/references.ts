@@ -22,7 +22,9 @@ const SOURCE_REFERENCES_DIR = join(__refs_dirname, '..', 'prompts', 'references'
 function loadSourceReferences(): Record<string, string> {
   if (!existsSync(SOURCE_REFERENCES_DIR)) return {}
   const refs: Record<string, string> = {}
-  for (const file of readdirSync(SOURCE_REFERENCES_DIR).filter((f) => f.endsWith('.md')).sort()) {
+  for (const file of readdirSync(SOURCE_REFERENCES_DIR)
+    .filter((f) => f.endsWith('.md'))
+    .sort()) {
     refs[file.replace('.md', '')] = readFileSync(join(SOURCE_REFERENCES_DIR, file), 'utf-8')
   }
   return refs
