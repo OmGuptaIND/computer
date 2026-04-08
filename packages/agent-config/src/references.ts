@@ -25,7 +25,10 @@ export interface ReferencePack {
 
 // ── Paths ────────────────────────────────────────────────────────────
 
-const REFERENCES_DIR = join(getAntonDir(), 'references')
+let _referencesDir: string | undefined
+function referencesDir(): string {
+  return (_referencesDir ??= join(getAntonDir(), 'references'))
+}
 
 // ── Pack loading ─────────────────────────────────────────────────────
 
@@ -37,7 +40,7 @@ export function loadReferencePacks(): Record<string, ReferencePack> {
   const packs: Record<string, ReferencePack> = { ...EMBEDDED_REFERENCE_PACKS }
 
   // Merge user-defined packs (override by name)
-  const userPacksPath = join(REFERENCES_DIR, '_packs.yaml')
+  const userPacksPath = join(referencesDir(), '_packs.yaml')
   if (existsSync(userPacksPath)) {
     try {
       const raw = readFileSync(userPacksPath, 'utf-8')
@@ -63,7 +66,7 @@ export function loadReferencePacks(): Record<string, ReferencePack> {
  */
 function loadSingleReference(name: string): string | undefined {
   // User override
-  const userPath = join(REFERENCES_DIR, `${name}.md`)
+  const userPath = join(referencesDir(), `${name}.md`)
   if (existsSync(userPath)) {
     try {
       return readFileSync(userPath, 'utf-8')
@@ -164,5 +167,5 @@ export function loadReferences(opts: {
  * Called during agent startup.
  */
 export function ensureReferencesDir(): void {
-  mkdirSync(REFERENCES_DIR, { recursive: true })
+  mkdirSync(referencesDir(), { recursive: true })
 }

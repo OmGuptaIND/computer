@@ -19,7 +19,10 @@ import { parse as parseYaml } from 'yaml'
 import type { SkillAssets, SkillConfig, SkillParameter } from './config.js'
 import { getAntonDir } from './config.js'
 
-const SKILLS_DIR = join(getAntonDir(), 'skills')
+let _skillsDir: string | undefined
+function skillsDir(): string {
+  return (_skillsDir ??= join(getAntonDir(), 'skills'))
+}
 let _exampleSkillsSeeded = false
 
 /**
@@ -121,17 +124,17 @@ function loadSkillDir(dirPath: string, source: 'builtin' | 'user' | 'project'): 
  * Also loads legacy .yaml files for backward compat.
  */
 export function loadSkills(): SkillConfig[] {
-  if (!existsSync(SKILLS_DIR)) {
-    mkdirSync(SKILLS_DIR, { recursive: true })
+  if (!existsSync(skillsDir())) {
+    mkdirSync(skillsDir(), { recursive: true })
   }
   // Always ensure built-in skills exist (idempotent — won't overwrite existing)
   createExampleSkills()
 
-  const entries = readdirSync(SKILLS_DIR)
+  const entries = readdirSync(skillsDir())
   const skills: SkillConfig[] = []
 
   for (const entry of entries) {
-    const fullPath = join(SKILLS_DIR, entry)
+    const fullPath = join(skillsDir(), entry)
 
     // Directory-based skills (new format)
     if (statSync(fullPath).isDirectory()) {
@@ -550,7 +553,7 @@ Match the project's existing documentation style.`,
   }
 
   for (const [dirName, content] of Object.entries(skills)) {
-    const dirPath = join(SKILLS_DIR, dirName)
+    const dirPath = join(skillsDir(), dirName)
     if (!existsSync(dirPath)) {
       mkdirSync(dirPath, { recursive: true })
       writeFileSync(join(dirPath, 'SKILL.md'), content, 'utf-8')
@@ -633,7 +636,7 @@ Report findings as:
 
   for (const [dirName, files] of Object.entries(assetFiles)) {
     for (const [relPath, content] of Object.entries(files)) {
-      const fullPath = join(SKILLS_DIR, dirName, relPath)
+      const fullPath = join(skillsDir(), dirName, relPath)
       const dir = fullPath.substring(0, fullPath.lastIndexOf('/'))
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
       if (!existsSync(fullPath)) writeFileSync(fullPath, content, 'utf-8')

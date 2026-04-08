@@ -32,15 +32,23 @@ import type { AgentConfig } from './config.js'
 export type { Project } from '@anton/protocol'
 export type { AgentMetadata, AgentSession } from '@anton/protocol'
 
-const PROJECTS_DIR = join(getAntonDir(), 'projects')
-const INDEX_PATH = join(PROJECTS_DIR, 'index.json')
+let _projectsDir: string | undefined
+let _indexPath: string | undefined
+
+function projectsDir(): string {
+  return (_projectsDir ??= join(getAntonDir(), 'projects'))
+}
+
+function indexPath(): string {
+  return (_indexPath ??= join(projectsDir(), 'index.json'))
+}
 
 export function getProjectsDir(): string {
-  return PROJECTS_DIR
+  return projectsDir()
 }
 
 export function getProjectDir(id: string): string {
-  return join(PROJECTS_DIR, id)
+  return join(projectsDir(), id)
 }
 
 export function getProjectSessionsDir(id: string): string {
@@ -49,11 +57,11 @@ export function getProjectSessionsDir(id: string): string {
 
 /** Ensure projects directory and index exist */
 function ensureProjectsDir(): void {
-  if (!existsSync(PROJECTS_DIR)) {
-    mkdirSync(PROJECTS_DIR, { recursive: true })
+  if (!existsSync(projectsDir())) {
+    mkdirSync(projectsDir(), { recursive: true })
   }
-  if (!existsSync(INDEX_PATH)) {
-    writeFileSync(INDEX_PATH, '[]', 'utf-8')
+  if (!existsSync(indexPath())) {
+    writeFileSync(indexPath(), '[]', 'utf-8')
   }
 }
 
@@ -61,7 +69,7 @@ function ensureProjectsDir(): void {
 function loadIndex(): Project[] {
   ensureProjectsDir()
   try {
-    const raw = readFileSync(INDEX_PATH, 'utf-8')
+    const raw = readFileSync(indexPath(), 'utf-8')
     return JSON.parse(raw)
   } catch {
     return []
@@ -71,7 +79,7 @@ function loadIndex(): Project[] {
 /** Save the project index */
 function saveIndex(projects: Project[]): void {
   ensureProjectsDir()
-  writeFileSync(INDEX_PATH, JSON.stringify(projects, null, 2), 'utf-8')
+  writeFileSync(indexPath(), JSON.stringify(projects, null, 2), 'utf-8')
 }
 
 /** Sanitize a project name into a filesystem-safe directory name */
