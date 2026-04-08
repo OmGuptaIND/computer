@@ -3418,6 +3418,26 @@ export class AgentServer {
     log.info({ count: toActivate.length }, 'Activating OAuth connectors')
     for (const providerId of toActivate) {
       const cfg = enabledMap.get(providerId)!
+
+      // Backfill accountEmail for connectors that were connected before
+      // identity-fetching was introduced (or where the initial fetch failed).
+      if (!cfg.accountEmail && !cfg.accountLabel) {
+        try {
+          const token = await this.oauthFlow.getToken(providerId)
+          if (token) {
+            const registryId = cfg.registryId ?? providerId
+            const email = await fetchAccountIdentity(registryId, token)
+            if (email) {
+              cfg.accountEmail = email
+              updateConnectorConfig(this.config, providerId, { accountEmail: email })
+              log.info({ providerId, accountEmail: email }, 'Backfilled account identity')
+            }
+          }
+        } catch (err) {
+          log.warn({ providerId, err }, 'Failed to backfill account identity')
+        }
+      }
+
       await this.connectorManager.activate(providerId, {
         registryId: cfg.registryId,
         accountDisplayName: cfg.accountLabel ?? cfg.accountEmail,
