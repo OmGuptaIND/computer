@@ -92,7 +92,6 @@ function getToolTarget(toolName: string, toolInput?: Record<string, unknown>): s
   switch (toolName) {
     case 'shell': {
       const cmd = (toolInput.command as string) || ''
-      // Show the command, truncated
       return cmd.length > 80 ? `${cmd.slice(0, 77)}...` : cmd
     }
     case 'filesystem': {
@@ -221,7 +220,6 @@ function getToolMeta(
     case 'web_search':
     case 'exa_search':
     case 'exa_find_similar': {
-      // Try to count results from the output
       const resultMatches = resultContent.match(/\burl\b/gi)
       if (resultMatches && resultMatches.length > 0) {
         const count = resultMatches.length
@@ -244,14 +242,12 @@ function getGroupHeader(actions: ToolAction[]): string {
     const label = getToolTypeLabel(toolName, action.call.toolInput as Record<string, unknown>)
     const target = getToolTarget(toolName, action.call.toolInput as Record<string, unknown>)
     if (target) {
-      // For single actions, combine: "Read config.ts" or "Shell npm test"
       const shortTarget = target.length > 60 ? `${target.slice(0, 57)}...` : target
       return `${label} ${shortTarget}`
     }
     return label
   }
 
-  // Multiple actions — group by type and summarize
   const types = new Map<string, number>()
   for (const a of actions) {
     const label = getToolTypeLabel(
@@ -290,7 +286,6 @@ function ToolTreeItem({ action, isLast }: ToolTreeItemProps) {
   const faviconUrl = getToolFavicon(toolName, input)
   const artifact = artifacts.find((a) => a.toolCallId === action.call.id)
 
-  // For long results, show "Show more" toggle
   const resultContent = action.result?.content || ''
   const resultLines = resultContent.split('\n')
   const isLongResult = resultLines.length > 6
@@ -353,7 +348,7 @@ function ToolTreeItem({ action, isLast }: ToolTreeItemProps) {
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.12 }}
-            style={{ overflow: 'hidden' }}
+            style={{ overflowY: 'auto', maxHeight: 400 }}
           >
             <pre className="tool-tree__result">{displayedResult}</pre>
             {isLongResult && (
@@ -398,10 +393,8 @@ export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
   }, [defaultExpanded])
 
   const errorCount = actions.filter((a) => a.result?.isError).length
-
   const headerText = getGroupHeader(actions)
 
-  // Show favicon in header for single-action groups that fetch URLs
   const headerFavicon = useMemo(() => {
     if (actions.length !== 1) return null
     const input = actions[0].call.toolInput as Record<string, unknown> | undefined
@@ -439,7 +432,7 @@ export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
         {errorCount > 0 && <span className="tool-tree__error-badge">{errorCount} failed</span>}
       </button>
 
-      {/* Tree items */}
+      {/* Tree items — scrollable when expanded with many items */}
       <AnimatePresence>
         {expanded && (
           <motion.div
@@ -447,7 +440,7 @@ export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
             animate={{ height: 'auto' }}
             exit={{ height: 0 }}
             transition={{ duration: 0.15 }}
-            style={{ overflow: 'hidden' }}
+            style={{ overflowY: 'auto', maxHeight: 400 }}
           >
             <div className="tool-tree__items">
               {actions.length > 4 && !showAllItems ? (
@@ -468,7 +461,7 @@ export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
                   <ToolTreeItem
                     key={actions[actions.length - 1].call.id}
                     action={actions[actions.length - 1]}
-                    isLast={true}
+                    isLast
                   />
                 </>
               ) : (
@@ -485,7 +478,7 @@ export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
         )}
       </AnimatePresence>
 
-      {/* Inline artifact cards */}
+      {/* Artifacts */}
       {groupArtifacts.length > 0 && (
         <div className="tool-tree__artifacts">
           {groupArtifacts.map((artifact) => (
@@ -496,6 +489,3 @@ export function ActionsGroup({ actions, defaultExpanded = false }: Props) {
     </motion.div>
   )
 }
-
-// Re-export helpers for SubAgentGroup and TaskSection
-export { getToolTypeLabel, getToolTarget, getToolMeta, getGroupHeader, ToolTreeItem }
