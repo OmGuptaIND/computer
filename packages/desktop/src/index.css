@@ -5046,15 +5046,26 @@ button {
 .models-detail__header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding-bottom: 12px;
+  gap: 14px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--border);
+}
+
+.models-detail__icon-wrap {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(var(--overlay), 0.06);
+  flex-shrink: 0;
 }
 
 .models-detail__header-info {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 2px;
   flex: 1;
 }
 
@@ -5065,13 +5076,12 @@ button {
   margin: 0;
 }
 
-/* keep old class names used in ProviderPanel */
-.settings-modal__models {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.models-detail__subtitle {
+  font-size: 12px;
+  color: var(--text-subtle);
 }
 
+/* Shared icon / badge styles */
 .settings-modal__provider-icon {
   border-radius: 4px;
   flex-shrink: 0;
@@ -5107,35 +5117,44 @@ button {
   background: rgba(var(--overlay), 0.06);
 }
 
-.settings-modal__panel {
-  padding: 12px 12px 12px;
+/* ── Provider detail panel ────────────────────────────────── */
+
+.provider-detail {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
-/* API Key section */
-.settings-modal__key-section {
+/* API Key */
+.provider-detail__key {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.settings-modal__key-form {
+.provider-detail__key-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.provider-detail__key-form {
   display: flex;
   gap: 8px;
 }
 
-.settings-modal__key-input-wrap {
+.provider-detail__key-input-wrap {
   flex: 1;
   position: relative;
   display: flex;
   align-items: center;
 }
 
-.settings-modal__key-input {
+.provider-detail__key-input {
   width: 100%;
-  padding: 8px 34px 8px 10px;
+  padding: 9px 34px 9px 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: rgba(var(--overlay), 0.03);
@@ -5145,19 +5164,19 @@ button {
   transition: border-color 0.15s ease;
 }
 
-.settings-modal__key-input:focus {
+.provider-detail__key-input:focus {
   border-color: var(--accent);
   outline: none;
 }
 
-.settings-modal__key-input::placeholder {
+.provider-detail__key-input::placeholder {
   color: var(--text-subtle);
   opacity: 0.5;
 }
 
-.settings-modal__key-toggle {
+.provider-detail__key-eye {
   position: absolute;
-  right: 6px;
+  right: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5168,16 +5187,16 @@ button {
   transition: color 0.12s ease;
 }
 
-.settings-modal__key-toggle:hover {
+.provider-detail__key-eye:hover {
   color: var(--text);
 }
 
-.settings-modal__key-save {
-  padding: 8px 16px;
+.provider-detail__key-save {
+  padding: 9px 18px;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
-  background: rgba(var(--overlay), 0.12);
+  background: rgba(var(--overlay), 0.1);
   color: var(--text);
   border: 1px solid var(--border);
   transition: background 0.12s ease, border-color 0.12s ease;
@@ -5185,101 +5204,157 @@ button {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-width: 60px;
+  min-width: 64px;
   justify-content: center;
 }
 
-.settings-modal__key-save:hover:not(:disabled) {
+.provider-detail__key-save:hover:not(:disabled) {
   background: rgba(var(--overlay), 0.18);
   border-color: var(--text-subtle);
 }
 
-.settings-modal__key-save:disabled {
+.provider-detail__key-save:disabled {
   background: rgba(var(--overlay), 0.04);
   color: var(--text-subtle);
   border-color: transparent;
   cursor: not-allowed;
 }
 
-.settings-modal__key-save--saved {
+.provider-detail__key-save--saved {
   background: rgba(34, 197, 94, 0.15);
   color: var(--success);
   border-color: rgba(34, 197, 94, 0.25);
 }
 
-/* Models select section */
-.settings-modal__models-section {
+/* Models section */
+.provider-detail__models {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 
-.settings-modal__models-header {
+.provider-detail__models-top {
   display: flex;
   align-items: center;
-  gap: 8px;
 }
 
-.settings-modal__models-label {
-  font-size: 12px;
+.provider-detail__models-label {
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-subtle);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.settings-modal__models-list {
+.provider-detail__models-count {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-subtle);
+  background: rgba(var(--overlay), 0.08);
+  padding: 1px 6px;
+  border-radius: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.provider-detail__model-groups {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 14px;
 }
 
-.settings-modal__model-option {
+.provider-detail__model-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.provider-detail__group-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-subtle);
+  opacity: 0.7;
+  padding: 0 2px;
+  margin-bottom: 2px;
+}
+
+.provider-detail__model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.provider-detail__model-card {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 8px;
-  font-size: 13px;
-  color: var(--text);
+  border: 1px solid transparent;
   text-align: left;
-  transition: background 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 
-.settings-modal__model-option:hover {
+.provider-detail__model-card:hover {
   background: rgba(var(--overlay), 0.04);
+  border-color: var(--border);
 }
 
-.settings-modal__model-option--active {
+.provider-detail__model-card--active {
+  background: rgba(74, 158, 255, 0.06);
+  border-color: rgba(74, 158, 255, 0.2);
+}
+
+.provider-detail__model-card--active:hover {
   background: rgba(74, 158, 255, 0.08);
+  border-color: rgba(74, 158, 255, 0.25);
 }
 
-.settings-modal__model-name {
+.provider-detail__model-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.provider-detail__model-name {
+  font-size: 13px;
   font-weight: 500;
+  color: var(--text);
 }
 
-.settings-modal__model-id {
+.provider-detail__model-id {
   font-size: 11px;
   color: var(--text-subtle);
   opacity: 0.6;
-  flex: 1;
-  text-align: right;
   font-family: var(--font-mono);
 }
 
-.settings-modal__check {
+.provider-detail__model-active {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--accent);
   flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(74, 158, 255, 0.1);
 }
 
-/* Advanced: edit models */
-.settings-modal__advanced {
+/* Edit models */
+.provider-detail__edit {
   border-top: 1px solid var(--border);
-  padding-top: 8px;
+  padding-top: 10px;
 }
 
-.settings-modal__advanced-toggle {
+.provider-detail__edit-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -5290,48 +5365,48 @@ button {
   transition: color 0.12s ease;
 }
 
-.settings-modal__advanced-toggle:hover {
+.provider-detail__edit-toggle:hover {
   color: var(--text);
 }
 
-.settings-modal__advanced-chevron {
+.provider-detail__edit-chevron {
   transition: transform 0.15s ease;
 }
 
-.settings-modal__advanced-chevron--open {
+.provider-detail__edit-chevron--open {
   transform: rotate(90deg);
 }
 
-.settings-modal__advanced-body {
+.provider-detail__edit-body {
   overflow: hidden;
 }
 
-.settings-modal__edit-models {
+.provider-detail__edit-list {
   margin-top: 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
 }
 
-.settings-modal__edit-model-row {
+.provider-detail__edit-row {
   display: flex;
   align-items: center;
-  padding: 6px 10px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--border);
 }
 
-.settings-modal__edit-model-row:last-child {
+.provider-detail__edit-row:last-child {
   border-bottom: none;
 }
 
-.settings-modal__edit-model-id {
+.provider-detail__edit-id {
   flex: 1;
   font-size: 12px;
   font-family: var(--font-mono);
   color: var(--text);
 }
 
-.settings-modal__edit-model-delete {
+.provider-detail__edit-delete {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5343,28 +5418,28 @@ button {
   transition: opacity 0.12s ease, color 0.12s ease;
 }
 
-.settings-modal__edit-model-row:hover .settings-modal__edit-model-delete {
+.provider-detail__edit-row:hover .provider-detail__edit-delete {
   opacity: 1;
 }
 
-.settings-modal__edit-model-delete:hover {
+.provider-detail__edit-delete:hover {
   color: #ef4444;
 }
 
-.settings-modal__edit-model-add {
+.provider-detail__edit-add {
   display: flex;
   align-items: center;
-  padding: 6px 10px;
+  padding: 7px 10px;
   gap: 6px;
   border-top: 1px solid var(--border);
 }
 
-.settings-modal__edit-model-add-icon {
+.provider-detail__edit-add-icon {
   color: var(--text-subtle);
   flex-shrink: 0;
 }
 
-.settings-modal__edit-model-add-input {
+.provider-detail__edit-add-input {
   flex: 1;
   background: transparent;
   border: none;
@@ -5374,19 +5449,19 @@ button {
   outline: none;
 }
 
-.settings-modal__edit-model-add-input::placeholder {
+.provider-detail__edit-add-input::placeholder {
   color: var(--text-subtle);
   opacity: 0.5;
 }
 
-.settings-modal__edit-actions {
+.provider-detail__edit-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 8px;
 }
 
-.settings-modal__edit-reset {
+.provider-detail__edit-reset {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -5397,12 +5472,12 @@ button {
   transition: color 0.12s ease, background 0.12s ease;
 }
 
-.settings-modal__edit-reset:hover {
+.provider-detail__edit-reset:hover {
   color: var(--text);
   background: rgba(var(--overlay), 0.05);
 }
 
-.settings-modal__edit-save {
+.provider-detail__edit-save {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -5416,11 +5491,11 @@ button {
   transition: background 0.12s ease;
 }
 
-.settings-modal__edit-save:hover {
+.provider-detail__edit-save:hover {
   background: rgba(var(--overlay), 0.18);
 }
 
-.settings-modal__edit-save--saved {
+.provider-detail__edit-save--saved {
   background: rgba(34, 197, 94, 0.15);
   color: var(--success);
   border-color: rgba(34, 197, 94, 0.25);

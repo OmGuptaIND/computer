@@ -191,6 +191,24 @@ function ProviderIcon({ provider, size = 16 }: { provider: string; size?: number
   )
 }
 
+/** Group models by prefix for providers like openrouter (e.g. "anthropic/..." → "Anthropic") */
+function groupModels(modelIds: string[]): { label: string | null; models: string[] }[] {
+  const hasSlash = modelIds.some((m) => m.includes('/'))
+  if (!hasSlash) return [{ label: null, models: modelIds }]
+
+  const groups = new Map<string, string[]>()
+  for (const m of modelIds) {
+    const slash = m.indexOf('/')
+    const prefix = slash > 0 ? m.slice(0, slash) : '_other'
+    if (!groups.has(prefix)) groups.set(prefix, [])
+    groups.get(prefix)!.push(m)
+  }
+  return Array.from(groups.entries()).map(([key, models]) => ({
+    label: key === '_other' ? 'Other' : key.charAt(0).toUpperCase() + key.slice(1),
+    models,
+  }))
+}
+
 function ProviderPanel({
   provider,
   currentProvider,
@@ -267,14 +285,18 @@ function ProviderPanel({
   const modelsChanged =
     models.length !== provider.models.length || models.some((m, i) => m !== provider.models[i])
 
+  const modelGroups = groupModels(provider.models)
+
   return (
-    <div className="settings-modal__panel">
-      <div className="settings-modal__key-section">
-        <form onSubmit={handleKeySubmit} className="settings-modal__key-form">
-          <div className="settings-modal__key-input-wrap">
+    <div className="provider-detail">
+      {/* API Key */}
+      <div className="provider-detail__key">
+        <div className="provider-detail__key-label">API Key</div>
+        <form onSubmit={handleKeySubmit} className="provider-detail__key-form">
+          <div className="provider-detail__key-input-wrap">
             <input
               type={showKey ? 'text' : 'password'}
-              className="settings-modal__key-input"
+              className="provider-detail__key-input"
               placeholder={
                 provider.hasApiKey ? 'Replace existing key...' : 'Paste your API key to get started'
               }
@@ -285,7 +307,7 @@ function ProviderPanel({
             />
             <button
               type="button"
-              className="settings-modal__key-toggle"
+              className="provider-detail__key-eye"
               onClick={() => setShowKey(!showKey)}
               tabIndex={-1}
             >
@@ -299,7 +321,7 @@ function ProviderPanel({
           <button
             type="submit"
             disabled={!apiKey.trim()}
-            className={`settings-modal__key-save ${keySaved ? 'settings-modal__key-save--saved' : ''}`}
+            className={`provider-detail__key-save ${keySaved ? 'provider-detail__key-save--saved' : ''}`}
           >
             {keySaved ? (
               <>
@@ -312,44 +334,64 @@ function ProviderPanel({
         </form>
       </div>
 
+      {/* Models */}
       {(provider.hasApiKey || keySaved) && (
-        <div className="settings-modal__models-section">
-          <div className="settings-modal__models-header">
-            <span className="settings-modal__models-label">Models</span>
+        <div className="provider-detail__models">
+          <div className="provider-detail__models-top">
+            <span className="provider-detail__models-label">
+              Select a model
+              <span className="provider-detail__models-count">{provider.models.length}</span>
+            </span>
           </div>
-          <div className="settings-modal__models-list">
-            {provider.models.map((model) => {
-              const isActive = currentProvider === provider.name && currentModel === model
-              return (
-                <button
-                  type="button"
-                  key={`${provider.name}/${model}`}
-                  className={`settings-modal__model-option ${isActive ? 'settings-modal__model-option--active' : ''}`}
-                  onClick={() => onSelectModel(provider.name, model)}
-                >
-                  <span className="settings-modal__model-name">{formatModelName(model)}</span>
-                  <code className="settings-modal__model-id">{model}</code>
-                  {isActive && (
-                    <Check size={14} strokeWidth={1.5} className="settings-modal__check" />
-                  )}
-                </button>
-              )
-            })}
+
+          <div className="provider-detail__model-groups">
+            {modelGroups.map((group) => (
+              <div key={group.label || '_'} className="provider-detail__model-group">
+                {group.label && <div className="provider-detail__group-label">{group.label}</div>}
+                <div className="provider-detail__model-list">
+                  {group.models.map((model) => {
+                    const isActive = currentProvider === provider.name && currentModel === model
+                    return (
+                      <button
+                        type="button"
+                        key={model}
+                        className={`provider-detail__model-card${isActive ? ' provider-detail__model-card--active' : ''}`}
+                        onClick={() => onSelectModel(provider.name, model)}
+                      >
+                        <div className="provider-detail__model-info">
+                          <span className="provider-detail__model-name">
+                            {formatModelName(model)}
+                          </span>
+                          <code className="provider-detail__model-id">{model}</code>
+                        </div>
+                        {isActive && (
+                          <div className="provider-detail__model-active">
+                            <Check size={12} strokeWidth={2} />
+                            Active
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
+      {/* Edit models */}
       {(provider.hasApiKey || keySaved) && (
-        <div className="settings-modal__advanced">
+        <div className="provider-detail__edit">
           <button
             type="button"
-            className="settings-modal__advanced-toggle"
+            className="provider-detail__edit-toggle"
             onClick={() => setShowAdvanced(!showAdvanced)}
           >
             <ChevronRight
               size={12}
               strokeWidth={1.5}
-              className={`settings-modal__advanced-chevron ${showAdvanced ? 'settings-modal__advanced-chevron--open' : ''}`}
+              className={`provider-detail__edit-chevron ${showAdvanced ? 'provider-detail__edit-chevron--open' : ''}`}
             />
             Edit models
           </button>
@@ -357,20 +399,20 @@ function ProviderPanel({
           <AnimatePresence initial={false}>
             {showAdvanced && (
               <motion.div
-                className="settings-modal__advanced-body"
+                className="provider-detail__edit-body"
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.15 }}
               >
-                <div className="settings-modal__edit-models">
+                <div className="provider-detail__edit-list">
                   {models.map((model, index) => (
-                    <div key={model} className="settings-modal__edit-model-row">
-                      <code className="settings-modal__edit-model-id">{model}</code>
+                    <div key={model} className="provider-detail__edit-row">
+                      <code className="provider-detail__edit-id">{model}</code>
                       <button
                         type="button"
                         onClick={() => handleRemoveModel(index)}
-                        className="settings-modal__edit-model-delete"
+                        className="provider-detail__edit-delete"
                         title="Remove model"
                       >
                         <Trash2 size={12} strokeWidth={1.5} />
@@ -382,17 +424,13 @@ function ProviderPanel({
                       e.preventDefault()
                       handleAddModel()
                     }}
-                    className="settings-modal__edit-model-add"
+                    className="provider-detail__edit-add"
                   >
-                    <Plus
-                      size={14}
-                      strokeWidth={1.5}
-                      className="settings-modal__edit-model-add-icon"
-                    />
+                    <Plus size={14} strokeWidth={1.5} className="provider-detail__edit-add-icon" />
                     <input
                       ref={modelInputRef}
                       type="text"
-                      className="settings-modal__edit-model-add-input"
+                      className="provider-detail__edit-add-input"
                       placeholder="model-id"
                       value={newModel}
                       onChange={(e) => setNewModel(e.target.value)}
@@ -400,12 +438,12 @@ function ProviderPanel({
                     />
                   </form>
                 </div>
-                <div className="settings-modal__edit-actions">
+                <div className="provider-detail__edit-actions">
                   {provider.defaultModels && provider.defaultModels.length > 0 && (
                     <button
                       type="button"
                       onClick={handleResetModels}
-                      className="settings-modal__edit-reset"
+                      className="provider-detail__edit-reset"
                     >
                       <RotateCcw size={12} strokeWidth={1.5} /> Defaults
                     </button>
@@ -414,7 +452,7 @@ function ProviderPanel({
                     <button
                       type="button"
                       onClick={handleSaveModels}
-                      className={`settings-modal__edit-save ${modelsSaved ? 'settings-modal__edit-save--saved' : ''}`}
+                      className={`provider-detail__edit-save ${modelsSaved ? 'provider-detail__edit-save--saved' : ''}`}
                     >
                       {modelsSaved ? (
                         <>
@@ -470,21 +508,28 @@ function ModelsPage({ onClose }: { onClose: () => void }) {
         </button>
 
         <div className="models-detail__header">
-          <ProviderIcon provider={selected.name} size={32} />
+          <div className="models-detail__icon-wrap">
+            <ProviderIcon provider={selected.name} size={28} />
+          </div>
           <div className="models-detail__header-info">
             <h3 className="models-detail__title">
               {selected.name.charAt(0).toUpperCase() + selected.name.slice(1)}
             </h3>
-            {selected.hasApiKey ? (
-              <span className="settings-modal__badge settings-modal__badge--connected">
-                Connected
-              </span>
-            ) : (
-              <span className="settings-modal__badge settings-modal__badge--setup">
-                Setup required
-              </span>
-            )}
+            <span className="models-detail__subtitle">
+              {selected.hasApiKey
+                ? `${selected.models.length} models available`
+                : 'Add your API key to get started'}
+            </span>
           </div>
+          {selected.hasApiKey ? (
+            <span className="settings-modal__badge settings-modal__badge--connected">
+              Connected
+            </span>
+          ) : (
+            <span className="settings-modal__badge settings-modal__badge--setup">
+              Setup required
+            </span>
+          )}
         </div>
 
         <ProviderPanel
