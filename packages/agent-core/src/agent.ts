@@ -54,38 +54,79 @@ export { needsConfirmation } from './tools/shell.js'
 
 export type SubAgentType = 'research' | 'execute' | 'verify'
 
+/** Tools that specific sub-agent types should NOT have access to. */
+const SUB_AGENT_DISALLOWED_TOOLS: Record<SubAgentType, Set<string>> = {
+  research: new Set(['publish']),
+  execute: new Set([]),
+  verify: new Set(['publish']),
+}
+
 const SUB_AGENT_TYPE_PREFIXES: Record<SubAgentType, string> = {
-  research: `You are a research sub-agent. Your job is to thoroughly investigate and gather information, then return a clear, structured summary of your findings.
+  research: `You are a research sub-agent. You are NOT the main agent.
 
-Rules:
-- Focus on FINDING and ORGANIZING information, not on making changes.
-- Use web_search, browser (fetch/extract), filesystem (read/search), code_search, and http_api to gather data.
-- Do NOT create, modify, or delete files unless the task explicitly asks you to save results somewhere.
-- Do NOT run shell commands that modify system state (installs, service changes).
-- Structure your final response with clear sections: what you found, from which sources, and your assessment of confidence/completeness.
-- If you find conflicting information, note the discrepancy rather than silently picking one.
+RULES (non-negotiable):
+1. Do NOT spawn sub-agents. You ARE the sub-agent — execute directly using your tools.
+2. Do NOT emit text between tool calls. Use tools silently, then report once at the end.
+3. Do NOT converse, ask questions, or suggest next steps.
+4. Focus on FINDING and ORGANIZING information, not on making changes.
+5. Use web_search, browser (fetch/extract), filesystem (read/search), code_search, and http_api to gather data.
+6. Do NOT create, modify, or delete files unless the task explicitly asks you to save results somewhere.
+7. Do NOT run shell commands that modify system state (installs, service changes).
+8. If you find conflicting information, note the discrepancy rather than silently picking one.
+9. Stay strictly within the task scope. If you discover related topics outside scope, mention them in one sentence at most.
+10. Keep your report under 500 words unless the task specifies otherwise.
+
+Output format (plain text labels, not markdown headers):
+  Scope: <echo back your assigned scope in one sentence>
+  Result: <the answer or key findings, limited to the scope above>
+  Key files: <relevant file paths — include for code research tasks>
+  Sources: <list of URLs or references used>
+  Issues: <list — include only if there are issues to flag>
 
 Task:
 `,
-  execute: `You are an execution sub-agent. Your job is to carry out a specific task to completion, verify your work, and report the result.
+  execute: `You are an execution sub-agent. You are NOT the main agent.
 
-Rules:
-- Execute the task precisely as described. Do not expand scope beyond what is asked.
-- Verify your work: run the code, check the output, test the endpoint, read back the file. Never assume success.
-- If you encounter an error, diagnose and fix it. Retry up to 3 times before reporting failure.
-- Keep your response focused: what you did, what the result was, and any issues encountered.
-- Do NOT ask the user for clarification — work with what you have. If something is ambiguous, make a reasonable assumption and note it.
+RULES (non-negotiable):
+1. Do NOT spawn sub-agents. You ARE the sub-agent — execute directly using your tools.
+2. Do NOT emit text between tool calls. Use tools silently, then report once at the end.
+3. Do NOT converse, ask questions, or suggest next steps.
+4. Execute the task precisely as described. Do not expand scope beyond what is asked.
+5. Verify your work: run the code, check the output, test the endpoint, read back the file. Never assume success.
+6. If you encounter an error, diagnose and fix it. Retry up to 3 times before reporting failure.
+7. Do NOT ask the user for clarification — work with what you have. Make reasonable assumptions and note them.
+8. Stay strictly within the task scope.
+9. Keep your report under 500 words unless the task specifies otherwise.
+
+Output format (plain text labels, not markdown headers):
+  Scope: <echo back your assigned scope in one sentence>
+  Result: <what you did and the outcome>
+  Files changed: <list of modified files>
+  Issues: <list — include only if there are issues to flag>
 
 Task:
 `,
-  verify: `You are a verification sub-agent. Your job is to check whether something works correctly and report a clear verdict.
+  verify: `You are a verification sub-agent. You are NOT the main agent.
 
-Rules:
-- Run concrete checks: execute tests, build commands, linters, curl endpoints, read logs. Do not just review code by eye.
-- Report a clear verdict: PASS (everything works), FAIL (something is broken — list what), or PARTIAL (some things work, some don't).
-- For each check, report: what you tested, the command/action you ran, and the result.
-- Do NOT fix problems. Report them clearly so the parent agent can decide what to do.
-- If the task does not specify what to check, look for: test suites, build scripts, linter configs, and verify each one.
+RULES (non-negotiable):
+1. Do NOT spawn sub-agents. You ARE the sub-agent — execute directly using your tools.
+2. Do NOT emit text between tool calls. Use tools silently, then report once at the end.
+3. Do NOT converse, ask questions, or suggest next steps.
+4. Run concrete checks: execute tests, build commands, linters, curl endpoints, read logs. Do not just review code by eye.
+5. Do NOT fix problems. Report them clearly so the parent agent can decide what to do.
+6. If the task does not specify what to check, look for: test suites, build scripts, linter configs, and verify each one.
+7. Stay strictly within the task scope.
+
+For each check, report:
+  Check: <what you tested>
+  Command: <exact command you ran>
+  Output: <actual terminal output — copy-paste, not paraphrased>
+  Result: PASS or FAIL (with Expected vs Actual)
+
+End with exactly one of:
+  VERDICT: PASS
+  VERDICT: FAIL
+  VERDICT: PARTIAL (for environmental limitations only — not for uncertainty)
 
 Task:
 `,
@@ -931,9 +972,9 @@ export function buildTools(
     )
   }
 
-  // ── Sub-agent (depth-limited — max 2 levels of nesting) ──
+  // ── Sub-agent (depth-limited — sub-agents cannot spawn further sub-agents) ──
   const currentDepth = callbacks?.subAgentDepth ?? 0
-  const MAX_SUB_AGENT_DEPTH = 2
+  const MAX_SUB_AGENT_DEPTH = 1
 
   if (currentDepth < MAX_SUB_AGENT_DEPTH) {
     tools.push(
@@ -941,22 +982,19 @@ export function buildTools(
         name: 'sub_agent',
         label: 'Sub Agent',
         description:
-          'Spawn a sub-agent for focused, independent work with its own context and full tool access. ' +
-          'Use proactively for: parallel research (one sub-agent per topic), multi-file changes, independent subtasks, and verification after non-trivial work. ' +
-          'Set `type` to specialize: "research" for information gathering, "execute" for carrying out specific tasks, "verify" for testing/validation. Omit for general-purpose. ' +
-          'Multiple sub_agent calls in the same response run in parallel — always launch independent work concurrently. ' +
-          'Write self-contained task descriptions: the sub-agent cannot see your conversation, so include all file paths, context, and requirements.',
+          'Spawn a sub-agent that runs autonomously with its own context. Use when intermediate tool output would pollute your context — not for every task. ' +
+          'Set `type` to specialize: "research" (information gathering, no file changes), "execute" (carry out a specific plan), "verify" (run tests/checks, report verdict). Omit for general-purpose. ' +
+          'Multiple sub_agent calls in the same response run in parallel. ' +
+          'Never delegate understanding: don\'t write "based on your findings, fix X" — include file paths, line numbers, and exactly what to do. ' +
+          'The sub-agent cannot see your conversation. The task string is its entire context — make it self-contained.',
         parameters: Type.Object({
           task: Type.String({
-            description: 'Detailed, self-contained description of the task. Include all file paths, context, constraints, and expected output format.',
+            description:
+              'Detailed, self-contained description of the task. Include all file paths, context, constraints, and expected output format.',
           }),
           type: Type.Optional(
             Type.Union(
-              [
-                Type.Literal('research'),
-                Type.Literal('execute'),
-                Type.Literal('verify'),
-              ],
+              [Type.Literal('research'), Type.Literal('execute'), Type.Literal('verify')],
               {
                 description:
                   'Sub-agent specialization. ' +
@@ -986,8 +1024,8 @@ export function buildTools(
             // Lazy import to avoid circular dependency (agent.ts <-> session.ts)
             const { Session } = await import('./session.js')
 
-            // Build tools for sub-agent with full project + MCP powers, depth incremented
-            const subTools = buildTools(
+            // Build tools for sub-agent with depth incremented, then filter by type
+            let subTools = buildTools(
               config,
               {
                 getAskUserHandler: callbacks?.getAskUserHandler,
@@ -1006,6 +1044,12 @@ export function buildTools(
               },
               mcpManager,
             )
+
+            // Filter tools based on sub-agent type specialization
+            if (params.type && SUB_AGENT_DISALLOWED_TOOLS[params.type]) {
+              const disallowed = SUB_AGENT_DISALLOWED_TOOLS[params.type]
+              subTools = subTools.filter((t) => !disallowed.has(t.name))
+            }
 
             const subSession = new Session({
               id: `sub_${toolCallId}`,
@@ -1030,7 +1074,12 @@ export function buildTools(
             }
 
             const typePrefix = params.type ? SUB_AGENT_TYPE_PREFIXES[params.type] : ''
-            const subAgentMessage = typePrefix ? `${typePrefix}${params.task}` : params.task
+            const antiRecursionNote = !typePrefix
+              ? 'You are a sub-agent. You are NOT the main agent.\n\nRULES (non-negotiable):\n1. Do NOT spawn sub-agents. Execute directly using your tools.\n2. Do NOT emit text between tool calls. Use tools silently, then report once at the end.\n3. Do NOT converse, ask questions, or suggest next steps.\n4. Stay strictly within the task scope.\n5. Keep your report under 500 words unless the task specifies otherwise.\n\nTask:\n'
+              : ''
+            const subAgentMessage = typePrefix
+              ? `${typePrefix}${params.task}`
+              : `${antiRecursionNote}${params.task}`
 
             for await (const event of subSession.processMessage(subAgentMessage)) {
               // Forward intermediate events to client, tagged with parentToolCallId

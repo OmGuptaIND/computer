@@ -7,6 +7,11 @@ import { useStore } from '../../store.js'
 import { sessionStore } from '../sessionStore.js'
 import type { MessageContext } from './shared.js'
 
+// Track ended sub-agents to drop late-arriving progress messages.
+// Capped to prevent unbounded growth over long-running sessions.
+const _endedSubAgents = new Set<string>()
+const _MAX_ENDED_TRACKING = 100
+
 export function handleChatMessage(msg: AiMessage, ctx: MessageContext): boolean {
   switch (msg.type) {
     case 'steer_ack': {
@@ -86,6 +91,10 @@ export function handleChatMessage(msg: AiMessage, ctx: MessageContext): boolean 
     }
 
     case 'sub_agent_end': {
+      // Mark this sub-agent as ended so late progress messages are dropped
+      if (_endedSubAgents.size >= _MAX_ENDED_TRACKING) _endedSubAgents.clear()
+      _endedSubAgents.add(msg.toolCallId)
+      useStore.getState()._subAgentProgressMsgIds.delete(msg.toolCallId)
       ctx.addMsg({
         id: `sa_end_${msg.toolCallId}`,
         role: 'tool',
@@ -98,13 +107,19 @@ export function handleChatMessage(msg: AiMessage, ctx: MessageContext): boolean 
     }
 
     case 'sub_agent_progress': {
-      ctx.addMsg({
-        id: `sa_progress_${msg.toolCallId}_${Date.now()}`,
-        role: 'assistant',
-        content: msg.content,
-        timestamp: Date.now(),
-        parentToolCallId: msg.toolCallId,
-      })
+      // Drop late progress messages that arrive after sub_agent_end
+      if (_endedSubAgents.has(msg.toolCallId)) return true
+      const store = useStore.getState()
+      if (ctx.isForActiveSession) {
+        store.appendSubAgentProgress(msg.toolCallId, msg.content, msg.toolCallId)
+      } else if (ctx.msgSessionId) {
+        store.appendSubAgentProgressToSession(
+          ctx.msgSessionId,
+          msg.toolCallId,
+          msg.content,
+          msg.toolCallId,
+        )
+      }
       return true
     }
 

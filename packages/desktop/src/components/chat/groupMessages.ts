@@ -14,6 +14,7 @@ export type GroupedItem =
       task: string
       agentType?: 'research' | 'execute' | 'verify'
       actions: ToolAction[]
+      progressContent: string | null // accumulated streaming text from the sub-agent
       result: ChatMessage | null // the final sub_agent tool_result from the parent
       id: string
     }
@@ -74,7 +75,13 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
   type AgentType = 'research' | 'execute' | 'verify'
   const subAgentGroups = new Map<
     string,
-    { task: string; agentType?: AgentType; actions: ToolAction[]; pendingCall: ChatMessage | null }
+    {
+      task: string
+      agentType?: AgentType
+      actions: ToolAction[]
+      pendingCall: ChatMessage | null
+      progressContent: string | null
+    }
   >()
 
   function flushActions() {
@@ -103,6 +110,16 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
   for (const msg of messages) {
     if (msg.role !== 'tool') {
       if (msg.role === 'assistant' && !msg.isThinking && stripThinkTags(msg.content).length === 0) {
+        continue
+      }
+      // Route assistant progress messages to their sub-agent group
+      if (
+        msg.role === 'assistant' &&
+        msg.parentToolCallId &&
+        subAgentGroups.has(msg.parentToolCallId)
+      ) {
+        const group = subAgentGroups.get(msg.parentToolCallId)!
+        group.progressContent = (group.progressContent || '') + msg.content
         continue
       }
       flushActions()
@@ -136,9 +153,11 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
       const validTypes = new Set<AgentType>(['research', 'execute', 'verify'])
       subAgentGroups.set(toolCallId, {
         task: (msg.toolInput?.task as string) || msg.content,
-        agentType: rawType && validTypes.has(rawType as AgentType) ? (rawType as AgentType) : undefined,
+        agentType:
+          rawType && validTypes.has(rawType as AgentType) ? (rawType as AgentType) : undefined,
         actions: [],
         pendingCall: null,
+        progressContent: null,
       })
       continue
     }
@@ -188,6 +207,7 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
             task: group.task,
             agentType: group.agentType,
             actions: group.actions,
+            progressContent: group.progressContent,
             result: msg,
             id: `sub_agent_${toolCallId}`,
           })
@@ -271,6 +291,7 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
       task: group.task,
       agentType: group.agentType as 'research' | 'execute' | 'verify' | undefined,
       actions: group.actions,
+      progressContent: group.progressContent,
       result: null,
       id: `sub_agent_${toolCallId}`,
     })
