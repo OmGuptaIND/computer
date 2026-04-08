@@ -13,6 +13,10 @@ interface UIState {
   resolvedTheme: 'light' | 'dark'
   setTheme: (theme: 'light' | 'dark' | 'system') => void
 
+  // Timezone
+  timezone: string
+  setTimezone: (tz: string) => void
+
   // Sidebar
   sidebarCollapsed: boolean
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -91,6 +95,13 @@ export const uiStore = create<UIState>((set, get) => ({
         : theme
     document.documentElement.setAttribute('data-theme', resolved)
     set({ theme, resolvedTheme: resolved })
+  },
+
+  // Timezone — auto-detect from browser, allow override
+  timezone: localStorage.getItem('anton-timezone') || Intl.DateTimeFormat().resolvedOptions().timeZone,
+  setTimezone: (tz) => {
+    localStorage.setItem('anton-timezone', tz)
+    set({ timezone: tz })
   },
 
   // Sidebar

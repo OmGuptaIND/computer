@@ -31,7 +31,7 @@ export function MessageBubble({ message, isLastThinking }: Props) {
     >
       {message.role === 'user' && (
         <div
-          className={`message__surface message__surface--user${message.isSteering ? ' message__surface--steering' : ''}`}
+          className="message__surface message__surface--user"
         >
           {message.attachments && message.attachments.length > 0 && (
             <div className="message__attachments">
@@ -53,7 +53,6 @@ export function MessageBubble({ message, isLastThinking }: Props) {
             </div>
           )}
           <div className="message__text">{message.content}</div>
-          {message.isSteering && <div className="message__steering-label">sent while working</div>}
         </div>
       )}
 

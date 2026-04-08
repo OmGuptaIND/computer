@@ -1,10 +1,11 @@
 import type { AskUserQuestion } from '@anton/protocol'
-import { Image as ImageIcon, Plus, Send, Square, X } from 'lucide-react'
+import { Brain, Image as ImageIcon, ListChecks, Plus, Send, Square, X } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Skill } from '../../lib/skills.js'
 import type { ChatImageAttachment } from '../../lib/store.js'
 import { useIsCurrentSessionWorking } from '../../lib/store.js'
+import { sessionStore } from '../../lib/store/sessionStore.js'
 import { AskUserInline } from './AskUserInline.js'
 import { ConnectorBanner, ConnectorPill } from './ConnectorToolbar.js'
 import { ModelSelector } from './ModelSelector.js'
@@ -66,6 +67,8 @@ export function ChatInput({
   const [slashFilter, setSlashFilter] = useState('')
   const [attachments, setAttachments] = useState<ChatImageAttachment[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [planFirst, setPlanFirst] = useState(false)
+  const thinkingEnabled = sessionStore((s) => s.thinkingEnabled)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const _isWorking = useIsCurrentSessionWorking()
@@ -135,8 +138,9 @@ export function ChatInput({
   )
 
   const handleSend = useCallback(() => {
-    const text = input.trim()
-    if (!text && attachments.length === 0) return
+    const raw = input.trim()
+    if (!raw && attachments.length === 0) return
+    const text = planFirst && raw ? `[plan first] ${raw}` : raw
 
     // If agent is working and no attachments, steer with text only
     if (isCurrentSessionWorking && attachments.length === 0) {
@@ -155,10 +159,15 @@ export function ChatInput({
     setAttachmentError(null)
     setShowSlashMenu(false)
     textareaRef.current?.focus()
-  }, [input, attachments, isCurrentSessionWorking, onSend, onSteer])
+  }, [input, attachments, isCurrentSessionWorking, onSend, onSteer, planFirst])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (showSlashMenu) return
+    if (e.key === 'Tab' && e.shiftKey) {
+      e.preventDefault()
+      setPlanFirst((v) => !v)
+      return
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -285,9 +294,27 @@ export function ChatInput({
                 <Plus size={18} strokeWidth={1.5} />
               </button>
               <ConnectorPill />
+              <button
+                type="button"
+                className={`composer__thinking-toggle${thinkingEnabled ? ' composer__thinking-toggle--active' : ''}`}
+                aria-label={thinkingEnabled ? 'Thinking on' : 'Thinking off'}
+                data-tooltip={thinkingEnabled ? 'Thinking on' : 'Thinking off'}
+                onClick={() => sessionStore.getState().setThinkingEnabled(!thinkingEnabled)}
+              >
+                <Brain size={14} strokeWidth={1.5} />
+                <span className="composer__thinking-label"><span>Thinking</span></span>
+              </button>
+              <button
+                type="button"
+                className={`composer__btn composer__btn--toggle${planFirst ? ' composer__btn--toggle-active' : ''}`}
+                aria-label={planFirst ? 'Plan mode on' : 'Enter plan mode'}
+                data-tooltip={planFirst ? 'Plan mode on' : 'Enter plan mode'}
+                onClick={() => setPlanFirst(!planFirst)}
+              >
+                <ListChecks size={18} strokeWidth={1.5} />
+              </button>
             </div>
             <div className="composer__toolbar-right">
-              <span className="composer__shortcut-hint">⌘K</span>
               <ModelSelector />
               {isCurrentSessionWorking ? (
                 <>

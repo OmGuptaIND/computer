@@ -1568,6 +1568,7 @@ export class AgentServer {
     model?: string
     apiKey?: string
     projectId?: string
+    thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high'
   }) {
     try {
       const session = createSession(
@@ -1578,6 +1579,7 @@ export class AgentServer {
           model: msg.model,
           apiKey: msg.apiKey,
           domain: process.env.DOMAIN,
+          thinkingLevel: msg.thinkingLevel,
         }),
       )
 
@@ -2476,6 +2478,7 @@ export class AgentServer {
       domain?: string
       agentInstructions?: string
       agentMemory?: string
+      thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high'
     },
   ) {
     const project = projectId ? loadProject(projectId) : undefined
@@ -2533,6 +2536,7 @@ export class AgentServer {
       workflowAgentKey: agentWorkflowKey,
       onDeliverResult:
         isAgent && projectId ? this.buildDeliverResultHandler(sessionId, projectId) : undefined,
+      thinkingLevel: extra?.thinkingLevel,
       agentInstructions,
       agentMemory,
       availableWorkflows: this.getAvailableWorkflowsForPrompt(),

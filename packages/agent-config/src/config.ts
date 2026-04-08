@@ -278,15 +278,15 @@ import { EMBEDDED_PROJECT_TYPE_PROMPTS, EMBEDDED_SYSTEM_PROMPT } from './embedde
 const DEFAULT_PROVIDERS: ProvidersMap = {
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY || '',
-    models: ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5'],
+    models: ['claude-sonnet-4-6', 'claude-opus-4-6'],
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY || '',
-    models: ['gpt-4o', 'gpt-4o-mini', 'o3', 'o4-mini'],
+    models: ['gpt-4o'],
   },
   google: {
     apiKey: process.env.GOOGLE_API_KEY || '',
-    models: ['gemini-2.5-pro', 'gemini-2.5-flash'],
+    models: ['gemini-2.5-flash'],
   },
   groq: {
     apiKey: process.env.GROQ_API_KEY || '',
@@ -299,15 +299,11 @@ const DEFAULT_PROVIDERS: ProvidersMap = {
       'anthropic/claude-sonnet-4.6',
       'anthropic/claude-opus-4.6',
       'openai/gpt-4o',
-      'google/gemini-2.5-pro-preview',
       'minimax/minimax-m2.5',
       'minimax/minimax-m2.7',
       'meta-llama/llama-4-maverick',
-      'zhipu/glm-4.7',
-      'zhipu/glm-4.7-flash',
-      'zhipu/glm-5',
+      'zhipu/glm-5.1',
       'zhipu/glm-5-turbo',
-      'zhipu/glm-5x-turbo',
     ],
   },
   mistral: {
@@ -322,28 +318,13 @@ const DEFAULT_PROVIDERS: ProvidersMap = {
       'gpt-5.4',
       'gpt-5.4-pro',
       'gpt-4.1',
-      'gpt-4.1-mini',
-      'gpt-4.1-nano',
-      'o3',
-      'o4-mini',
-      'gpt-4o-mini',
       // Anthropic
       'claude-opus-4.6',
       'claude-sonnet-4.6',
-      'claude-sonnet-4.5',
-      'claude-haiku-4.5',
-      'claude-sonnet-4',
       // Google
       'gemini-3.1-pro',
       'gemini-3.1-flash-lite',
-      'gemini-2.5-pro',
       'gemini-2.5-flash',
-      // DeepSeek
-      'deepseek-v3.2',
-      'deepseek-r1',
-      // xAI / Grok
-      'grok-4.1-fast',
-      'grok-3-mini',
       // Qwen
       'qwen3-235b',
       'qwen-2.5-coder-32b',
@@ -356,11 +337,8 @@ const DEFAULT_PROVIDERS: ProvidersMap = {
       'llama-4-maverick',
       'llama-3.3-70b',
       // GLM (Zhipu AI)
-      'glm-4.7',
-      'glm-4.7-flash',
-      'glm-5',
+      'glm-5.1',
       'glm-5-turbo',
-      'glm-5x-turbo',
       // Mistral
       'mistral-large',
       'codestral',
