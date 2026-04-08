@@ -1,0 +1,25 @@
+packages/agent-config/src/config.ts
+  47181ed8c9bb4f3f 1574,1729,1751,1794,1819,1840
+packages/agent-server/src/oauth/account-identity.ts
+  47181ed8c9bb4f3f 14,49-50,54-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "9be0c7c9fd3f7259c0825ba2063f676874735370",
+  "prompts": {
+    "47181ed8c9bb4f3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "52da523e-f747-4590-8444-87f31e7a8384",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 27,
+      "total_deletions": 6,
+      "accepted_lines": 27,
+      "overriden_lines": 0
+    }
+  }
+}
