@@ -18,11 +18,19 @@ interface Props {
   task: string
   agentType?: 'research' | 'execute' | 'verify'
   actions: ToolAction[]
+  progressContent: string | null
   result: ChatMessage | null
   defaultExpanded?: boolean
 }
 
-export function SubAgentGroup({ task, agentType, actions, result, defaultExpanded = false }: Props) {
+export function SubAgentGroup({
+  task,
+  agentType,
+  actions,
+  progressContent,
+  result,
+  defaultExpanded = false,
+}: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const artifacts = artifactStore((s) => s.artifacts)
 
@@ -59,7 +67,9 @@ export function SubAgentGroup({ task, agentType, actions, result, defaultExpande
         ) : (
           <ChevronRight size={14} strokeWidth={1.5} className="tool-tree__chevron" />
         )}
-        <span className="sub-agent__label">{agentType ? AGENT_TYPE_LABELS[agentType] : 'Agent'}</span>
+        <span className="sub-agent__label">
+          {agentType ? AGENT_TYPE_LABELS[agentType] : 'Agent'}
+        </span>
         <span className="sub-agent__task">{taskPreview}</span>
       </button>
 
@@ -93,6 +103,9 @@ export function SubAgentGroup({ task, agentType, actions, result, defaultExpande
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Sub-agent streaming text content */}
+      {expanded && progressContent && <div className="sub-agent__progress">{progressContent}</div>}
 
       {/* Inline artifact cards */}
       {groupArtifacts.length > 0 && (

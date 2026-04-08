@@ -293,7 +293,9 @@ function readSourceProjectTypePrompts(): Record<string, string> {
   const dir = join(PACKAGE_PROMPTS_DIR, 'project-types')
   if (!existsSync(dir)) return {}
   const prompts: Record<string, string> = {}
-  for (const file of readdirSync(dir).filter((f) => f.endsWith('.md')).sort()) {
+  for (const file of readdirSync(dir)
+    .filter((f) => f.endsWith('.md'))
+    .sort()) {
     prompts[file.replace('.md', '')] = readFileSync(join(dir, file), 'utf-8')
   }
   return prompts

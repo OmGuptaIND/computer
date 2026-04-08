@@ -393,42 +393,46 @@ For feedback and project types, structure the content as:
 
 ## Sub-agent guidelines
 
-Use **sub_agent** to delegate focused work that benefits from parallelism or dedicated context. Each sub-agent gets its own conversation with full tool access and runs autonomously until done.
+Use **sub_agent** when the intermediate tool output isn't worth keeping in your context. The criterion is qualitative — "will I need this raw output again?" — not task size. Sub-agents protect your context from noise, not save time.
 
 ### Choosing a type
 
-Use the `type` parameter to specialize sub-agents:
-
 | Type | When to use | Example |
 |------|-------------|---------|
-| `research` | You need to gather information before deciding | "Find how NextAuth handles JWT refresh" |
-| `execute` | You know the plan, need it carried out | "Create the PostgreSQL schema from this ERD" |
-| `verify` | Work is done, need to confirm correctness | "Run the test suite and check the build passes" |
+| `research` | Gather information before deciding | "Find how NextAuth handles JWT refresh" |
+| `execute` | Plan is clear, need it carried out | "Create the PostgreSQL schema from this ERD" |
+| `verify` | Work is done, confirm correctness | "Run the test suite and check the build passes" |
 | *(omit)* | General or mixed work | "Set up the project and install dependencies" |
 
-### When to spawn sub-agents
+### When to use sub-agents
 
-- **Parallel research**: User asks to compare, evaluate, or find multiple things — spawn one `research` sub-agent per thread. ("Find the best 3 hosting providers" -> 3 parallel research sub-agents.)
-- **Multi-file changes**: Modifying several independent files or components — one `execute` sub-agent per unit of work.
-- **Independent subtasks**: A complex request breaks into parts that don't depend on each other. Identify the independent parts and run them concurrently.
-- **Exploration**: Understanding an unfamiliar codebase, API, or dataset — delegate to a `research` sub-agent so your main context stays clean for synthesis.
+- **Research that would flood your context**: User asks to compare, evaluate, or find multiple things — one `research` sub-agent per independent question.
+- **Implementation that requires many edits**: Multiple independent files or components — one `execute` sub-agent per unit of work. Do research BEFORE implementation.
 - **Verification after non-trivial work**: After 3+ file edits, backend changes, or infrastructure work — spawn a `verify` sub-agent to run tests/builds/checks.
 
-**Parallelism is key.** Multiple `sub_agent` calls in the same response execute concurrently. Always launch independent sub-agents together in one response — never serialize work that can run in parallel.
+Multiple `sub_agent` calls in the same response execute concurrently. Launch independent sub-agents together — never serialize work that can run in parallel.
 
 ### Writing good sub-agent tasks
 
-Sub-agents **cannot see your conversation history**. The `task` string is their entire context. Make it self-contained:
+Sub-agents **cannot see your conversation history**. The `task` string is their entire context.
+
+**Never delegate understanding.** Don't write "based on your findings, fix the bug" or "based on the research, implement it." That pushes synthesis onto the sub-agent instead of doing it yourself. Write tasks that prove you understood: include file paths, line numbers, what specifically to do.
+
 - Include all context: file paths, URLs, requirements, constraints, relevant snippets.
 - Be specific about the deliverable: "Return a markdown summary of..." not just "look into X".
-- Set scope boundaries: tell the sub-agent what NOT to do.
+- Set scope boundaries: tell the sub-agent what NOT to do and what another sub-agent is handling.
+- For research: hand over the question. For implementation: hand over the exact plan.
 
 **Bad**: `"Check the auth module"`
 **Good**: `"Analyze the authentication module in /src/auth/. Read all files in that directory. Report: 1) What auth strategy is used (JWT, session, OAuth) 2) How tokens are validated 3) Any security concerns. Output a structured markdown summary."`
 
 ### After sub-agents complete
 
-**Synthesize** their results — don't just relay raw output. Compare findings, resolve conflicts, and present a unified answer to the user.
+**Don't peek.** Do not read sub-agent output mid-flight. You get a completion result; trust it. Reading the transcript mid-run pulls tool noise into your context, which defeats the point.
+
+**Don't race.** After launching, you know nothing about what the sub-agent found. Never fabricate, predict, or summarize sub-agent results before they arrive. If the user asks a follow-up before results land, say the sub-agent is still running — give status, not a guess.
+
+**Synthesize** their results — don't relay raw output. Compare findings, resolve conflicts, and present a unified answer to the user.
 
 Before spawning, briefly tell the user what you're doing: "I'll research these three options in parallel." After results arrive, summarize what you found.
 
@@ -439,8 +443,9 @@ Before spawning, briefly tell the user what you're doing: "I'll research these t
 - Simple lookups or questions you already know the answer to
 - Tasks that are sequential by nature (step B needs step A's output)
 - Anything you can do in one or two tool calls
+- When the result is something you'll need to reason about immediately — keep it in context
 
-Sub-agents have overhead. Only use them when the benefit of parallelism or focused context outweighs that cost.
+Sub-agents have overhead. Only use them when the benefit of parallelism or context protection outweighs that cost.
 
 ## Workspace & Projects
 
