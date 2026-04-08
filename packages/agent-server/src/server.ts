@@ -10,10 +10,10 @@
  */
 
 import { execSync, spawn } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { AgentConfig } from '@anton/agent-config'
 import {
   addProjectPreference,
@@ -24,7 +24,6 @@ import {
   createProject,
   deleteSession as deletePersistedSession,
   deleteProject,
-  deleteProjectFile,
   deleteProjectPreference,
   ensureDefaultProject,
   getAntonDir,
@@ -32,7 +31,6 @@ import {
   getGlobalMemoryDir,
   getProjectSessionsDir,
   getProvidersList,
-  listProjectFiles,
   listProjectSessions,
   listProjectWorkflows,
   listSessionMetas,
@@ -43,7 +41,6 @@ import {
   loadProjects,
   loadUserRules,
   saveConfig,
-  saveProjectFile,
   saveProjectInstructions,
   setDefault,
   setProviderKey,
@@ -238,6 +235,7 @@ export class AgentServer {
   private telegramProvider: TelegramWebhookProvider | null = null
   private slackBotProvider: SlackWebhookProvider | null = null
   private ptys: Map<string, PtyHandle> = new Map()
+  private activeWorkspacePath: string | null = null
 
   constructor(config: AgentConfig) {
     this.config = config
@@ -986,11 +984,56 @@ export class AgentServer {
 
   // ── Filesync channel ────────────────────────────────────────────
 
+  private static readonly IMAGE_EXTS = new Set([
+    'png',
+    'jpg',
+    'jpeg',
+    'gif',
+    'webp',
+    'avif',
+    'bmp',
+    'ico',
+    'heic',
+    'heif',
+  ])
+  // SVG is text (XML) — read as UTF-8, not binary
+  private static readonly MAX_IMAGE_BYTES = 20 * 1024 * 1024 // 20MB cap for binary reads
+
+  private static readonly IMAGE_MIME: Record<string, string> = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    avif: 'image/avif',
+    bmp: 'image/bmp',
+    ico: 'image/x-icon',
+    heic: 'image/heic',
+    heif: 'image/heif',
+  }
+
+  /** Check if a resolved path is within the active workspace.
+   *  When no workspace is set (non-project context), allows all paths.
+   *  Follows symlinks on the workspace to prevent symlink-based escapes. */
+  private isPathWithinWorkspace(targetPath: string): boolean {
+    if (!this.activeWorkspacePath) return true // no sandbox when no project
+    let workspace: string
+    try {
+      workspace = realpathSync(resolve(this.activeWorkspacePath))
+    } catch {
+      workspace = resolve(this.activeWorkspacePath)
+    }
+    const resolved = resolve(targetPath)
+    return resolved === workspace || resolved.startsWith(workspace + '/')
+  }
+
   private async handleFilesync(payload: Uint8Array) {
     const msg = parseJsonPayload<{
       type: string
       path?: string
       showHidden?: boolean
+      content?: string
+      encoding?: string
       name?: string
     }>(payload)
 
@@ -1035,15 +1078,40 @@ export class AgentServer {
       case 'fs_read': {
         const filePath = msg.path || ''
         try {
-          const { readFileSync } = await import('node:fs')
-          const content = readFileSync(filePath, 'utf-8')
-          const truncated = content.length > 100_000 ? content.slice(0, 100_000) : content
-          this.sendToClient(Channel.FILESYNC, {
-            type: 'fs_read_response',
-            path: filePath,
-            content: truncated,
-            truncated: content.length > 100_000,
-          })
+          const { readFileSync, statSync } = await import('node:fs')
+          const ext = filePath.split('.').pop()?.toLowerCase() || ''
+          if (AgentServer.IMAGE_EXTS.has(ext)) {
+            // Binary read for image files — return base64
+            const stat = statSync(filePath)
+            if (stat.size > AgentServer.MAX_IMAGE_BYTES) {
+              this.sendToClient(Channel.FILESYNC, {
+                type: 'fs_read_response',
+                path: filePath,
+                content: '',
+                error: `Image too large (${Math.round(stat.size / 1024 / 1024)}MB). Maximum is 20MB.`,
+              })
+              break
+            }
+            const buf = readFileSync(filePath)
+            this.sendToClient(Channel.FILESYNC, {
+              type: 'fs_read_response',
+              path: filePath,
+              content: buf.toString('base64'),
+              encoding: 'base64',
+              mimeType: AgentServer.IMAGE_MIME[ext] || 'application/octet-stream',
+              size: stat.size,
+              truncated: false,
+            })
+          } else {
+            const content = readFileSync(filePath, 'utf-8')
+            const truncated = content.length > 100_000 ? content.slice(0, 100_000) : content
+            this.sendToClient(Channel.FILESYNC, {
+              type: 'fs_read_response',
+              path: filePath,
+              content: truncated,
+              truncated: content.length > 100_000,
+            })
+          }
         } catch (err: unknown) {
           this.sendToClient(Channel.FILESYNC, {
             type: 'fs_read_response',
@@ -1055,8 +1123,55 @@ export class AgentServer {
         break
       }
 
+      case 'fs_write': {
+        const filePath = msg.path || ''
+        // Path sandboxing: only allow writes within the active workspace
+        if (!this.isPathWithinWorkspace(filePath)) {
+          this.sendToClient(Channel.FILESYNC, {
+            type: 'fs_write_response',
+            path: filePath,
+            success: false,
+            error: 'Write denied: path is outside the project workspace',
+          })
+          break
+        }
+        try {
+          const { writeFileSync, mkdirSync } = await import('node:fs')
+          const { dirname } = await import('node:path')
+          mkdirSync(dirname(filePath), { recursive: true })
+          const buf =
+            msg.encoding === 'base64'
+              ? Buffer.from(msg.content || '', 'base64')
+              : Buffer.from(msg.content || '', 'utf-8')
+          writeFileSync(filePath, buf)
+          this.sendToClient(Channel.FILESYNC, {
+            type: 'fs_write_response',
+            path: filePath,
+            success: true,
+          })
+        } catch (err: unknown) {
+          this.sendToClient(Channel.FILESYNC, {
+            type: 'fs_write_response',
+            path: filePath,
+            success: false,
+            error: (err as Error).message,
+          })
+        }
+        break
+      }
+
       case 'fs_mkdir': {
         const dirPath = msg.path || ''
+        // Path sandboxing: only allow mkdir within the active workspace
+        if (!this.isPathWithinWorkspace(dirPath)) {
+          this.sendToClient(Channel.FILESYNC, {
+            type: 'fs_mkdir_response',
+            path: dirPath,
+            success: false,
+            error: 'Mkdir denied: path is outside the project workspace',
+          })
+          break
+        }
         try {
           const { mkdirSync } = await import('node:fs')
           mkdirSync(dirPath, { recursive: true })
@@ -1078,6 +1193,16 @@ export class AgentServer {
 
       case 'fs_delete': {
         const filePath = msg.path || ''
+        // Path sandboxing: only allow deletes within the active workspace
+        if (!this.isPathWithinWorkspace(filePath)) {
+          this.sendToClient(Channel.FILESYNC, {
+            type: 'fs_delete_response',
+            path: filePath,
+            success: false,
+            error: 'Delete denied: path is outside the project workspace',
+          })
+          break
+        }
         try {
           const { rmSync } = await import('node:fs')
           rmSync(filePath, { recursive: true })
@@ -1170,18 +1295,6 @@ export class AgentServer {
         break
       case 'project_context_update':
         this.handleProjectContextUpdate(msg)
-        break
-      case 'project_file_upload':
-        this.handleProjectFileUpload(msg)
-        break
-      case 'project_file_text_create':
-        this.handleProjectFileTextCreate(msg)
-        break
-      case 'project_file_delete':
-        this.handleProjectFileDelete(msg)
-        break
-      case 'project_files_list':
-        this.handleProjectFilesList(msg)
         break
       case 'project_sessions_list':
         this.handleProjectSessionsList(msg)
@@ -1435,6 +1548,9 @@ export class AgentServer {
         const updatedProject = loadProject(msg.projectId)
         if (updatedProject) {
           this.sendToClient(Channel.AI, { type: 'project_updated', project: updatedProject })
+          if (updatedProject.workspacePath) {
+            this.activeWorkspacePath = updatedProject.workspacePath
+          }
         }
       }
 
@@ -2699,86 +2815,6 @@ export class AgentServer {
     })
   }
 
-  private handleProjectFileUpload(msg: {
-    projectId: string
-    filename: string
-    content: string
-    mimeType: string
-    sizeBytes: number
-  }) {
-    try {
-      const buffer = Buffer.from(msg.content, 'base64')
-      saveProjectFile(msg.projectId, msg.filename, buffer)
-      const project = loadProject(msg.projectId)
-      if (project) {
-        this.sendToClient(Channel.AI, { type: 'project_updated', project })
-      }
-      this.sendToClient(Channel.AI, {
-        type: 'project_files_list_response',
-        projectId: msg.projectId,
-        files: listProjectFiles(msg.projectId),
-      })
-    } catch (err: unknown) {
-      this.sendToClient(Channel.AI, {
-        type: 'error',
-        message: `Failed to upload file: ${(err as Error).message}`,
-      })
-    }
-  }
-
-  private handleProjectFileTextCreate(msg: {
-    projectId: string
-    filename: string
-    content: string
-  }) {
-    try {
-      const buffer = Buffer.from(msg.content, 'utf-8')
-      saveProjectFile(msg.projectId, msg.filename, buffer)
-      const project = loadProject(msg.projectId)
-      if (project) {
-        this.sendToClient(Channel.AI, { type: 'project_updated', project })
-      }
-      this.sendToClient(Channel.AI, {
-        type: 'project_files_list_response',
-        projectId: msg.projectId,
-        files: listProjectFiles(msg.projectId),
-      })
-    } catch (err: unknown) {
-      this.sendToClient(Channel.AI, {
-        type: 'error',
-        message: `Failed to create file: ${(err as Error).message}`,
-      })
-    }
-  }
-
-  private handleProjectFileDelete(msg: { projectId: string; filename: string }) {
-    const success = deleteProjectFile(msg.projectId, msg.filename)
-    if (success) {
-      const project = loadProject(msg.projectId)
-      if (project) {
-        this.sendToClient(Channel.AI, { type: 'project_updated', project })
-      }
-      this.sendToClient(Channel.AI, {
-        type: 'project_files_list_response',
-        projectId: msg.projectId,
-        files: listProjectFiles(msg.projectId),
-      })
-    } else {
-      this.sendToClient(Channel.AI, {
-        type: 'error',
-        message: `File not found: ${msg.filename}`,
-      })
-    }
-  }
-
-  private handleProjectFilesList(msg: { projectId: string }) {
-    this.sendToClient(Channel.AI, {
-      type: 'project_files_list_response',
-      projectId: msg.projectId,
-      files: listProjectFiles(msg.projectId),
-    })
-  }
-
   // ── Chat message handler ────────────────────────────────────────
 
   private async handleChatMessage(msg: {
@@ -2808,6 +2844,12 @@ export class AgentServer {
         const projectId = this.extractProjectId(sessionId)
         const isAgentSession = sessionId.startsWith('agent--')
         const opts = this.buildSessionOptions(sessionId, projectId)
+
+        // Track workspace for filesync sandboxing
+        if (projectId && !this.activeWorkspacePath) {
+          const proj = loadProject(projectId)
+          if (proj?.workspacePath) this.activeWorkspacePath = proj.workspacePath
+        }
 
         session = resumeSession(sessionId, this.config, opts) ?? undefined
 
