@@ -10,7 +10,8 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { homedir, hostname } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { copyImageToWorkspace } from './image-storage.js'
 
@@ -264,9 +265,23 @@ const SYSTEM_PROMPT_PATH = join(PROMPTS_DIR, 'system.md')
 const GLOBAL_MEMORY_DIR = join(ANTON_DIR, 'memory')
 const PUBLISHED_DIR = join(ANTON_DIR, 'published')
 
-// Embedded prompts — baked in at build time by scripts/embed-prompts.js.
-// This works in both source mode and binary mode (no filesystem read needed).
-import { EMBEDDED_PROJECT_TYPE_PROMPTS, EMBEDDED_SYSTEM_PROMPT } from './embedded-prompts.js'
+// ── Source prompts — read directly from the package's prompts/ directory ──
+const __config_dirname = dirname(fileURLToPath(import.meta.url))
+const PACKAGE_PROMPTS_DIR = join(__config_dirname, '..', 'prompts')
+
+function readSourcePrompt(relativePath: string): string {
+  return readFileSync(join(PACKAGE_PROMPTS_DIR, relativePath), 'utf-8')
+}
+
+function readSourceProjectTypePrompts(): Record<string, string> {
+  const dir = join(PACKAGE_PROMPTS_DIR, 'project-types')
+  if (!existsSync(dir)) return {}
+  const prompts: Record<string, string> = {}
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.md')).sort()) {
+    prompts[file.replace('.md', '')] = readFileSync(join(dir, file), 'utf-8')
+  }
+  return prompts
+}
 
 // ── Default providers ───────────────────────────────────────────────
 
@@ -1304,11 +1319,11 @@ export function loadProjectTypePrompt(projectType: ProjectType): string | undefi
     try {
       return readFileSync(modulePath, 'utf-8')
     } catch {
-      // fall through to embedded
+      // fall through to source default
     }
   }
-  // Fall back to embedded default
-  return EMBEDDED_PROJECT_TYPE_PROMPTS[projectType]
+  // Fall back to source prompt
+  return readSourceProjectTypePrompts()[projectType]
 }
 
 /**
@@ -1342,14 +1357,14 @@ export function getProjectPublicDir(projectName: string): string {
 // ── System prompt loading ───────────────────────────────────────────
 
 /**
- * Load the core system prompt — embedded behavioral instructions only.
- * This is the self-contained base prompt that ships identically everywhere.
+ * Load the core system prompt from the package's prompts/system.md.
  * Also syncs to ~/.anton/prompts/system.md for user reference.
  */
 export function loadCoreSystemPrompt(): string {
+  const prompt = readSourcePrompt('system.md')
   mkdirSync(PROMPTS_DIR, { recursive: true })
-  writeFileSync(SYSTEM_PROMPT_PATH, EMBEDDED_SYSTEM_PROMPT, 'utf-8')
-  return EMBEDDED_SYSTEM_PROMPT
+  writeFileSync(SYSTEM_PROMPT_PATH, prompt, 'utf-8')
+  return prompt
 }
 
 /**

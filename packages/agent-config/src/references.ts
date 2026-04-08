@@ -9,11 +9,34 @@
  * Pack definitions: ~/.anton/references/_packs.yaml → embedded defaults
  */
 
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
 import { getAntonDir } from './config.js'
-import { EMBEDDED_REFERENCES, EMBEDDED_REFERENCE_PACKS } from './embedded-prompts.js'
+
+// ── Source references — read directly from the package's prompts/references/ directory ──
+const __refs_dirname = dirname(fileURLToPath(import.meta.url))
+const SOURCE_REFERENCES_DIR = join(__refs_dirname, '..', 'prompts', 'references')
+
+function loadSourceReferences(): Record<string, string> {
+  if (!existsSync(SOURCE_REFERENCES_DIR)) return {}
+  const refs: Record<string, string> = {}
+  for (const file of readdirSync(SOURCE_REFERENCES_DIR).filter((f) => f.endsWith('.md')).sort()) {
+    refs[file.replace('.md', '')] = readFileSync(join(SOURCE_REFERENCES_DIR, file), 'utf-8')
+  }
+  return refs
+}
+
+function loadSourceReferencePacks(): Record<string, ReferencePack> {
+  const packsPath = join(SOURCE_REFERENCES_DIR, '_packs.yaml')
+  if (!existsSync(packsPath)) return {}
+  try {
+    return parseYaml(readFileSync(packsPath, 'utf-8')) as Record<string, ReferencePack>
+  } catch {
+    return {}
+  }
+}
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -38,7 +61,7 @@ function referencesDir(): string {
  * User packs in ~/.anton/references/_packs.yaml override embedded packs by name.
  */
 export function loadReferencePacks(): Record<string, ReferencePack> {
-  const packs: Record<string, ReferencePack> = { ...EMBEDDED_REFERENCE_PACKS }
+  const packs: Record<string, ReferencePack> = { ...loadSourceReferencePacks() }
 
   // Merge user-defined packs (override by name)
   const userPacksPath = join(referencesDir(), '_packs.yaml')
@@ -75,8 +98,8 @@ function loadSingleReference(name: string): string | undefined {
       // fall through to embedded
     }
   }
-  // Embedded default
-  return EMBEDDED_REFERENCES[name]
+  // Source default
+  return loadSourceReferences()[name]
 }
 
 // ── Pack selection ───────────────────────────────────────────────────
