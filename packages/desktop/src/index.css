@@ -16179,6 +16179,7 @@ button {
   font-family: var(--font-mono, monospace);
   font-size: 12px;
   color: var(--text-secondary);
+  font-variant-ligatures: none;
 }
 
 .agent-confirm__field-value--prompt {
