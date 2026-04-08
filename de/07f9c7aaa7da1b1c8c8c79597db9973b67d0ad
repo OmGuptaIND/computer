@@ -1,0 +1,27 @@
+packages/agent-config/src/projects.ts
+  a8bc9a6bc7897b56 35-36,38-44,47,51,60-61,63-64,72,82
+packages/agent-config/src/skills.ts
+  a8bc9a6bc7897b56 22-25,127-128,133,137,556,639
+packages/agent-config/src/references.ts
+  a8bc9a6bc7897b56 28-31,43,69,170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "de07f9c7aaa7da1b1c8c8c79597db9973b67d0ad",
+  "prompts": {
+    "a8bc9a6bc7897b56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0f7bfc0f-7506-4259-83f2-20afeb38233e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 35,
+      "total_deletions": 21,
+      "accepted_lines": 35,
+      "overriden_lines": 0
+    }
+  }
+}
