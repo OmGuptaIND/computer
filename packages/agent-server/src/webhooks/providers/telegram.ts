@@ -70,6 +70,13 @@ export class TelegramWebhookProvider implements WebhookProvider {
       log.warn({ err }, 'parse: invalid JSON body')
       return []
     }
+
+    // Handle callback_query from inline keyboard button clicks.
+    // These resolve pending interactions (plan approval, confirms).
+    if (update.callback_query) {
+      return this.parseCallbackQuery(update)
+    }
+
     const msg = update.message
     if (!msg?.text) {
       log.info({ updateId: update.update_id }, 'parse: update has no text message, dropping')
@@ -93,10 +100,8 @@ export class TelegramWebhookProvider implements WebhookProvider {
       'parse: canonical event',
     )
 
-    // Kick off the typing indicator immediately so the user sees feedback
-    // during the model's first-token latency. Fire-and-forget; errors here
-    // are non-fatal (a missing indicator doesn't break the reply path).
-    this.startTyping(chatId)
+    // Typing indicator is now kicked off in onTurnStart() for symmetry
+    // with onTurnEnd(). The router calls onTurnStart after parse returns.
 
     return [
       {
@@ -113,6 +118,237 @@ export class TelegramWebhookProvider implements WebhookProvider {
       },
     ]
   }
+
+  // ── Lifecycle hooks ───────────────────────────────────────────────
+
+  async onTurnStart(event: CanonicalEvent): Promise<void> {
+    const chatId = event.context.chatId as number
+    if (!chatId) return
+    this.startTyping(chatId)
+  }
+
+  async onTurnEnd(event: CanonicalEvent, _result: { ok: boolean }): Promise<void> {
+    const chatId = event.context.chatId as number
+    if (!chatId) return
+    // Stop typing — on success reply() already stops it, but on error
+    // no reply is sent so we need to clean up here.
+    this.stopTyping(chatId)
+  }
+
+  // ── Mid-turn messaging ─────────────────────────────────────────────
+
+  /**
+   * Send a mid-turn message (progress, prompts). Returns the message_id
+   * as a string so it can be edited later.
+   */
+  async sendMessage(event: CanonicalEvent, text: string): Promise<string | undefined> {
+    const chatId = event.context.chatId as number
+    const formatted = toTelegramMd(text)
+    const res = await fetch(`${TELEGRAM_API}/bot${this.token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: formatted || text,
+        parse_mode: 'Markdown',
+      }),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '<unreadable>')
+      log.warn({ chatId, status: res.status, body: body.slice(0, 200) }, 'sendMessage failed')
+      return undefined
+    }
+    const data = (await res.json()) as { ok: boolean; result?: { message_id: number } }
+    return data.result?.message_id?.toString()
+  }
+
+  /**
+   * Edit a previously sent message by message_id. Used for updating
+   * progress messages in-place.
+   */
+  async editMessage(event: CanonicalEvent, messageId: string, text: string): Promise<void> {
+    const chatId = event.context.chatId as number
+    const formatted = toTelegramMd(text)
+    const res = await fetch(`${TELEGRAM_API}/bot${this.token}/editMessageText`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: Number.parseInt(messageId, 10),
+        text: formatted || text,
+        parse_mode: 'Markdown',
+      }),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '<unreadable>')
+      log.warn({ chatId, messageId, status: res.status, body: body.slice(0, 200) }, 'editMessageText failed')
+    }
+  }
+
+  // ── Interactive prompts (inline keyboards) ──────────────────────
+
+  /**
+   * Send a confirmation prompt with an inline keyboard.
+   */
+  async sendConfirmPrompt(
+    event: CanonicalEvent,
+    interactionId: string,
+    command: string,
+    reason: string,
+  ): Promise<void> {
+    const chatId = event.context.chatId as number
+    const text = `⚠️ *Confirmation required*\n\`\`\`\n${command}\n\`\`\`\n${reason}`
+    await fetch(`${TELEGRAM_API}/bot${this.token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '✅ Allow', callback_data: `confirm_approve:${interactionId}` },
+              { text: '❌ Deny', callback_data: `confirm_deny:${interactionId}` },
+            ],
+          ],
+        },
+      }),
+    })
+  }
+
+  /**
+   * Send a plan for approval with an inline keyboard.
+   */
+  async sendPlanForApproval(
+    event: CanonicalEvent,
+    interactionId: string,
+    title: string,
+    content: string,
+  ): Promise<void> {
+    const chatId = event.context.chatId as number
+    // Telegram has a 4096 char limit — truncate plan content if needed.
+    const truncated =
+      content.length > 3500 ? `${content.slice(0, 3500)}…\n\n_(plan truncated)_` : content
+    const text = `📋 *Plan: ${title}*\n\n${toTelegramMd(truncated)}\n\nReply *approve* or use the buttons below.`
+    await fetch(`${TELEGRAM_API}/bot${this.token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '✅ Approve', callback_data: `plan_approve:${interactionId}` },
+              { text: '❌ Reject', callback_data: `plan_reject:${interactionId}` },
+            ],
+          ],
+        },
+      }),
+    })
+  }
+
+  /**
+   * Parse a callback_query from an inline keyboard button press. Returns
+   * a synthetic CanonicalEvent that the router can use to resolve
+   * the pending interaction via runner.resolveInteraction().
+   *
+   * We return a CanonicalEvent with special context fields so the router
+   * knows to handle it as an interaction resolution rather than a normal message.
+   */
+  private parseCallbackQuery(update: TelegramUpdate): CanonicalEvent[] {
+    const cq = update.callback_query!
+    const chatId = cq.message?.chat?.id
+    const data = cq.data
+    if (!chatId || !data) {
+      log.info('parseCallbackQuery: missing chatId or data, dropping')
+      return []
+    }
+
+    // Answer the callback immediately to dismiss the loading spinner.
+    this.answerCallbackQuery(cq.id).catch((err) => {
+      log.debug({ err }, 'answerCallbackQuery failed (non-fatal)')
+    })
+
+    // Parse callback data: "action:interactionId"
+    const [action, interactionId] = data.split(':')
+    if (!action || !interactionId) {
+      log.warn({ data }, 'parseCallbackQuery: invalid callback data format')
+      return []
+    }
+
+    const approved = action.includes('approve')
+
+    // Edit the original message to remove the inline keyboard and show decision.
+    if (cq.message?.message_id) {
+      const statusEmoji = approved ? '✅' : '❌'
+      const statusLabel = approved ? 'Approved' : 'Rejected'
+      const userName = cq.from?.first_name ?? 'User'
+      // Remove the keyboard and append the decision.
+      this.editMessageReplyMarkup(chatId, cq.message.message_id).catch((err) => {
+        log.debug({ err }, 'editMessageReplyMarkup failed (non-fatal)')
+      })
+      // We don't edit the text since Telegram often rejects markdown re-parse.
+      // Instead, send a short follow-up message with the decision.
+      this.sendPlainText(chatId, `${statusEmoji} ${statusLabel} by ${userName}`).catch((err) => {
+        log.debug({ err }, 'sendPlainText decision follow-up failed')
+      })
+    }
+
+    log.info(
+      { chatId, action, interactionId, approved },
+      'parseCallbackQuery: resolved',
+    )
+
+    // Return a synthetic event. The text carries the approval keyword so
+    // the runner's parseApprovalText picks it up. The context includes
+    // a flag so the router knows this is a callback resolution.
+    return [
+      {
+        provider: this.slug,
+        sessionId: `telegram-${chatId}`,
+        deliveryId: `telegram-cb-${update.update_id}`,
+        text: approved ? 'approve' : 'reject',
+        context: {
+          chatId,
+          isCallbackQuery: true,
+          interactionId,
+        },
+      },
+    ]
+  }
+
+  private async answerCallbackQuery(callbackQueryId: string): Promise<void> {
+    await fetch(`${TELEGRAM_API}/bot${this.token}/answerCallbackQuery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callback_query_id: callbackQueryId }),
+    })
+  }
+
+  private async editMessageReplyMarkup(chatId: number, messageId: number): Promise<void> {
+    await fetch(`${TELEGRAM_API}/bot${this.token}/editMessageReplyMarkup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: { inline_keyboard: [] },
+      }),
+    })
+  }
+
+  private async sendPlainText(chatId: number, text: string): Promise<void> {
+    await fetch(`${TELEGRAM_API}/bot${this.token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text }),
+    })
+  }
+
+  // ── Reply ─────────────────────────────────────────────────────────
 
   async reply(event: CanonicalEvent, text: string, images: OutboundImage[]): Promise<void> {
     const chatId = event.context.chatId as number
@@ -259,7 +495,7 @@ export class TelegramWebhookProvider implements WebhookProvider {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         url: webhookUrl,
-        allowed_updates: ['message'],
+        allowed_updates: ['message', 'callback_query'],
         ...(process.env.TELEGRAM_WEBHOOK_SECRET
           ? { secret_token: process.env.TELEGRAM_WEBHOOK_SECRET }
           : {}),
@@ -410,5 +646,14 @@ interface TelegramUpdate {
     chat: { id: number; type: string; first_name?: string; username?: string }
     text?: string
     date: number
+  }
+  callback_query?: {
+    id: string
+    from: { id: number; first_name: string; username?: string }
+    message?: {
+      message_id: number
+      chat: { id: number; type: string }
+    }
+    data?: string
   }
 }

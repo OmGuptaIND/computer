@@ -475,6 +475,65 @@ export class SlackWebhookProvider implements WebhookProvider {
     }
   }
 
+  // ── Mid-turn messaging ─────────────────────────────────────────────
+
+  /**
+   * Send a mid-turn message (progress, prompts). Returns the message `ts`
+   * so it can be edited later via editMessage().
+   */
+  async sendMessage(event: CanonicalEvent, text: string): Promise<string | undefined> {
+    const token = await this.opts.getBotToken()
+    if (!token) return undefined
+    const channel = event.context.channel as string
+    const threadTs = event.context.threadTs as string | undefined
+    const mrkdwn = toSlackMrkdwn(text)
+    const res = await fetch(`${SLACK_API}/chat.postMessage`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({
+        channel,
+        text: mrkdwn || text,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+      }),
+    })
+    const data = (await res.json()) as { ok: boolean; ts?: string; error?: string }
+    if (!data.ok) {
+      log.warn({ channel, error: data.error }, 'sendMessage: chat.postMessage failed')
+      return undefined
+    }
+    return data.ts
+  }
+
+  /**
+   * Edit a previously sent message by its `ts`. Used to update progress
+   * messages in-place. Can only edit bot's own messages.
+   */
+  async editMessage(event: CanonicalEvent, messageId: string, text: string): Promise<void> {
+    const token = await this.opts.getBotToken()
+    if (!token) return
+    const channel = event.context.channel as string
+    const mrkdwn = toSlackMrkdwn(text)
+    const res = await fetch(`${SLACK_API}/chat.update`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({
+        channel,
+        ts: messageId,
+        text: mrkdwn || text,
+      }),
+    })
+    const data = (await res.json()) as { ok: boolean; error?: string }
+    if (!data.ok) {
+      log.warn({ channel, messageId, error: data.error }, 'editMessage: chat.update failed')
+    }
+  }
+
   /** Single chat.postMessage round-trip. Returns the parsed `{ok, error}`. */
   private async callPostMessage(args: {
     token: string
@@ -539,6 +598,229 @@ export class SlackWebhookProvider implements WebhookProvider {
     await addReaction(token, channel, sourceTs, result.ok ? 'white_check_mark' : 'x')
   }
 
+  // ── Interactive prompts (Block Kit) ──────────────────────────────
+
+  /**
+   * Send a confirmation prompt with Block Kit buttons. The interactionId is
+   * embedded in the button value so callbacks can route the response.
+   */
+  async sendConfirmPrompt(
+    event: CanonicalEvent,
+    interactionId: string,
+    command: string,
+    reason: string,
+  ): Promise<void> {
+    const token = await this.opts.getBotToken()
+    if (!token) return
+    const channel = event.context.channel as string
+    const threadTs = event.context.threadTs as string | undefined
+    await fetch(`${SLACK_API}/chat.postMessage`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({
+        channel,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+        text: `Confirmation required: ${command}`, // fallback for notifications
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `:warning: *Confirmation required*\n\`\`\`${command}\`\`\`\n${reason}`,
+            },
+          },
+          {
+            type: 'actions',
+            block_id: `confirm_${interactionId}`,
+            elements: [
+              {
+                type: 'button',
+                text: { type: 'plain_text', text: 'Allow' },
+                style: 'primary',
+                action_id: 'confirm_approve',
+                value: interactionId,
+              },
+              {
+                type: 'button',
+                text: { type: 'plain_text', text: 'Deny' },
+                style: 'danger',
+                action_id: 'confirm_deny',
+                value: interactionId,
+              },
+            ],
+          },
+        ],
+      }),
+    })
+  }
+
+  /**
+   * Send a plan for approval with Block Kit buttons.
+   */
+  async sendPlanForApproval(
+    event: CanonicalEvent,
+    interactionId: string,
+    title: string,
+    content: string,
+  ): Promise<void> {
+    const token = await this.opts.getBotToken()
+    if (!token) return
+    const channel = event.context.channel as string
+    const threadTs = event.context.threadTs as string | undefined
+    // Slack section text has a 3000 char limit. Truncate plan content if needed.
+    const planText = content.length > 2800 ? `${content.slice(0, 2800)}…\n\n_(plan truncated)_` : content
+    await fetch(`${SLACK_API}/chat.postMessage`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({
+        channel,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+        text: `Plan: ${title}`, // fallback for notifications
+        blocks: [
+          {
+            type: 'header',
+            text: { type: 'plain_text', text: `Plan: ${title}` },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: toSlackMrkdwn(planText),
+            },
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: 'Reply *approve* to proceed, *reject* to decline, or reply with feedback to revise.',
+              },
+            ],
+          },
+          {
+            type: 'actions',
+            block_id: `plan_${interactionId}`,
+            elements: [
+              {
+                type: 'button',
+                text: { type: 'plain_text', text: 'Approve' },
+                style: 'primary',
+                action_id: 'plan_approve',
+                value: interactionId,
+              },
+              {
+                type: 'button',
+                text: { type: 'plain_text', text: 'Reject' },
+                style: 'danger',
+                action_id: 'plan_reject',
+                value: interactionId,
+              },
+            ],
+          },
+        ],
+      }),
+    })
+  }
+
+  /**
+   * Handle a Slack interactivity callback (block_actions). Parses the
+   * payload and returns an InteractionResult the router can use to resolve
+   * the pending interaction in the runner.
+   */
+  async handleInteraction(
+    req: import('../provider.js').WebhookRequest,
+  ): Promise<import('../provider.js').InteractionResult | null> {
+    // Slack sends the payload as a URL-encoded form field `payload=<JSON>`.
+    let payload: SlackInteractionPayload
+    try {
+      const body = req.rawBody.toString('utf8')
+      const params = new URLSearchParams(body)
+      const payloadStr = params.get('payload')
+      if (!payloadStr) {
+        log.warn('handleInteraction: no payload field in body')
+        return null
+      }
+      payload = JSON.parse(payloadStr) as SlackInteractionPayload
+    } catch (err) {
+      log.warn({ err }, 'handleInteraction: failed to parse interaction payload')
+      return null
+    }
+
+    if (payload.type !== 'block_actions' || !payload.actions?.length) {
+      log.info({ type: payload.type }, 'handleInteraction: unsupported interaction type')
+      return null
+    }
+
+    const action = payload.actions[0]
+    const interactionId = action.value
+    const actionId = action.action_id
+
+    // Determine session from the channel + thread where the interaction happened.
+    const channel = payload.channel?.id
+    const threadTs = payload.message?.thread_ts ?? payload.message?.ts
+    const teamId = payload.team?.id
+
+    if (!channel || !interactionId) {
+      log.warn('handleInteraction: missing channel or interactionId')
+      return null
+    }
+
+    // Build session ID the same way parse() does.
+    const channelType = payload.channel?.name === 'directmessage' ? 'im' : 'channel'
+    const isDm = channelType === 'im'
+    const sessionId = isDm
+      ? `slack:dm:${teamId}:${channel}:${threadTs}`
+      : `slack:thread:${teamId}:${channel}:${threadTs}`
+
+    // Edit the original message to remove buttons and show the decision.
+    const approved = actionId.includes('approve')
+    const statusText = approved ? ':white_check_mark: Approved' : ':x: Rejected'
+    const userName = payload.user?.name ?? payload.user?.username ?? 'Unknown'
+    if (payload.message?.ts) {
+      const token = await this.opts.getBotToken()
+      if (token) {
+        // Replace the actions block with a context block showing the decision.
+        const updatedBlocks = (payload.message.blocks ?? [])
+          .filter((b: { type: string }) => b.type !== 'actions')
+          .concat([
+            {
+              type: 'context',
+              elements: [
+                { type: 'mrkdwn', text: `${statusText} by ${userName}` },
+              ],
+            },
+          ])
+        await fetch(`${SLACK_API}/chat.update`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json; charset=utf-8',
+          },
+          body: JSON.stringify({
+            channel,
+            ts: payload.message.ts,
+            blocks: updatedBlocks,
+            text: `${statusText} by ${userName}`,
+          }),
+        })
+      }
+    }
+
+    const resultType = actionId.startsWith('plan_') ? 'plan_response' : 'confirm_response'
+    return {
+      type: resultType as 'plan_response' | 'confirm_response',
+      sessionId,
+      approved,
+      userId: payload.user?.id,
+    }
+  }
+
   private async stripMention(text: string): Promise<string> {
     const botUserId = this.opts.getBotUserId ? await this.opts.getBotUserId() : null
     if (botUserId) {
@@ -560,6 +842,27 @@ export class SlackWebhookProvider implements WebhookProvider {
     }
     return next.trim()
   }
+}
+
+/**
+ * Subset of the Slack interaction payload we need. Full shape:
+ * https://api.slack.com/reference/interaction-payloads/block-actions
+ */
+interface SlackInteractionPayload {
+  type: string
+  team?: { id: string; domain?: string }
+  user?: { id: string; name?: string; username?: string }
+  channel?: { id: string; name?: string }
+  message?: {
+    ts: string
+    thread_ts?: string
+    blocks?: Array<{ type: string; [key: string]: unknown }>
+  }
+  actions?: Array<{
+    action_id: string
+    value: string
+    block_id?: string
+  }>
 }
 
 interface SlackEventEnvelope {
