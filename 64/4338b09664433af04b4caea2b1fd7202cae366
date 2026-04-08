@@ -1,0 +1,23 @@
+packages/agent-server/src/webhooks/providers/telegram.ts
+  4cd6e5b0901a67b1 13,24-34,77,93-104,106,111-130,139,153-154,366-492,710-713,815-822,830-833
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "644338b09664433af04b4caea2b1fd7202cae366",
+  "prompts": {
+    "4cd6e5b0901a67b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc2d7bc8-e79d-4553-89cd-523cb9428c09",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 206,
+      "total_deletions": 25,
+      "accepted_lines": 192,
+      "overriden_lines": 1
+    }
+  }
+}
