@@ -1001,6 +1001,9 @@ export interface ConnectorConfigPayload {
   enabled: boolean
   oauthProvider?: string
   toolPermissions?: Record<string, ConnectorToolPermission>
+  registryId?: string
+  accountEmail?: string
+  accountLabel?: string
 }
 
 export interface ConnectorStatusPayload {
@@ -1022,6 +1025,9 @@ export interface ConnectorStatusPayload {
    */
   metadata?: Record<string, string>
   error?: string
+  registryId?: string
+  accountEmail?: string
+  accountLabel?: string
 }
 
 export interface ConnectorRegistryEntryPayload {
@@ -1042,7 +1048,9 @@ export interface ConnectorRegistryEntryPayload {
     steps: string[]
     url: string
     urlLabel?: string
+    reauthorizeHint?: string
   }
+  multiAccount?: boolean
 }
 
 // Client → Server
@@ -1134,6 +1142,7 @@ export interface ConnectorRegistryListResponse {
 export interface ConnectorOAuthStartMessage {
   type: 'connector_oauth_start'
   provider: string
+  registryId?: string // for multi-account: the registry entry ID when provider is a UUID instance
 }
 
 export interface ConnectorOAuthUrlMessage {

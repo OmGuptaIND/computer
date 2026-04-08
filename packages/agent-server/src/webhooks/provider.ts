@@ -138,4 +138,60 @@ export interface WebhookProvider {
   onTurnStart?(event: CanonicalEvent): Promise<void> | void
 
   onTurnEnd?(event: CanonicalEvent, result: { ok: boolean }): Promise<void> | void
+
+  // ── Mid-turn messaging (Phase 2) ──────────────────────────────────
+
+  /**
+   * Send a message during a turn (progress updates, sub-agent status).
+   * Returns a message ID that can be passed to editMessage() for updates.
+   */
+  sendMessage?(event: CanonicalEvent, text: string): Promise<string | undefined>
+
+  /**
+   * Edit a previously sent message. Used to update progress messages
+   * in-place rather than posting new ones.
+   */
+  editMessage?(event: CanonicalEvent, messageId: string, text: string): Promise<void>
+
+  // ── Interactive prompts (Phase 3) ─────────────────────────────────
+
+  /**
+   * Send a confirmation prompt with interactive buttons (e.g. Slack Block Kit,
+   * Telegram inline keyboard). Falls back to text-based prompt if not implemented.
+   */
+  sendConfirmPrompt?(
+    event: CanonicalEvent,
+    interactionId: string,
+    command: string,
+    reason: string,
+  ): Promise<void>
+
+  /**
+   * Send a plan for approval with interactive buttons. Falls back to
+   * text-based prompt if not implemented.
+   */
+  sendPlanForApproval?(
+    event: CanonicalEvent,
+    interactionId: string,
+    title: string,
+    content: string,
+  ): Promise<void>
+
+  /**
+   * Handle an interactive callback (button click, inline keyboard response).
+   * Used for sub-path routing (e.g. /_anton/webhooks/slack-bot/interact).
+   */
+  handleInteraction?(req: WebhookRequest): Promise<InteractionResult | null>
+}
+
+/**
+ * Result of an interactive callback (button click). The router uses this
+ * to resolve the pending interaction in the runner.
+ */
+export interface InteractionResult {
+  type: 'confirm_response' | 'plan_response'
+  sessionId: string
+  approved: boolean
+  feedback?: string
+  userId?: string
 }
