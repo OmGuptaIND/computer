@@ -1,0 +1,29 @@
+packages/desktop/src/components/chat/model-utils.ts
+  5ee357071d5f102c 4,7,11,17,19,22
+packages/desktop/src/assets/llm/anton.svg
+  5ee357071d5f102c 1
+packages/desktop/src/assets/llm/openai.svg
+  5ee357071d5f102c 1
+packages/desktop/src/assets/llm/groq.svg
+  5ee357071d5f102c 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "97bf7d2d8dab832048323261992401a459a7f82c",
+  "prompts": {
+    "5ee357071d5f102c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8df8d656-4825-49a1-baf6-f4d24821121d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 9,
+      "total_deletions": 0,
+      "accepted_lines": 9,
+      "overriden_lines": 0
+    }
+  }
+}
