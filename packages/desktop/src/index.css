@@ -1234,6 +1234,73 @@ button {
   color: var(--text);
 }
 
+.composer__btn--toggle-active {
+  color: var(--text);
+  background: rgba(var(--overlay), 0.1);
+}
+
+.composer__btn--toggle-active:hover {
+  background: rgba(var(--overlay), 0.15);
+}
+
+/* Thinking toggle with animated label */
+.composer__thinking-toggle {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  color: var(--text-subtle);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.composer__thinking-toggle:hover {
+  background: rgba(var(--overlay), 0.06);
+  color: var(--text);
+}
+
+.composer__thinking-toggle svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.composer__thinking-label {
+  display: grid;
+  grid-template-columns: 0fr;
+  overflow: hidden;
+  transition: grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+  opacity: 0;
+}
+
+.composer__thinking-label > span {
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+  padding-left: 0;
+  transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.composer__thinking-toggle--active {
+  color: #c9a88a;
+  background: rgba(180, 130, 90, 0.15);
+}
+
+.composer__thinking-toggle--active:hover {
+  background: rgba(180, 130, 90, 0.22);
+}
+
+.composer__thinking-toggle--active .composer__thinking-label {
+  grid-template-columns: 1fr;
+  opacity: 1;
+}
+
+.composer__thinking-toggle--active .composer__thinking-label > span {
+  padding-left: 6px;
+}
+
 .composer__btn--plan {
   opacity: 0.4;
   transition: opacity 0.15s, background 0.15s;
@@ -1261,8 +1328,9 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 0;
-  padding: 4px 6px;
-  border-radius: 10px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  height: 26px;
   border: 1px solid rgba(var(--overlay), 0.12);
   background: rgba(var(--overlay), 0.04);
   cursor: pointer;
@@ -1277,8 +1345,8 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .connector-pill__icon + .connector-pill__icon {
@@ -6047,6 +6115,13 @@ button {
   font-size: 14px;
   font-weight: 600;
   color: var(--text);
+}
+
+.settings-section__desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  margin-bottom: 4px;
 }
 
 .settings-divider {
@@ -16252,6 +16327,12 @@ button {
   line-height: 1.45;
   width: 100%;
   margin-top: 4px;
+}
+
+.agent-confirm__field-tz {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 6px;
 }
 
 .agent-confirm__actions {

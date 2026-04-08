@@ -155,6 +155,7 @@ export interface SessionCreateMessage {
   model?: string
   apiKey?: string // client-provided key override (not persisted)
   projectId?: string // create session scoped to a project
+  thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high'
 }
 
 export interface SessionCreatedMessage {

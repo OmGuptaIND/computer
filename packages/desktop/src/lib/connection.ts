@@ -179,7 +179,13 @@ export class Connection {
 
   sendSessionCreate(
     id: string,
-    opts?: { provider?: string; model?: string; apiKey?: string; projectId?: string },
+    opts?: {
+      provider?: string
+      model?: string
+      apiKey?: string
+      projectId?: string
+      thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high'
+    },
   ) {
     this.send(Channel.AI, { type: 'session_create', id, ...opts })
   }

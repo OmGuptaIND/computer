@@ -349,7 +349,7 @@ export class Session {
         systemPrompt: this.getSystemPrompt(),
         tools: opts.tools,
         messages: (opts.existingMessages || []) as AgentMessage[],
-        thinkingLevel: model.reasoning ? (opts.thinkingLevel ?? 'medium') : 'off',
+        thinkingLevel: opts.thinkingLevel ?? (model.reasoning ? 'medium' : 'off'),
       },
       // Dynamic API key resolution — called on every LLM call
       getApiKey: async (provider: string) => {

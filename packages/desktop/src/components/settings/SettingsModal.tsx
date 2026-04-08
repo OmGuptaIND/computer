@@ -40,11 +40,51 @@ type AppearanceMode = 'light' | 'dark' | 'system'
 
 // ── General Settings Page ──
 
+const COMMON_TIMEZONES = [
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Anchorage',
+  'Pacific/Honolulu',
+  'America/Sao_Paulo',
+  'America/Argentina/Buenos_Aires',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Europe/Moscow',
+  'Africa/Cairo',
+  'Africa/Lagos',
+  'Asia/Dubai',
+  'Asia/Kolkata',
+  'Asia/Shanghai',
+  'Asia/Tokyo',
+  'Asia/Seoul',
+  'Asia/Singapore',
+  'Australia/Sydney',
+  'Pacific/Auckland',
+]
+
+function tzLabel(tz: string): string {
+  try {
+    const now = new Date()
+    const offset = new Intl.DateTimeFormat('en', { timeZone: tz, timeZoneName: 'shortOffset' })
+      .formatToParts(now)
+      .find((p) => p.type === 'timeZoneName')?.value ?? ''
+    const city = tz.split('/').pop()?.replace(/_/g, ' ') ?? tz
+    return `${city} (${offset})`
+  } catch {
+    return tz
+  }
+}
+
 function GeneralPage() {
   const theme = uiStore((s) => s.theme)
   const setTheme = uiStore((s) => s.setTheme)
   const devMode = uiStore((s) => s.devMode)
   const setDevMode = uiStore((s) => s.setDevMode)
+  const timezone = uiStore((s) => s.timezone)
+  const setTimezone = uiStore((s) => s.setTimezone)
 
   const appearanceOptions: { key: AppearanceMode; label: string; icon: React.ReactNode }[] = [
     { key: 'light', label: 'Light', icon: <Sun size={16} strokeWidth={1.5} /> },
@@ -61,6 +101,29 @@ function GeneralPage() {
         <div className="settings-select-wrap">
           <select className="settings-select" defaultValue="en">
             <option value="en">English</option>
+          </select>
+        </div>
+      </section>
+
+      {/* Timezone */}
+      <section className="settings-section">
+        <div className="settings-section__title">Timezone</div>
+        <div className="settings-section__desc">
+          Used for agent schedules and displaying times.
+        </div>
+        <div className="settings-select-wrap">
+          <select
+            className="settings-select"
+            value={timezone}
+            onChange={(e) => setTimezone(e.target.value)}
+          >
+            {/* Show current timezone first if not in the common list */}
+            {!COMMON_TIMEZONES.includes(timezone) && (
+              <option value={timezone}>{tzLabel(timezone)}</option>
+            )}
+            {COMMON_TIMEZONES.map((tz) => (
+              <option key={tz} value={tz}>{tzLabel(tz)}</option>
+            ))}
           </select>
         </div>
       </section>

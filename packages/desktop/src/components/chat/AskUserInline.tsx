@@ -1,6 +1,7 @@
 import type { AskUserOption, AskUserQuestion } from '@anton/protocol'
-import { Bot, Calendar, Clock, FileText, Trash2 } from 'lucide-react'
+import { Bot, Calendar, Clock, FileText, Play, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { uiStore } from '../../lib/store/uiStore.js'
 
 interface Props {
   questions: AskUserQuestion[]
@@ -30,12 +31,74 @@ function isAgentCreate(q: AskUserQuestion): AgentCreateMeta | null {
   return null
 }
 
+/** Compute a simple next-run preview from a cron expression, formatted in the user's timezone. */
+function formatNextRun(cron: string | null): string | null {
+  if (!cron) return null
+  const parts = cron.trim().split(/\s+/)
+  if (parts.length !== 5) return null
+
+  // Simple forward search (client-side, lightweight)
+  const [minSpec, hourSpec] = parts
+  const tz = uiStore.getState().timezone
+
+  // For simple daily/hourly crons, compute directly
+  const now = new Date()
+  const candidate = new Date(now.getTime() + 60_000)
+  candidate.setSeconds(0, 0)
+
+  // Search up to 48 hours
+  for (let i = 0; i < 48 * 60; i++) {
+    const m = candidate.getMinutes()
+    const h = candidate.getHours()
+    const dom = candidate.getDate()
+    const mon = candidate.getMonth() + 1
+    const dow = candidate.getDay()
+
+    const matchField = (spec: string, val: number, min: number, max: number): boolean => {
+      for (const part of spec.split(',')) {
+        if (part === '*') return true
+        if (part.startsWith('*/')) { if (val % Number.parseInt(part.slice(2)) === 0) return true }
+        else if (part.includes('-')) { const [a, b] = part.split('-').map(Number); if (val >= a && val <= b) return true }
+        else if (Number.parseInt(part) === val) return true
+      }
+      return false
+    }
+
+    if (
+      matchField(minSpec, m, 0, 59) &&
+      matchField(hourSpec, h, 0, 23) &&
+      matchField(parts[2], dom, 1, 31) &&
+      matchField(parts[3], mon, 1, 12) &&
+      matchField(parts[4], dow, 0, 6)
+    ) {
+      try {
+        return candidate.toLocaleString('en-US', {
+          timeZone: tz,
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        })
+      } catch {
+        return candidate.toLocaleString()
+      }
+    }
+    candidate.setMinutes(candidate.getMinutes() + 1)
+  }
+  return null
+}
+
 function AgentCreateCard({
   meta,
   onConfirm,
   onCancel,
 }: { meta: AgentCreateMeta; onConfirm: () => void; onCancel: () => void }) {
   const promptPreview = meta.prompt.length > 120 ? `${meta.prompt.slice(0, 120)}...` : meta.prompt
+  const timezone = uiStore((s) => s.timezone)
+  const nextRun = meta.cron ? formatNextRun(meta.cron) : null
+  const tzCity = timezone.split('/').pop()?.replace(/_/g, ' ') ?? timezone
 
   return (
     <div className="agent-confirm">
@@ -63,6 +126,19 @@ function AgentCreateCard({
           <span className="agent-confirm__field-label">Schedule</span>
           <span className="agent-confirm__field-value">{meta.schedule || 'Manual only'}</span>
         </div>
+
+        {nextRun && (
+          <div className="agent-confirm__field">
+            <span className="agent-confirm__field-icon">
+              <Play size={14} strokeWidth={1.5} />
+            </span>
+            <span className="agent-confirm__field-label">Next run</span>
+            <span className="agent-confirm__field-value">
+              {nextRun}
+              <span className="agent-confirm__field-tz">{tzCity}</span>
+            </span>
+          </div>
+        )}
 
         {promptPreview && (
           <div className="agent-confirm__field agent-confirm__field--block">

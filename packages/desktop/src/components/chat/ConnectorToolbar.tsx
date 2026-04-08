@@ -169,6 +169,7 @@ export function ConnectorPill() {
       {/* Connected icons pill */}
       {enabledOnes.length > 0 && (
         <button
+          ref={triggerRef}
           type="button"
           className="connector-pill"
           onClick={handleTriggerClick}
@@ -185,17 +186,19 @@ export function ConnectorPill() {
         </button>
       )}
 
-      {/* Connect apps icon */}
-      <button
-        ref={triggerRef}
-        type="button"
-        className="composer__btn"
-        aria-label="Connect apps"
-        data-tooltip="Connect apps"
-        onClick={handleTriggerClick}
-      >
-        <Unplug size={18} strokeWidth={1.5} />
-      </button>
+      {/* Connect apps icon — only when no connectors are enabled */}
+      {enabledOnes.length === 0 && (
+        <button
+          ref={triggerRef}
+          type="button"
+          className="composer__btn"
+          aria-label="Connect apps"
+          data-tooltip="Connect apps"
+          onClick={handleTriggerClick}
+        >
+          <Unplug size={18} strokeWidth={1.5} />
+        </button>
+      )}
 
       {dropdown}
     </div>

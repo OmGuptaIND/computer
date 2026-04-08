@@ -158,6 +158,9 @@ interface SessionStoreState {
   providers: ProviderInfo[]
   defaults: { provider: string; model: string }
 
+  // Thinking toggle (app-wide, persisted)
+  thinkingEnabled: boolean
+
   // Consolidated per-session state (ALL transient state lives here)
   sessionStates: Map<string, SessionState>
 
@@ -172,6 +175,7 @@ interface SessionStoreState {
   setCurrentSession: (id: string, provider: string, model: string) => void
   setSessions: (sessions: SessionMeta[]) => void
   setProviders: (providers: ProviderInfo[], defaults: { provider: string; model: string }) => void
+  setThinkingEnabled: (enabled: boolean) => void
 
   // Per-session state (the ONLY way to read/write session-specific data)
   getSessionState: (sessionId: string) => SessionState
@@ -189,7 +193,12 @@ interface SessionStoreState {
   // Connection actions
   createSession: (
     sessionId: string,
-    opts: { provider: string; model: string; projectId?: string },
+    opts: {
+      provider: string
+      model: string
+      projectId?: string
+      thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high'
+    },
   ) => void
   destroySession: (sessionId: string) => void
   requestSessionHistory: (sessionId: string, opts?: { before?: number; limit?: number }) => void
@@ -235,6 +244,7 @@ export const sessionStore = create<SessionStoreState>((set, get) => {
     sessionsLoaded: false,
     providers: [],
     defaults: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+    thinkingEnabled: localStorage.getItem('anton.thinkingEnabled') !== 'false',
     sessionStates: new Map(),
 
     // ── Connection ────────────────────────────────────────────
@@ -259,6 +269,11 @@ export const sessionStore = create<SessionStoreState>((set, get) => {
       const provider = saved?.provider ?? defaults.provider
       const model = saved?.model ?? defaults.model
       set({ providers, defaults, currentProvider: provider, currentModel: model })
+    },
+
+    setThinkingEnabled: (enabled) => {
+      localStorage.setItem('anton.thinkingEnabled', String(enabled))
+      set({ thinkingEnabled: enabled })
     },
 
     // ── Per-session state ─────────────────────────────────────
@@ -367,7 +382,10 @@ export const sessionStore = create<SessionStoreState>((set, get) => {
 
     // ── Connection actions ────────────────────────────────────
 
-    createSession: (sessionId, opts) => connection.sendSessionCreate(sessionId, opts),
+    createSession: (sessionId, opts) => {
+      const thinkingLevel = opts.thinkingLevel ?? (get().thinkingEnabled ? 'medium' : 'off')
+      connection.sendSessionCreate(sessionId, { ...opts, thinkingLevel })
+    },
     destroySession: (sessionId) => connection.sendSessionDestroy(sessionId),
     requestSessionHistory: (sessionId, opts) => {
       if (opts) {
