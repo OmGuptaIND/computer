@@ -9,7 +9,7 @@
  *   Port 9877 (config.port + 1) → wss:// with self-signed TLS
  */
 
-import { execSync } from 'node:child_process'
+import { execSync, spawn } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
@@ -78,7 +78,6 @@ import { CONNECTOR_FACTORIES, ConnectorManager } from '@anton/connectors'
 import { createLogger } from '@anton/logger'
 import { Channel, decodeFrame, encodeFrame, parseJsonPayload } from '@anton/protocol'
 import type { AiMessage, ChannelId, ControlMessage, TerminalMessage } from '@anton/protocol'
-import * as pty from 'node-pty'
 import { WebSocket, WebSocketServer } from 'ws'
 import { OAuthFlow, TokenStore, oauthCallbackHandler } from './oauth/index.js'
 import type { Scheduler } from './scheduler.js'
@@ -145,6 +144,76 @@ class TextStreamBuffer {
   }
 }
 
+// ── PTY abstraction (node-pty with child_process fallback) ──────
+
+interface PtyHandle {
+  write(data: string): void
+  resize(cols: number, rows: number): void
+  kill(): void
+  onData(cb: (data: string) => void): void
+  onExit(cb: () => void): void
+}
+
+let nodePty: typeof import('node-pty') | null = null
+let nodePtyLoaded = false
+
+async function loadNodePty(): Promise<typeof import('node-pty') | null> {
+  if (nodePtyLoaded) return nodePty
+  nodePtyLoaded = true
+  try {
+    nodePty = await import('node-pty')
+    log.info('node-pty loaded — real PTY support enabled')
+  } catch {
+    log.warn('node-pty not available — falling back to child_process (no TTY)')
+  }
+  return nodePty
+}
+
+function spawnFallback(shell: string, cols: number, rows: number, cwd: string): PtyHandle {
+  const p = spawn(shell, ['-i'], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    cwd,
+    env: {
+      ...process.env,
+      TERM: 'xterm-256color',
+      COLUMNS: String(cols),
+      LINES: String(rows),
+    },
+  })
+
+  const dataCallbacks: ((data: string) => void)[] = []
+  const exitCallbacks: (() => void)[] = []
+
+  const onData = (chunk: Buffer) => {
+    const str = chunk.toString('utf-8')
+    for (const cb of dataCallbacks) cb(str)
+  }
+
+  p.stdout?.on('data', onData)
+  p.stderr?.on('data', onData)
+  p.on('exit', () => {
+    for (const cb of exitCallbacks) cb()
+  })
+
+  return {
+    write(data: string) {
+      if (p.stdin?.writable) p.stdin.write(data)
+    },
+    resize() {
+      // child_process doesn't support resize
+    },
+    kill() {
+      p.kill('SIGTERM')
+    },
+    onData(cb) {
+      dataCallbacks.push(cb)
+    },
+    onExit(cb) {
+      exitCallbacks.push(cb)
+    },
+  }
+}
+
 export class AgentServer {
   private wss: WebSocketServer | null = null
   private config: AgentConfig
@@ -168,7 +237,7 @@ export class AgentServer {
   private webhookRunner: WebhookAgentRunner | null = null
   private telegramProvider: TelegramWebhookProvider | null = null
   private slackBotProvider: SlackWebhookProvider | null = null
-  private ptys: Map<string, pty.IPty> = new Map()
+  private ptys: Map<string, PtyHandle> = new Map()
 
   constructor(config: AgentConfig) {
     this.config = config
@@ -816,7 +885,7 @@ export class AgentServer {
 
   // ── Terminal channel ────────────────────────────────────────────
 
-  private handleTerminal(payload: Uint8Array) {
+  private async handleTerminal(payload: Uint8Array) {
     const msg = parseJsonPayload<TerminalMessage>(payload)
 
     switch (msg.type) {
@@ -833,19 +902,32 @@ export class AgentServer {
         const shell = msg.shell || process.env.SHELL || '/bin/bash'
         const cols = msg.cols || 80
         const rows = msg.rows || 24
+        const cwd = msg.cwd || process.env.HOME || '/'
 
-        let p: pty.IPty
+        let p: PtyHandle
         try {
-          p = pty.spawn(shell, [], {
-            name: 'xterm-256color',
-            cols,
-            rows,
-            cwd: msg.cwd || process.env.HOME || '/',
-            env: {
-              ...process.env,
-              TERM: 'xterm-256color',
-            } as Record<string, string>,
-          })
+          const ptyMod = await loadNodePty()
+          if (ptyMod) {
+            const ptyProc = ptyMod.spawn(shell, [], {
+              name: 'xterm-256color',
+              cols,
+              rows,
+              cwd,
+              env: {
+                ...process.env,
+                TERM: 'xterm-256color',
+              } as Record<string, string>,
+            })
+            p = {
+              write: (data) => ptyProc.write(data),
+              resize: (c, r) => ptyProc.resize(c, r),
+              kill: () => ptyProc.kill(),
+              onData: (cb) => ptyProc.onData(cb),
+              onExit: (cb) => ptyProc.onExit(cb),
+            }
+          } else {
+            p = spawnFallback(shell, cols, rows, cwd)
+          }
         } catch (err) {
           log.error({ err, ptyId: msg.id, shell }, 'Failed to spawn PTY')
           this.sendToClient(Channel.TERMINAL, { type: 'pty_close', id: msg.id })

@@ -20,8 +20,10 @@
     "@anton/protocol": "workspace:*",
     "better-sqlite3": "^11.7.0",
     "chokidar": "^4.0.0",
-    "node-pty": "^1.1.0",
     "ws": "^8.18.0"
+  },
+  "optionalDependencies": {
+    "node-pty": "^1.1.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
