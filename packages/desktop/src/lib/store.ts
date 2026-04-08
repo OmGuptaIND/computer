@@ -324,6 +324,8 @@ export const useStore = create<AppState>((set, get) => {
       // Clean up per-session state for the deleted conversation
       const conv = get().conversations.find((c) => c.id === id)
       if (conv?.sessionId) {
+        // Destroy session on the backend so it's fully removed from disk
+        sessionStore.getState().destroySession(conv.sessionId)
         const ss = sessionStore.getState()
         const states = new Map(ss.sessionStates)
         states.delete(conv.sessionId)

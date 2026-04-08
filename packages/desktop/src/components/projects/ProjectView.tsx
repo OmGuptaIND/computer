@@ -145,11 +145,13 @@ export function ProjectView() {
 
   const handleDeleteSession = (sessionId: string) => {
     const store = useStore.getState()
-    // Always tell the server to destroy — session may exist on disk without a local conversation
-    sessionStore.getState().destroySession(sessionId)
     const conv = store.findConversationBySession(sessionId)
     if (conv) {
+      // deleteConversation also calls destroySession on the backend
       store.deleteConversation(conv.id)
+    } else {
+      // Session exists on disk without a local conversation — destroy directly
+      sessionStore.getState().destroySession(sessionId)
     }
     // Optimistically remove from projectSessions so UI updates instantly
     const ps2 = projectStore.getState()
