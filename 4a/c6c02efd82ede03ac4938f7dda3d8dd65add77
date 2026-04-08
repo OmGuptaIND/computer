@@ -1,0 +1,23 @@
+packages/desktop/src/components/settings/SettingsModal.tsx
+  5ee357071d5f102c 194-216,218,221-222,224-232,234,236
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "4ac6c02efd82ede03ac4938f7dda3d8dd65add77",
+  "prompts": {
+    "5ee357071d5f102c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8df8d656-4825-49a1-baf6-f4d24821121d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 37,
+      "total_deletions": 8,
+      "accepted_lines": 37,
+      "overriden_lines": 0
+    }
+  }
+}
