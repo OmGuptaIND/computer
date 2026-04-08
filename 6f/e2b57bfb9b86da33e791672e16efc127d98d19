@@ -1,0 +1,49 @@
+packages/agent-core/src/anton-models.ts
+  b5aeb0fc5e8f7ff8 178-179
+packages/desktop/src/components/chat/MessageBubble.tsx
+  b5aeb0fc5e8f7ff8 34
+packages/desktop/src/components/chat/ConnectorToolbar.tsx
+  b5aeb0fc5e8f7ff8 172,189-201
+packages/desktop/src/lib/store/uiStore.ts
+  b5aeb0fc5e8f7ff8 16-19,100-106
+packages/agent-core/src/session.ts
+  b5aeb0fc5e8f7ff8 352
+packages/desktop/src/components/settings/SettingsModal.tsx
+  b5aeb0fc5e8f7ff8 43-80,86-87,108-130
+packages/agent-config/src/config.ts
+  b5aeb0fc5e8f7ff8 305,340
+packages/desktop/src/components/chat/ChatInput.tsx
+  b5aeb0fc5e8f7ff8 2,8,70-71,141-143,162,166-170,297-315
+packages/agent-server/src/server.ts
+  b5aeb0fc5e8f7ff8 1571,1582,2481,2539
+packages/desktop/src/lib/connection.ts
+  b5aeb0fc5e8f7ff8 182-188
+packages/desktop/src/index.css
+  b5aeb0fc5e8f7ff8 1237-1303,1331-1333,1348-1349,6120-6126,16332-16337
+packages/protocol/src/messages.ts
+  b5aeb0fc5e8f7ff8 158
+packages/desktop/src/lib/store/sessionStore.ts
+  b5aeb0fc5e8f7ff8 161-163,178,196-201,247,274-278,385-388
+packages/desktop/src/components/chat/AskUserInline.tsx
+  b5aeb0fc5e8f7ff8 2,4,34-92,99-101,130-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "6fe2b57bfb9b86da33e791672e16efc127d98d19",
+  "prompts": {
+    "b5aeb0fc5e8f7ff8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d289cfbb-f2f5-4c28-a515-906e03de129a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 379,
+      "total_deletions": 259,
+      "accepted_lines": 352,
+      "overriden_lines": 0
+    }
+  }
+}
