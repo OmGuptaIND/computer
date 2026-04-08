@@ -64,18 +64,6 @@ function AgentCreateCard({
           <span className="agent-confirm__field-value">{meta.schedule || 'Manual only'}</span>
         </div>
 
-        {meta.cron && (
-          <div className="agent-confirm__field">
-            <span className="agent-confirm__field-icon">
-              <Clock size={14} strokeWidth={1.5} />
-            </span>
-            <span className="agent-confirm__field-label">Cron</span>
-            <span className="agent-confirm__field-value agent-confirm__field-value--mono">
-              {meta.cron}
-            </span>
-          </div>
-        )}
-
         {promptPreview && (
           <div className="agent-confirm__field agent-confirm__field--block">
             <span className="agent-confirm__field-icon">
