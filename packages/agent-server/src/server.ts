@@ -987,7 +987,12 @@ export class AgentServer {
   // ── Filesync channel ────────────────────────────────────────────
 
   private async handleFilesync(payload: Uint8Array) {
-    const msg = parseJsonPayload<{ type: string; path?: string }>(payload)
+    const msg = parseJsonPayload<{
+      type: string
+      path?: string
+      showHidden?: boolean
+      name?: string
+    }>(payload)
 
     switch (msg.type) {
       case 'fs_list': {
@@ -1002,7 +1007,7 @@ export class AgentServer {
           const { join } = await import('node:path')
           const entries = readdirSync(dirPath, { withFileTypes: true })
           const result = entries
-            .filter((e) => !e.name.startsWith('.')) // hide dotfiles by default
+            .filter((e) => msg.showHidden || !e.name.startsWith('.'))
             .map((e) => {
               try {
                 const fullPath = join(dirPath, e.name)
@@ -1044,6 +1049,48 @@ export class AgentServer {
             type: 'fs_read_response',
             path: filePath,
             content: '',
+            error: (err as Error).message,
+          })
+        }
+        break
+      }
+
+      case 'fs_mkdir': {
+        const dirPath = msg.path || ''
+        try {
+          const { mkdirSync } = await import('node:fs')
+          mkdirSync(dirPath, { recursive: true })
+          this.sendToClient(Channel.FILESYNC, {
+            type: 'fs_mkdir_response',
+            path: dirPath,
+            success: true,
+          })
+        } catch (err: unknown) {
+          this.sendToClient(Channel.FILESYNC, {
+            type: 'fs_mkdir_response',
+            path: dirPath,
+            success: false,
+            error: (err as Error).message,
+          })
+        }
+        break
+      }
+
+      case 'fs_delete': {
+        const filePath = msg.path || ''
+        try {
+          const { rmSync } = await import('node:fs')
+          rmSync(filePath, { recursive: true })
+          this.sendToClient(Channel.FILESYNC, {
+            type: 'fs_delete_response',
+            path: filePath,
+            success: true,
+          })
+        } catch (err: unknown) {
+          this.sendToClient(Channel.FILESYNC, {
+            type: 'fs_delete_response',
+            path: filePath,
+            success: false,
             error: (err as Error).message,
           })
         }
