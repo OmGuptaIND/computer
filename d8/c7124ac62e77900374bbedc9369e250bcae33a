@@ -1,0 +1,23 @@
+packages/desktop/src/lib/connection.ts
+  3c8309f542379173 484-487,543-550
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "d8c7124ac62e77900374bbedc9369e250bcae33a",
+  "prompts": {
+    "3c8309f542379173": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b5d46baf-c5a4-4fd0-9c4c-81b25f49feac",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 12,
+      "total_deletions": 0,
+      "accepted_lines": 12,
+      "overriden_lines": 0
+    }
+  }
+}
