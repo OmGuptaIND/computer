@@ -99,11 +99,24 @@ export interface PersistedTaskItem {
   status: 'pending' | 'in_progress' | 'completed'
 }
 
+export interface PersistedSubAgentHistoryEntry {
+  messageId: string
+  role: 'assistant' | 'tool_call' | 'tool_result'
+  content: string
+  ts: number
+  toolName?: string
+  toolInput?: Record<string, unknown>
+  toolId?: string
+  parentToolCallId?: string
+  isError?: boolean
+}
+
 export interface PersistedSession {
   id: string
   provider: string
   model: string
   messages: unknown[] // pi SDK message format
+  subAgentHistory?: PersistedSubAgentHistoryEntry[]
   createdAt: number
   lastActiveAt: number
   title: string
@@ -949,6 +962,14 @@ export function saveSession(session: PersistedSession, basePath?: string): void 
   )
   writeFileSync(join(dir, 'messages.jsonl'), `${lines.join('\n')}\n`, 'utf-8')
 
+  const subAgentHistoryPath = join(dir, 'sub-agent-history.jsonl')
+  if (session.subAgentHistory && session.subAgentHistory.length > 0) {
+    const historyLines = session.subAgentHistory.map((entry) => JSON.stringify(entry))
+    writeFileSync(subAgentHistoryPath, `${historyLines.join('\n')}\n`, 'utf-8')
+  } else if (existsSync(subAgentHistoryPath)) {
+    rmSync(subAgentHistoryPath, { force: true })
+  }
+
   // Update index (only for global sessions)
   if (!basePath) {
     updateIndex(meta)
@@ -1057,6 +1078,7 @@ export function loadSession(id: string, basePath?: string): PersistedSession | n
         provider: meta.provider,
         model: meta.model,
         messages,
+        subAgentHistory: loadSubAgentHistory(dir),
         createdAt: meta.createdAt,
         lastActiveAt: meta.lastActiveAt,
         title: meta.title,
@@ -1096,6 +1118,7 @@ export function loadSession(id: string, basePath?: string): PersistedSession | n
       provider: meta.provider,
       model: meta.model,
       messages,
+      subAgentHistory: loadSubAgentHistory(sessionDir(id)),
       createdAt: meta.createdAt,
       lastActiveAt: meta.lastActiveAt,
       title: meta.title,
@@ -1123,6 +1146,17 @@ function loadSessionMessages(id: string): unknown[] {
   return raw
     .split('\n')
     .map((line) => hydrateSessionMessage(id, JSON.parse(line) as SessionMessage))
+}
+
+function loadSubAgentHistory(dir: string): PersistedSubAgentHistoryEntry[] {
+  const path = join(dir, 'sub-agent-history.jsonl')
+  if (!existsSync(path)) return []
+  const raw = readFileSync(path, 'utf-8').trim()
+  if (!raw) return []
+  return raw
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as PersistedSubAgentHistoryEntry)
 }
 
 /** List all sessions (from index, fast) */

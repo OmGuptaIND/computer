@@ -66,6 +66,17 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
   const raw: GroupedItem[] = []
   let currentActions: ToolAction[] = []
   let pendingCall: ChatMessage | null = null
+  const subAgentLifecycleIds = new Set(
+    messages
+      .filter(
+        (msg) =>
+          msg.role === 'tool' &&
+          msg.toolName === 'sub_agent' &&
+          !msg.parentToolCallId &&
+          msg.id.startsWith('sa_start_'),
+      )
+      .map((msg) => msg.id.slice('sa_start_'.length)),
+  )
 
   // Track unmatched tool calls for parallel call/result pairing.
   // Key: base ID (without tc_/tr_ prefix), Value: index in currentActions
@@ -83,7 +94,6 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
       progressContent: string | null
     }
   >()
-
   function flushActions() {
     if (pendingCall) {
       currentActions.push({ call: pendingCall, result: null })
@@ -134,20 +144,18 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
       continue
     }
 
-    // Sub-agent start: begin collecting a sub-agent group
-    if (msg.toolName === 'sub_agent' && !msg.parentToolCallId) {
-      // Flush any pending top-level actions first
+    // Fallback for restored history: when sa_start_/sa_end_ were not persisted,
+    // synthesize the sub-agent group from the original parent tc_/tr_ pair.
+    if (msg.toolName === 'sub_agent' && !msg.parentToolCallId && msg.id.startsWith('tc_')) {
+      const toolCallId = msg.id.slice('tc_'.length)
+      if (subAgentLifecycleIds.has(toolCallId)) {
+        continue
+      }
+
       if (pendingCall) {
         currentActions.push({ call: pendingCall, result: null })
         pendingCall = null
       }
-
-      // Extract toolCallId from the message id (format: tc_<toolCallId> or sa_start_<toolCallId>)
-      const toolCallId = msg.id.startsWith('sa_start_')
-        ? msg.id.slice('sa_start_'.length)
-        : msg.id.startsWith('tc_')
-          ? msg.id.slice('tc_'.length)
-          : msg.id
 
       const rawType = msg.toolInput?.type as string | undefined
       const validTypes = new Set<AgentType>(['research', 'execute', 'verify'])
@@ -158,6 +166,52 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
         actions: [],
         pendingCall: null,
         progressContent: null,
+      })
+      continue
+    }
+
+    // Sub-agent start: begin collecting a sub-agent group (only from sa_start_ messages)
+    if (msg.toolName === 'sub_agent' && !msg.parentToolCallId && msg.id.startsWith('sa_start_')) {
+      // Flush any pending top-level actions first
+      if (pendingCall) {
+        currentActions.push({ call: pendingCall, result: null })
+        pendingCall = null
+      }
+
+      const toolCallId = msg.id.slice('sa_start_'.length)
+
+      const rawType = msg.toolInput?.type as string | undefined
+      const validTypes = new Set<AgentType>(['research', 'execute', 'verify'])
+      subAgentGroups.set(toolCallId, {
+        task: (msg.toolInput?.task as string) || msg.content,
+        agentType:
+          rawType && validTypes.has(rawType as AgentType) ? (rawType as AgentType) : undefined,
+        actions: [],
+        pendingCall: null,
+        progressContent: null,
+      })
+      continue
+    }
+
+    // Sub-agent end: close the group and emit it inline (NOT as a child event)
+    if (msg.id.startsWith('sa_end_') && msg.parentToolCallId && subAgentGroups.has(msg.parentToolCallId)) {
+      const tcId = msg.parentToolCallId
+      const group = subAgentGroups.get(tcId)!
+      if (group.pendingCall) {
+        group.actions.push({ call: group.pendingCall, result: null })
+        group.pendingCall = null
+      }
+      subAgentGroups.delete(tcId)
+      flushActions()
+      raw.push({
+        type: 'sub_agent',
+        toolCallId: tcId,
+        task: group.task,
+        agentType: group.agentType,
+        actions: group.actions,
+        progressContent: group.progressContent,
+        result: msg,
+        id: `sub_agent_${tcId}`,
       })
       continue
     }
@@ -182,38 +236,30 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
       continue
     }
 
-    // Check if this is the sub_agent tool_result from the parent (closes the group)
-    // This is the result that the parent session receives back from the sub_agent tool
+    // Restored history only has the parent tr_ result, so close fallback sub-agent groups here.
     if (!msg.toolName && !msg.parentToolCallId) {
-      // Check if the pending call is a sub_agent tool
-      if (pendingCall?.toolName === 'sub_agent') {
-        const toolCallId = pendingCall.id.startsWith('tc_')
-          ? pendingCall.id.slice('tc_'.length)
-          : pendingCall.id
-
-        // Flush the sub-agent group
-        const group = subAgentGroups.get(toolCallId)
-        if (group) {
-          if (group.pendingCall) {
-            group.actions.push({ call: group.pendingCall, result: null })
-            group.pendingCall = null
-          }
-          subAgentGroups.delete(toolCallId)
-
-          flushActions()
-          raw.push({
-            type: 'sub_agent',
-            toolCallId,
-            task: group.task,
-            agentType: group.agentType,
-            actions: group.actions,
-            progressContent: group.progressContent,
-            result: msg,
-            id: `sub_agent_${toolCallId}`,
-          })
-          pendingCall = null
-          continue
+      const toolCallId = msg.id.startsWith('tr_') ? msg.id.slice('tr_'.length) : msg.id
+      if (subAgentGroups.has(toolCallId) && !subAgentLifecycleIds.has(toolCallId)) {
+        const group = subAgentGroups.get(toolCallId)!
+        if (group.pendingCall) {
+          group.actions.push({ call: group.pendingCall, result: null })
+          group.pendingCall = null
         }
+        subAgentGroups.delete(toolCallId)
+
+        flushActions()
+        raw.push({
+          type: 'sub_agent',
+          toolCallId,
+          task: group.task,
+          agentType: group.agentType,
+          actions: group.actions,
+          progressContent: group.progressContent,
+          result: msg,
+          id: `sub_agent_${toolCallId}`,
+        })
+        pendingCall = null
+        continue
       }
     }
 
@@ -237,6 +283,11 @@ export function groupMessages(messages: ChatMessage[]): GroupedItem[] {
 
       // Silently discard results of hidden tool calls
       if (hiddenCallIds.has(resultBaseId)) {
+        continue
+      }
+
+      // Skip redundant tr_ for sub_agent calls when sa_start_/sa_end_ handled the lifecycle.
+      if (subAgentLifecycleIds.has(resultBaseId)) {
         continue
       }
 

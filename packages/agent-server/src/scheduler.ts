@@ -161,10 +161,14 @@ export class Scheduler {
     let session = this.sessions.get(job.sessionId)
     if (session) return session
 
+    // Pass a no-op onSubAgentEvent so the recording wrapper is installed.
+    // Without this, sub-agent replay data is never persisted for scheduled sessions.
+    const opts = { onSubAgentEvent: () => {} }
+
     // Try to resume from disk
-    session = resumeSession(job.sessionId, this.config) ?? undefined
+    session = resumeSession(job.sessionId, this.config, opts) ?? undefined
     if (!session) {
-      session = createSession(job.sessionId, this.config)
+      session = createSession(job.sessionId, this.config, opts)
     }
 
     this.sessions.set(job.sessionId, session)

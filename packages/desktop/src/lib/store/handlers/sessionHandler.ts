@@ -344,6 +344,8 @@ export function handleSessionMessage(msg: AiMessage): boolean {
     case 'session_history_response': {
       type HistoryEntry = SessionHistoryEntry & {
         attachments?: ChatImageAttachment[]
+        messageId?: string
+        parentToolCallId?: string
       }
 
       const uiOnlyHistoryTools = new Set(['ask_user', 'task_tracker', 'plan_confirm'])
@@ -391,13 +393,13 @@ export function handleSessionMessage(msg: AiMessage): boolean {
           return true
         })
         .map((entry: HistoryEntry) => {
-          let id: string
-          if (entry.role === 'tool_call' && entry.toolId) {
+          let id = entry.messageId || ''
+          if (!id && entry.role === 'tool_call' && entry.toolId) {
             id = `tc_${entry.toolId}`
-          } else if (entry.role === 'tool_result' && entry.toolId) {
+          } else if (!id && entry.role === 'tool_result' && entry.toolId) {
             id = `tr_${entry.toolId}`
-          } else {
-            id = `hist_${entry.seq}_${Date.now()}`
+          } else if (!id) {
+            id = `hist_${entry.seq}`
           }
           const role =
             entry.role === 'user'
@@ -426,6 +428,7 @@ export function handleSessionMessage(msg: AiMessage): boolean {
             toolInput: entry.toolInput,
             isError: entry.isError,
             isThinking: entry.isThinking,
+            parentToolCallId: entry.parentToolCallId,
             isSteering,
           } as ChatMessage
         })
