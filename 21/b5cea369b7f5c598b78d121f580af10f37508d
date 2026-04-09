@@ -1,0 +1,53 @@
+specs/architecture/SESSIONS.md
+  ab5aea80a92d535b 353-355,362,371,373-374,412,414-422,425-429,431
+packages/desktop/src/lib/store.ts
+  a8e56658d4e3fc84 10,312,325,334-344,346
+  ab5aea80a92d535b 226,232,237-240
+packages/desktop/src/lib/conversations.ts
+  a8e56658d4e3fc84 43,64-82
+packages/desktop/src/App.tsx
+  ab5aea80a92d535b 136,138,140-149,151-154
+packages/agent-config/src/config.ts
+  a8e56658d4e3fc84 1013-1015
+specs/features/session-sync-protocol.md
+  ab5aea80a92d535b 85-87,106-123,199
+packages/desktop/src/lib/store/handlers/sessionHandler.ts
+  a8e56658d4e3fc84 2-3,17-21,32-63,126,129-132,134,140-143,200,241,261-262,293-296,298-313,542,555-558
+specs/features/agents.md
+  ab5aea80a92d535b 99-107,164
+packages/desktop/src/lib/store/handlers/projectHandler.ts
+  ab5aea80a92d535b 100-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "21b5cea369b7f5c598b78d121f580af10f37508d",
+  "prompts": {
+    "a8e56658d4e3fc84": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d6f32-d627-7ff1-a5e1-1ce9cfb72c0b",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 118,
+      "total_deletions": 97,
+      "accepted_lines": 118,
+      "overriden_lines": 0
+    },
+    "ab5aea80a92d535b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0a56a514-8a11-47b7-b998-c254086dd0e5",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 96,
+      "total_deletions": 40,
+      "accepted_lines": 95,
+      "overriden_lines": 0
+    }
+  }
+}
