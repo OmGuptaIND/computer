@@ -9,7 +9,12 @@
  * pi SDK does the heavy lifting — we just manage lifecycle and persistence.
  */
 
-import type { AgentConfig, PersistedSession, PersistedTaskItem } from '@anton/agent-config'
+import type {
+  AgentConfig,
+  PersistedSession,
+  PersistedSubAgentHistoryEntry,
+  PersistedTaskItem,
+} from '@anton/agent-config'
 import {
   ensureConversationDirs,
   getConversationWorkspace,
@@ -265,6 +270,8 @@ export class Session {
   private maxTurns: number
   private _turnCount = 0
   private _processStartedAt = 0
+  private _budgetWarningSent = false
+  private subAgentHistory: PersistedSubAgentHistoryEntry[] = []
 
   // Last known task tracker state — persisted for resume
   private _lastTasks: PersistedTaskItem[] = []
@@ -294,6 +301,7 @@ export class Session {
     agentMemory?: string // persistent memory from previous runs (injected into system prompt)
     availableWorkflows?: { name: string; description: string; whenToUse: string }[] // workflow catalog for auto-suggestion
     lastTasks?: PersistedTaskItem[] // restored task state from persistence
+    subAgentHistory?: PersistedSubAgentHistoryEntry[] // replay-only sub-agent UI events
     // Safety limits
     maxTokenBudget?: number // max total tokens before aborting (0 = unlimited)
     maxDurationMs?: number // max wall-clock time for processMessage (0 = unlimited)
@@ -321,6 +329,7 @@ export class Session {
     this.agentMemory = opts.agentMemory
     this.availableWorkflows = opts.availableWorkflows
     this._lastTasks = opts.lastTasks || []
+    this.subAgentHistory = opts.subAgentHistory || []
     // If resuming with incomplete tasks, flag for context injection on next message
     this._needsTaskResumeHint = this._lastTasks.some((t) => t.status !== 'completed')
     this.maxTokenBudget = opts.maxTokenBudget ?? 0
@@ -401,8 +410,10 @@ export class Session {
 
           this.compactionState = state
 
-          // If compaction happened, queue an event and trace it
+          // If compaction happened, prune orphaned sub-agent history, queue an event and trace it
           if (state.compactionCount > prevCount) {
+            this.pruneOrphanedSubAgentHistory(compacted)
+
             this.pendingCompactionEvent = {
               type: 'compaction',
               compactedMessages: state.compactedMessageCount,
@@ -1000,11 +1011,50 @@ export class Session {
       )
 
       this.compactionState = state
+      this.pruneOrphanedSubAgentHistory(compacted)
       this.piAgent.replaceMessages(compacted)
       this.persist()
       return state
     } finally {
       this.compactionInProgress = false
+    }
+  }
+
+  /**
+   * Prune sub-agent history entries whose parent tool call was removed by compaction.
+   * Called after both automatic and manual compaction to keep the replay stream in sync.
+   */
+  private pruneOrphanedSubAgentHistory(compactedMessages: unknown[]): void {
+    if (this.subAgentHistory.length === 0) return
+
+    // Collect all tool_use IDs that still exist in the compacted message stream
+    type RawCompactedMsg = {
+      role: string
+      content?: Array<{ type: string; id?: string }>
+    }
+    const survivingToolIds = new Set<string>()
+    for (const msg of compactedMessages as RawCompactedMsg[]) {
+      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if ((block.type === 'toolCall' || block.type === 'tool_use') && block.id) {
+            survivingToolIds.add(block.id)
+          }
+        }
+      }
+    }
+
+    // Keep only entries whose root sub-agent tool call still exists
+    const before = this.subAgentHistory.length
+    this.subAgentHistory = this.subAgentHistory.filter((entry) => {
+      const anchor = entry.parentToolCallId ?? entry.toolId
+      return anchor ? survivingToolIds.has(anchor) : true
+    })
+
+    if (this.subAgentHistory.length < before) {
+      this.log.info(
+        { pruned: before - this.subAgentHistory.length, remaining: this.subAgentHistory.length },
+        'pruned orphaned sub-agent history entries after compaction',
+      )
     }
   }
 
@@ -1152,9 +1202,11 @@ export class Session {
     role: 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'system'
     content: string
     ts: number
+    messageId?: string
     toolName?: string
     toolInput?: Record<string, unknown>
     toolId?: string
+    parentToolCallId?: string
     isError?: boolean
     attachments?: SessionImageAttachment[]
   }> {
@@ -1163,9 +1215,11 @@ export class Session {
       role: 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'system'
       content: string
       ts: number
+      messageId?: string
       toolName?: string
       toolInput?: Record<string, unknown>
       toolId?: string
+      parentToolCallId?: string
       isError?: boolean
       isThinking?: boolean
       attachments?: SessionImageAttachment[]
@@ -1336,9 +1390,14 @@ export class Session {
       }
     }
 
+    const merged = [...entries, ...this.subAgentHistory]
+      .map((entry, index) => ({ entry, index }))
+      .sort((a, b) => (a.entry.ts === b.entry.ts ? a.index - b.index : a.entry.ts - b.entry.ts))
+      .map(({ entry }, index) => ({ ...entry, seq: index + 1 }))
+
     // Apply pagination if requested
     if (opts) {
-      let filtered = entries
+      let filtered = merged
       if (opts.before !== undefined) {
         filtered = filtered.filter((e) => e.seq < opts.before!)
       }
@@ -1348,7 +1407,88 @@ export class Session {
       return filtered
     }
 
-    return entries
+    return merged
+  }
+
+  recordSubAgentHistoryEvent(event: SessionEvent & { parentToolCallId: string }): void {
+    if (this.ephemeral) return
+
+    const ts = Date.now()
+
+    switch (event.type) {
+      case 'sub_agent_start':
+        this.subAgentHistory.push({
+          messageId: `sa_start_${event.toolCallId}`,
+          role: 'tool_call',
+          content: event.task,
+          ts,
+          toolName: 'sub_agent',
+          toolInput: {
+            task: event.task,
+            ...(event.agentType ? { type: event.agentType } : {}),
+          },
+          toolId: event.toolCallId,
+        })
+        return
+
+      case 'sub_agent_progress': {
+        const messageId = `sa_progress_${event.toolCallId}`
+        const existing = this.subAgentHistory.find((entry) => entry.messageId === messageId)
+        if (existing) {
+          existing.content += event.content
+          existing.ts = ts
+        } else {
+          this.subAgentHistory.push({
+            messageId,
+            role: 'assistant',
+            content: event.content,
+            ts,
+            parentToolCallId: event.parentToolCallId,
+          })
+        }
+        return
+      }
+
+      case 'tool_call':
+        this.subAgentHistory.push({
+          messageId: `tc_${event.id}`,
+          role: 'tool_call',
+          content: `Running: ${event.name}`,
+          ts,
+          toolName: event.name,
+          toolInput: event.input,
+          toolId: event.id,
+          parentToolCallId: event.parentToolCallId,
+        })
+        return
+
+      case 'tool_result':
+        this.subAgentHistory.push({
+          messageId: `tr_${event.id}`,
+          role: 'tool_result',
+          content: event.output,
+          ts,
+          toolId: event.id,
+          parentToolCallId: event.parentToolCallId,
+          isError: event.isError,
+        })
+        return
+
+      case 'sub_agent_end':
+        this.subAgentHistory.push({
+          messageId: `sa_end_${event.toolCallId}`,
+          role: 'tool_result',
+          content: event.success ? 'Sub-agent completed' : 'Sub-agent failed',
+          ts,
+          toolId: event.toolCallId,
+          parentToolCallId: event.parentToolCallId,
+          isError: !event.success,
+        })
+        return
+
+      default:
+        return
+    }
   }
 
   /** Extract artifacts from full history (tool_call/tool_result pairs).
@@ -1499,6 +1639,7 @@ export class Session {
       provider: this.provider,
       model: this.model,
       messages: this.piAgent.state.messages as unknown[],
+      subAgentHistory: this.subAgentHistory,
       createdAt: this.createdAt,
       lastActiveAt: this.lastActiveAt,
       title: this.title,
@@ -1647,7 +1788,26 @@ export class Session {
         // Track turns for limit enforcement
         this._turnCount++
 
-        // Enforce token budget
+        // Soft budget warning at 80% — ask the agent to wrap up gracefully
+        if (
+          this.maxTokenBudget > 0 &&
+          !this._budgetWarningSent &&
+          this.cumulativeUsage.totalTokens > this.maxTokenBudget * 0.8
+        ) {
+          this._budgetWarningSent = true
+          this.piAgent.followUp({
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `[System: You have used ${this.cumulativeUsage.totalTokens} of your ${this.maxTokenBudget} token budget (${Math.round((this.cumulativeUsage.totalTokens / this.maxTokenBudget) * 100)}%). You are running low. Immediately stop any further tool calls and return a summary of everything you have found so far. Do NOT make any more tool calls — just respond with your findings.]`,
+              },
+            ],
+            timestamp: Date.now(),
+          })
+        }
+
+        // Enforce token budget (hard limit)
         if (this.maxTokenBudget > 0 && this.cumulativeUsage.totalTokens > this.maxTokenBudget) {
           this.cancel()
           events.push({
@@ -2164,10 +2324,14 @@ export function createSession(
   const handlerRef: { askUser?: AskUserHandler } = {}
   const confirmRef: { handler?: ConfirmHandler } = {}
   const sessionRef: { session?: Session } = {}
+  const onSubAgentEvent: SubAgentEventHandler = (event) => {
+    sessionRef.session?.recordSubAgentHistoryEvent(event)
+    opts?.onSubAgentEvent?.(event)
+  }
 
   const toolCallbacks: ToolCallbacks = {
     getAskUserHandler: () => handlerRef.askUser,
-    onSubAgentEvent: opts?.onSubAgentEvent,
+    onSubAgentEvent,
     getConfirmHandler: () => confirmRef.handler,
     getParentTraceSpan: () => sessionRef.session?.currentTraceSpan,
     clientApiKey: opts?.apiKey,
@@ -2265,10 +2429,14 @@ export function resumeSession(
   const handlerRef: { askUser?: AskUserHandler } = {}
   const confirmRef: { handler?: ConfirmHandler } = {}
   const sessionRef: { session?: Session } = {}
+  const onSubAgentEvent: SubAgentEventHandler = (event) => {
+    sessionRef.session?.recordSubAgentHistoryEvent(event)
+    opts?.onSubAgentEvent?.(event)
+  }
 
   const toolCallbacks: ToolCallbacks = {
     getAskUserHandler: () => handlerRef.askUser,
-    onSubAgentEvent: opts?.onSubAgentEvent,
+    onSubAgentEvent,
     getConfirmHandler: () => confirmRef.handler,
     getParentTraceSpan: () => sessionRef.session?.currentTraceSpan,
     conversationId: persisted.id,
@@ -2300,6 +2468,7 @@ export function resumeSession(
       opts?.surface?.kind,
     ),
     existingMessages: persisted.messages,
+    subAgentHistory: persisted.subAgentHistory,
     title: persisted.title,
     createdAt: persisted.createdAt,
     compactionState: persisted.compactionState || undefined,

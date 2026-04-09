@@ -256,9 +256,11 @@ export interface SessionHistoryEntry {
   role: 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'system'
   content: string
   ts: number
+  messageId?: string
   toolName?: string
   toolInput?: Record<string, unknown>
   toolId?: string
+  parentToolCallId?: string
   isError?: boolean
   isThinking?: boolean
   attachments?: SessionImageAttachment[]
