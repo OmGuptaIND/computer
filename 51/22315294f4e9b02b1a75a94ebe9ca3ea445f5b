@@ -1,0 +1,23 @@
+packages/desktop/src/lib/store.ts
+  c1e15f0b7408e6d9 321,324
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "5122315294f4e9b02b1a75a94ebe9ca3ea445f5b",
+  "prompts": {
+    "c1e15f0b7408e6d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d717d-fe18-7f92-8584-a335d190f45b",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}
