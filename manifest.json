@@ -1,12 +1,12 @@
 {
-  "version": "1.0.49",
+  "version": "1.0.50",
   "gitHash": "",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
-  "changelog": "",
-  "publishedAt": "2026-04-09T17:49:49.774Z",
-  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.49/anton-cli.mjs",
+  "changelog": "Fixes:\n- resolve stray merge conflict markers in manifest.json",
+  "publishedAt": "2026-04-09T18:50:52.021Z",
+  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.50/anton-cli.mjs",
   "sidecar": {
-    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.49/anton-sidecar-linux-arm64",
-    "linux-amd64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.49/anton-sidecar-linux-amd64"
+    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.50/anton-sidecar-linux-arm64",
+    "linux-amd64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.50/anton-sidecar-linux-amd64"
   }
 }
