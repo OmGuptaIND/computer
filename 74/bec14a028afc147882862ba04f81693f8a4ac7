@@ -1,0 +1,23 @@
+packages/agent-core/src/agent.ts
+  5db88b35f61799a0 1238-1241,1266
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "74bec14a028afc147882862ba04f81693f8a4ac7",
+  "prompts": {
+    "5db88b35f61799a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c57bbe8-52b9-4e92-8733-04de3976655b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 3,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}
