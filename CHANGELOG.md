@@ -10,6 +10,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
+## [1.0.53] - 2026-04-11
+
+### Fixes
+- grant anton user sudo access and add environment awareness to system prompt
+- redesign mobile connect page with two-view layout and machine management
+- strip [img:...] placeholders from conversation titles
+---
+
 ## [1.0.52] - 2026-04-11
 
 Maintenance release.
@@ -512,7 +520,8 @@ Maintenance release.
 
 ---
 
-[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.52...HEAD
+[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.53...HEAD
+[1.0.53]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.53
 [1.0.52]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.52
 [1.0.51]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.51
 [1.0.51]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.51
