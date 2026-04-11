@@ -1,0 +1,23 @@
+.github/workflows/release.yml
+  63c8646dbeebf277 111-204,208-209,243-251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "ce0a8208d4fde6e6ad3f0fb0aee6779f8a719d8b",
+  "prompts": {
+    "63c8646dbeebf277": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "66dacdb4-2541-4e24-9ef2-6480e89203fc",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 105,
+      "total_deletions": 62,
+      "accepted_lines": 105,
+      "overriden_lines": 0
+    }
+  }
+}
