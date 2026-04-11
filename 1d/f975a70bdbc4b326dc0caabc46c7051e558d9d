@@ -1,0 +1,29 @@
+infra-providers/huddle/cloud-init.sh
+  4b7de0a9e579c279 81,85-88
+deploy/ansible/roles/anton-agent/tasks/main.yml
+  4b7de0a9e579c279 75-83
+packages/cli/src/commands/computer-setup.ts
+  4b7de0a9e579c279 160-164
+packages/agent-core/src/session.ts
+  4b7de0a9e579c279 31-32,2190-2205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "1df975a70bdbc4b326dc0caabc46c7051e558d9d",
+  "prompts": {
+    "4b7de0a9e579c279": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "05a27774-a228-40c5-b570-ba0cfde90e59",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 37,
+      "total_deletions": 5,
+      "accepted_lines": 37,
+      "overriden_lines": 0
+    }
+  }
+}
