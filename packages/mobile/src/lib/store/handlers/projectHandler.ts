@@ -1,0 +1,119 @@
+/**
+ * AI channel: project, agent, workflow, connector, provider, skill messages.
+ */
+
+import type { AgentSession, AiMessage, Project } from '@anton/protocol'
+import { connectionStore } from '../connectionStore'
+import { projectStore } from '../projectStore'
+import { sessionStore } from '../sessionStore'
+import type { ProviderInfo, SessionMeta } from '../types'
+
+export function handleProjectMessage(msg: AiMessage): boolean {
+  switch (msg.type) {
+    case 'projects_list_response': {
+      projectStore.getState().setProjects((msg.projects || []) as Project[])
+      connectionStore.getState().markSynced('projects')
+      return true
+    }
+
+    case 'project_created': {
+      const project = msg.project || msg
+      projectStore.getState().addProject(project as Project)
+      return true
+    }
+
+    case 'project_updated': {
+      const project = msg.project || msg
+      projectStore.getState().updateProject(project as Project)
+      return true
+    }
+
+    case 'project_deleted': {
+      projectStore.getState().removeProject(msg.id as string)
+      return true
+    }
+
+    case 'project_sessions_list_response': {
+      projectStore.getState().setProjectSessions((msg.sessions || []) as SessionMeta[])
+      return true
+    }
+
+    case 'agents_list_response': {
+      projectStore.getState().setProjectAgents((msg.agents || []) as AgentSession[])
+      return true
+    }
+
+    case 'agent_created':
+    case 'agent_updated': {
+      const agent = msg.agent as AgentSession
+      if (agent) {
+        const ps = projectStore.getState()
+        const exists = ps.projectAgents.some((a) => a.sessionId === agent.sessionId)
+        if (exists) {
+          ps.setProjectAgents(
+            ps.projectAgents.map((a) => (a.sessionId === agent.sessionId ? agent : a)),
+          )
+        } else {
+          ps.setProjectAgents([...ps.projectAgents, agent])
+        }
+      }
+      return true
+    }
+
+    case 'agent_deleted': {
+      const ps = projectStore.getState()
+      ps.setProjectAgents(ps.projectAgents.filter((a) => a.sessionId !== msg.sessionId))
+      return true
+    }
+
+    case 'agent_result_delivered':
+      return true
+
+    case 'providers_list_response': {
+      const providers = (msg.providers || []) as ProviderInfo[]
+      const defaults = (msg.defaults || { provider: 'anthropic', model: 'claude-sonnet-4-6' }) as {
+        provider: string
+        model: string
+      }
+      sessionStore.getState().setProviders(providers, defaults)
+      connectionStore.getState().markSynced('providers')
+      return true
+    }
+
+    case 'connectors_list_response': {
+      connectionStore.getState().markSynced('connectors')
+      return true
+    }
+
+    case 'connector_registry_list_response':
+    case 'connector_added':
+    case 'connector_updated':
+    case 'connector_removed':
+    case 'connector_status':
+    case 'connector_test_response':
+    case 'oauth_url':
+    case 'oauth_complete':
+      return true
+
+    case 'skill_list_response':
+    case 'scheduler_list_response':
+    case 'workflow_registry_list_response':
+    case 'workflows_list_response':
+    case 'workflow_installed':
+    case 'workflow_uninstalled':
+    case 'workflow_activated':
+    case 'workflow_check_connectors_response':
+      return true
+
+    case 'provider_set_key_response':
+    case 'provider_set_default_response':
+    case 'provider_set_models_response':
+      return true
+
+    case 'publish_artifact_response':
+      return true
+
+    default:
+      return false
+  }
+}

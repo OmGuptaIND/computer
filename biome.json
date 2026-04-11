@@ -44,6 +44,7 @@
       "include": [
         "packages/cli/**",
         "packages/desktop/**",
+        "packages/mobile/**",
         "packages/agent-config/**",
         "packages/agent-core/src/evals/**"
       ],
