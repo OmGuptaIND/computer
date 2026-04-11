@@ -1,6 +1,6 @@
 {
   "version": "1.0.53",
-  "gitHash": "",
+  "gitHash": "389a1f8",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
   "changelog": "Fixes:\n- grant anton user sudo access and add environment awareness to system prompt\n- redesign mobile connect page with two-view layout and machine management\n- strip [img:...] placeholders from conversation titles",
   "publishedAt": "2026-04-11T09:50:43.283Z",
