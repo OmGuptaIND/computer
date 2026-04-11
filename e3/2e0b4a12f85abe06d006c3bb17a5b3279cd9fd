@@ -1,0 +1,25 @@
+packages/agent-core/src/session.ts
+  d338ae44bef35943 772-773,776,787,789,2627-2628
+packages/desktop/src/lib/conversations.ts
+  d338ae44bef35943 117-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "e32e0b4a12f85abe06d006c3bb17a5b3279cd9fd",
+  "prompts": {
+    "d338ae44bef35943": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c24d6a3b-7ded-46fc-bd5d-af0b0e4e1958",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 4,
+      "accepted_lines": 11,
+      "overriden_lines": 0
+    }
+  }
+}
