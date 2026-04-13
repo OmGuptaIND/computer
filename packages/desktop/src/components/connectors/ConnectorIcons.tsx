@@ -4,6 +4,8 @@ import type { JSX } from 'react'
 // Brand SVG icons for each built-in connector
 // Each renders at the given size prop (default 24)
 
+import polymarketIconBluePng from './polymarket-icon-blue.png'
+
 function BraveIcon({ size = 24 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -302,17 +304,14 @@ const ICON_MAP: Record<string, (props: { size?: number }) => JSX.Element> = {
   airtable: AirtableIcon,
   linkedin: LinkedInIcon,
   polymarket: ({ size = 24 }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="2" y="2" width="20" height="20" rx="6" fill="#0A0F1A" />
-      <path
-        d="M7 15.5V8.5c0-.8.9-1.3 1.6-.9l3.4 2.2a1 1 0 010 1.7l-3.4 2.2c-.7.4-1.6-.1-1.6-.9z"
-        fill="#00D2FF"
-      />
-      <path
-        d="M13 8.5h3.3c.9 0 1.7.8 1.7 1.7v3.6c0 .9-.8 1.7-1.7 1.7H13V8.5z"
-        fill="#7C5CFF"
-      />
-    </svg>
+    <img
+      src={polymarketIconBluePng}
+      width={size}
+      height={size}
+      alt=""
+      aria-hidden="true"
+      style={{ display: 'block', borderRadius: Math.max(0, Math.round(size * 0.25)) }}
+    />
   ),
 }
 
