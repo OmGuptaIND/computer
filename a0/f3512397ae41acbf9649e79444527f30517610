@@ -1,0 +1,36 @@
+packages/desktop/src/components/connectors/ConnectorIcons.tsx
+  8381a8b03ae30669 7-8,307-314
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "a0f3512397ae41acbf9649e79444527f30517610",
+  "prompts": {
+    "15b889b042a683d9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "fdbc8b0e-9289-4227-b6d3-7a65bd339378",
+        "model": "default"
+      },
+      "human_author": "Arush Kurundodi",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 31,
+      "overriden_lines": 0
+    },
+    "8381a8b03ae30669": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6d51cd6a-4884-47c7-b35f-09eb066f9162",
+        "model": "default"
+      },
+      "human_author": "Arush Kurundodi",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 14,
+      "accepted_lines": 10,
+      "overriden_lines": 0
+    }
+  }
+}
