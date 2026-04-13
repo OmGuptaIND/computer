@@ -4402,6 +4402,20 @@ export class AgentServer {
         log.info({ chatId }, 'Telegram owner chat ID set')
       }
     }
+    if (id === 'polymarket') {
+      if (metadata.WALLET_ADDRESS && 'setWalletAddress' in connector) {
+        ;(connector as { setWalletAddress: (addr: string) => void }).setWalletAddress(metadata.WALLET_ADDRESS)
+      }
+      const addr = metadata.CLOB_ADDRESS
+      const apiKey = metadata.CLOB_API_KEY
+      const secret = metadata.CLOB_SECRET
+      const passphrase = metadata.CLOB_PASSPHRASE
+      if (addr && apiKey && secret && passphrase && 'setL2Creds' in connector) {
+        ;(connector as {
+          setL2Creds: (creds: { apiKey: string; secret: string; passphrase: string; address: string }) => void
+        }).setL2Creds({ apiKey, secret, passphrase, address: addr })
+      }
+    }
   }
 
   // ── Helpers ─────────────────────────────────────────────────────
@@ -4457,6 +4471,10 @@ const SENSITIVE_METADATA_KEYS = new Set([
   'client_secret',
   'api_key',
   'signing_secret',
+  // Polymarket CLOB L2 credentials (never expose to UI)
+  'CLOB_API_KEY',
+  'CLOB_SECRET',
+  'CLOB_PASSPHRASE',
   // Per-install HMAC key the proxy uses to sign forwarded Slack events to
   // the agent-server. Lives in slack-bot metadata; never expose to UI.
   'forward_secret',

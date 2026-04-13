@@ -1662,6 +1662,55 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     featured: true,
   },
   {
+    id: 'polymarket',
+    name: 'Polymarket',
+    description:
+      'Read Polymarket markets/orderbooks, track a public wallet portfolio, and (optionally) submit signed orders via CLOB with an API key.',
+    icon: '🟦',
+    category: 'other',
+    type: 'api',
+    requiredEnv: [],
+    optionalFields: [
+      {
+        key: 'WALLET_ADDRESS',
+        label: 'Public Wallet Address',
+        hint:
+          'Optional. 0x-prefixed address used for portfolio tracking (positions/value). You can also set this later via tool call.',
+      },
+      {
+        key: 'CLOB_ADDRESS',
+        label: 'CLOB Signer Address',
+        hint:
+          'Optional. Signer address associated with your CLOB API key. Required for authenticated CLOB endpoints.',
+      },
+      {
+        key: 'CLOB_API_KEY',
+        label: 'CLOB API Key',
+        hint: 'Optional. Polymarket CLOB L2 apiKey (UUID).',
+      },
+      {
+        key: 'CLOB_SECRET',
+        label: 'CLOB Secret',
+        hint: 'Optional. Polymarket CLOB L2 secret (base64/base64url).',
+      },
+      {
+        key: 'CLOB_PASSPHRASE',
+        label: 'CLOB Passphrase',
+        hint: 'Optional. Polymarket CLOB L2 passphrase.',
+      },
+    ],
+    featured: false,
+    setupGuide: {
+      steps: [
+        'For read-only usage: (optional) add your public wallet address.',
+        'For trading endpoints: add CLOB L2 credentials (apiKey/secret/passphrase) and the associated signer address.',
+        'Note: posting orders still requires a pre-signed order payload (EIP-712). This connector can submit that payload once signed.',
+      ],
+      url: 'https://docs.polymarket.com/api-reference/introduction',
+      urlLabel: 'Polymarket API Docs',
+    },
+  },
+  {
     id: 'telegram',
     name: 'Telegram',
     description: 'Send and receive Telegram messages via your bot',
