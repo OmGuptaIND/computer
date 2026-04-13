@@ -1,6 +1,6 @@
 {
   "version": "1.0.54",
-  "gitHash": "",
+  "gitHash": "4e0f4b6",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
   "changelog": "Features:\n- wire Telegram slash commands and add /providers, /agents commands\n- add eval harness gap-closing — efficiency, trajectory, and planning scorers",
   "publishedAt": "2026-04-13T11:10:11.267Z",
