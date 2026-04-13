@@ -12183,6 +12183,16 @@ button {
   flex-shrink: 0;
 }
 
+/* Single-account API: status strip only (Disconnect lives in the action row below) */
+.app-detail__accounts--compact {
+  margin-bottom: 2px;
+}
+
+.app-detail__account-row--static {
+  justify-content: flex-start;
+  cursor: default;
+}
+
 .app-detail__action-btn--small {
   font-size: 11px;
   padding: 3px 8px;

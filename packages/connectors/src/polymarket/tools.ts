@@ -49,7 +49,7 @@ export function createPolymarketTools(api: PolymarketAPI): AgentTool[] {
       name: 'polymarket_set_wallet',
       label: 'Set Wallet',
       description:
-        '[Polymarket] Set a public wallet address for portfolio tracking (Data API).',
+        '[Polymarket] Optional override: set a different public wallet for this session. The connector already uses the wallet saved in connector settings — do not ask the user for it unless they want to query another address.',
       parameters: Type.Object({
         wallet_address: Type.String({ description: '0x-prefixed wallet address' }),
       }),
@@ -198,9 +198,15 @@ export function createPolymarketTools(api: PolymarketAPI): AgentTool[] {
     defineTool({
       name: 'polymarket_get_positions',
       label: 'Get Positions',
-      description: '[Polymarket] Get current positions for a wallet (Data API).',
+      description:
+        '[Polymarket] Get current positions for the wallet configured on this connector (Data API). Do not ask the user for their address unless they want to look up a different wallet.',
       parameters: Type.Object({
-        user: Type.Optional(Type.String({ description: 'Wallet address; defaults to configured wallet' })),
+        user: Type.Optional(
+          Type.String({
+            description:
+              'Optional. Only pass to query a wallet other than the one saved in connector settings.',
+          }),
+        ),
         limit: Type.Optional(Type.Number({ description: 'Max results (default 100, max 500)' })),
         offset: Type.Optional(Type.Number({ description: 'Offset (default 0)' })),
         sizeThreshold: Type.Optional(Type.Number({ description: 'Size threshold (default 1)' })),
@@ -242,9 +248,15 @@ export function createPolymarketTools(api: PolymarketAPI): AgentTool[] {
     defineTool({
       name: 'polymarket_get_portfolio_value',
       label: 'Get Portfolio Value',
-      description: "[Polymarket] Get total value of a user's positions (Data API).",
+      description:
+        "[Polymarket] Get total value of positions for the wallet configured on this connector (Data API). Do not ask the user for their address unless they want another wallet.",
       parameters: Type.Object({
-        user: Type.Optional(Type.String({ description: 'Wallet address; defaults to configured wallet' })),
+        user: Type.Optional(
+          Type.String({
+            description:
+              'Optional. Only pass to query a wallet other than the one saved in connector settings.',
+          }),
+        ),
       }),
       async execute(_id, params, signal) {
         try {

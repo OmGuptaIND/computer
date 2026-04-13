@@ -20,6 +20,10 @@ export class PolymarketConnector implements DirectConnector {
     this.api.setWalletAddress(addr)
   }
 
+  setApiKey(key: string): void {
+    this.api.setApiKey(key)
+  }
+
   setL2Creds(creds: PolymarketL2Creds): void {
     this.api.setL2Creds(creds)
     this.api.setMode('trade')

@@ -490,13 +490,24 @@ function ConnectorDetail({
         </div>
         <div className="connectors-view__detail-title">{name}</div>
         {isConnected && !isMultiAccount ? (
-          <button
-            type="button"
-            className="connectors-view__btn connectors-view__btn--ghost"
-            onClick={() => handleDisconnect(connectedInstances[0]?.id ?? id)}
-          >
-            Disconnect
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {entry?.type === 'api' && (entry.optionalFields?.length ?? 0) > 0 && (
+              <button
+                type="button"
+                className="connectors-view__btn connectors-view__btn--ghost"
+                onClick={() => onConnect?.(id)}
+              >
+                Edit Settings
+              </button>
+            )}
+            <button
+              type="button"
+              className="connectors-view__btn connectors-view__btn--ghost"
+              onClick={() => handleDisconnect(connectedInstances[0]?.id ?? id)}
+            >
+              Disconnect
+            </button>
+          </div>
         ) : !isConnected ? (
           <button
             type="button"

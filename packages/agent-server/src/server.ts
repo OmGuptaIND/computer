@@ -3691,6 +3691,48 @@ export class AgentServer {
     /* secret is now read directly from config; nothing to invalidate */
   }
 
+  private connectorRegistryEntry(
+    c: Pick<ConnectorConfig, 'id' | 'registryId'>,
+  ): (typeof CONNECTOR_REGISTRY)[number] | undefined {
+    return CONNECTOR_REGISTRY.find((e) => e.id === (c.registryId ?? c.id))
+  }
+
+  /**
+   * Built-in API connectors may list only optional fields (no required env). Those can
+   * register tools without a stored token; optional secrets still come from metadata / apiKey.
+   */
+  private apiConnectorMayActivateWithoutStoredToken(
+    c: Pick<ConnectorConfig, 'id' | 'registryId' | 'type'>,
+  ): boolean {
+    if (c.type !== 'api') return false
+    const entry = this.connectorRegistryEntry(c)
+    return (entry?.requiredEnv.length ?? -1) === 0
+  }
+
+  /** When registry optional field `API_KEY` is used, mirror it to top-level `apiKey` for persistence and env fallbacks. */
+  private normalizeApiConnectorAgainstRegistry(connector: ConnectorConfig): ConnectorConfig {
+    const entry = this.connectorRegistryEntry(connector)
+    const usesMetaApiKey = entry?.optionalFields?.some((f) => f.key === 'API_KEY') ?? false
+    const out: ConnectorConfig = {
+      ...connector,
+      metadata: connector.metadata ? { ...connector.metadata } : undefined,
+    }
+    if (connector.type !== 'api' || !usesMetaApiKey) return out
+    const mk = out.metadata?.API_KEY?.trim()
+    if (mk) out.apiKey = mk
+    else delete out.apiKey
+    return out
+  }
+
+  private persistApiConnectorMetadataApiKeyIfNeeded(updated: ConnectorConfig): ConnectorConfig {
+    const normalized = this.normalizeApiConnectorAgainstRegistry(updated)
+    if ((normalized.apiKey ?? '') === (updated.apiKey ?? '')) return updated
+    const again = updateConnectorConfig(this.config, updated.id, {
+      apiKey: normalized.apiKey,
+    })
+    return again ?? updated
+  }
+
   /** Activate direct connectors that have a stored apiKey in config or a matching env var. */
   private startApiConnectors(): void {
     const apiConnectors = getConnectors(this.config).filter(
@@ -3699,16 +3741,19 @@ export class AgentServer {
     )
 
     for (const c of apiConnectors) {
-      // Prefer stored apiKey from config, fall back to env var
-      const envKey = (c.registryId ?? c.id).toUpperCase()
+      const aligned = this.normalizeApiConnectorAgainstRegistry(c)
+      const envKey = (aligned.registryId ?? aligned.id).toUpperCase()
       const token =
-        c.apiKey ?? process.env[`${envKey}_BOT_TOKEN`] ?? process.env[`${envKey}_API_KEY`]
-      if (token) {
-        this.connectorManager.activateWithToken(c.id, token, {
+        aligned.apiKey ??
+        process.env[`${envKey}_BOT_TOKEN`] ??
+        process.env[`${envKey}_API_KEY`]
+      if (token || this.apiConnectorMayActivateWithoutStoredToken(aligned)) {
+        const safeToken = token ?? '{}' // connectors may ignore this; metadata applied immediately after activation
+        this.connectorManager.activateWithToken(c.id, safeToken, {
           registryId: c.registryId,
           accountDisplayName: c.accountLabel ?? c.accountEmail,
+          metadata: c.metadata,
         })
-        this.applyConnectorMetadata(c.id, c.metadata)
         log.info({ connectorId: c.id }, 'Activated API connector')
       }
     }
@@ -3770,43 +3815,45 @@ export class AgentServer {
 
   private async handleConnectorAdd(msg: { connector: ConnectorConfig }): Promise<void> {
     try {
-      addConnector(this.config, msg.connector)
-      if (msg.connector.id === 'slack-bot') this.invalidateSlackBotSecretCache()
+      const persisted = this.normalizeApiConnectorAgainstRegistry(msg.connector)
+      addConnector(this.config, persisted)
+      if (persisted.id === 'slack-bot') this.invalidateSlackBotSecretCache()
 
-      if (msg.connector.type === 'mcp' && msg.connector.command) {
-        await this.mcpManager.addConnector(this.connectorToMcpConfig(msg.connector))
-        this.mcpManager.setToolPermissions(msg.connector.id, msg.connector.toolPermissions)
-      } else if (msg.connector.toolPermissions) {
+      if (persisted.type === 'mcp' && persisted.command) {
+        await this.mcpManager.addConnector(this.connectorToMcpConfig(persisted))
+        this.mcpManager.setToolPermissions(persisted.id, persisted.toolPermissions)
+      } else if (persisted.toolPermissions) {
         // Direct connector (api/oauth) — apply persisted permissions to the
         // ConnectorManager so 'never'/'ask' tools are honoured immediately.
-        this.connectorManager.setToolPermissions(msg.connector.id, msg.connector.toolPermissions)
+        this.connectorManager.setToolPermissions(persisted.id, persisted.toolPermissions)
       }
 
       // Activate direct API connectors immediately using the provided token
-      const apiFactoryId = msg.connector.registryId ?? msg.connector.id
-      if (
-        msg.connector.type === 'api' &&
-        msg.connector.apiKey &&
-        this.connectorManager.hasFactory(apiFactoryId)
-      ) {
-        this.connectorManager.activateWithToken(msg.connector.id, msg.connector.apiKey, {
-          registryId: msg.connector.registryId,
-          accountDisplayName: msg.connector.accountLabel ?? msg.connector.accountEmail,
-        })
-        this.applyConnectorMetadata(msg.connector.id, msg.connector.metadata)
-        this.refreshAllSessionTools()
+      const apiFactoryId = persisted.registryId ?? persisted.id
+      if (persisted.type === 'api' && this.connectorManager.hasFactory(apiFactoryId)) {
+        if (persisted.apiKey || this.apiConnectorMayActivateWithoutStoredToken(persisted)) {
+          const safeToken = persisted.apiKey ?? '{}'
+          this.connectorManager.activateWithToken(persisted.id, safeToken, {
+            registryId: persisted.registryId,
+            accountDisplayName: persisted.accountLabel ?? persisted.accountEmail,
+            metadata: persisted.metadata,
+          })
+          this.refreshAllSessionTools()
+        }
       }
 
       // Start Telegram webhook provider if just connected
-      if (msg.connector.id === 'telegram' && msg.connector.apiKey && !this.telegramProvider) {
+      if (persisted.id === 'telegram' && persisted.apiKey && !this.telegramProvider) {
         this.startWebhooks().catch((err) => log.error({ err }, 'Webhook startup failed'))
       }
 
+      const saved =
+        getConnectors(this.config).find((c) => c.id === persisted.id) ?? persisted
       this.sendToClient(Channel.AI, {
         type: 'connector_added',
-        connector: this.buildConnectorStatus(msg.connector),
+        connector: this.buildConnectorStatus(saved),
       })
-      log.info({ connectorId: msg.connector.id, name: msg.connector.name }, 'Connector added')
+      log.info({ connectorId: persisted.id, name: persisted.name }, 'Connector added')
     } catch (err) {
       this.sendToClient(Channel.AI, {
         type: 'error',
@@ -3820,11 +3867,12 @@ export class AgentServer {
     changes: Partial<ConnectorConfig>
   }): Promise<void> {
     try {
-      const updated = updateConnectorConfig(this.config, msg.id, msg.changes)
+      let updated = updateConnectorConfig(this.config, msg.id, msg.changes)
       if (!updated) {
         this.sendToClient(Channel.AI, { type: 'error', message: `Connector not found: ${msg.id}` })
         return
       }
+      updated = this.persistApiConnectorMetadataApiKeyIfNeeded(updated)
       if (msg.id === 'slack-bot') this.invalidateSlackBotSecretCache()
 
       if (updated.type === 'mcp' && updated.command) {
@@ -3837,6 +3885,10 @@ export class AgentServer {
         // tweaked permissions would only persist them; the live agent would
         // still see the old set until process restart.
         this.connectorManager.setToolPermissions(updated.id, updated.toolPermissions)
+        // Re-apply metadata to live instances (e.g. Polymarket WALLET_ADDRESS / API_KEY edits)
+        if (this.connectorManager.isActive(updated.id)) {
+          this.connectorManager.applyPersistedRuntimeMetadata(updated.id, updated.metadata)
+        }
         // Tools the agent sees may have changed (a 'never' tool just got
         // re-enabled, for instance) — push the new tool list into live sessions.
         this.refreshAllSessionTools()
@@ -3911,9 +3963,15 @@ export class AgentServer {
               connectorConfig.apiKey ??
               process.env[`${msg.id.toUpperCase()}_BOT_TOKEN`] ??
               process.env[`${msg.id.toUpperCase()}_API_KEY`]
-            if (token) {
-              this.connectorManager.activateWithToken(msg.id, token)
-              this.applyConnectorMetadata(msg.id, connectorConfig.metadata)
+            if (
+              token ||
+              (connectorConfig && this.apiConnectorMayActivateWithoutStoredToken(connectorConfig))
+            ) {
+              this.connectorManager.activateWithToken(msg.id, token ?? '{}', {
+                registryId: connectorConfig.registryId,
+                accountDisplayName: connectorConfig.accountLabel ?? connectorConfig.accountEmail,
+                metadata: connectorConfig.metadata,
+              })
             }
           } else {
             await this.connectorManager.activate(msg.id)
@@ -3921,10 +3979,7 @@ export class AgentServer {
         } else {
           this.connectorManager.deactivate(msg.id)
         }
-        // Refresh tools on active sessions
-        for (const session of this.sessions.values()) {
-          session.refreshConnectorTools()
-        }
+        this.refreshAllSessionTools()
         const status = this.connectorManager.getStatus().find((s) => s.id === msg.id)
         this.sendToClient(Channel.AI, {
           type: 'connector_status',
@@ -3978,7 +4033,10 @@ export class AgentServer {
               connectorConfig.apiKey ??
               process.env[`${msg.id.toUpperCase()}_BOT_TOKEN`] ??
               process.env[`${msg.id.toUpperCase()}_API_KEY`]
-            if (!token) {
+            if (
+              !token &&
+              !this.apiConnectorMayActivateWithoutStoredToken(connectorConfig)
+            ) {
               this.sendToClient(Channel.AI, {
                 type: 'connector_test_response',
                 id: msg.id,
@@ -3988,8 +4046,11 @@ export class AgentServer {
               })
               return
             }
-            this.connectorManager.activateWithToken(msg.id, token)
-            this.applyConnectorMetadata(msg.id, connectorConfig.metadata)
+            this.connectorManager.activateWithToken(msg.id, token ?? '{}', {
+              registryId: connectorConfig.registryId,
+              accountDisplayName: connectorConfig.accountLabel ?? connectorConfig.accountEmail,
+              metadata: connectorConfig.metadata,
+            })
           } else {
             await this.connectorManager.activate(msg.id)
           }
@@ -4390,34 +4451,6 @@ export class AgentServer {
     }
   }
 
-  /** Apply connector-specific metadata after activation (e.g. ownerChatId for Telegram). */
-  private applyConnectorMetadata(id: string, metadata: Record<string, string> | undefined): void {
-    if (!metadata) return
-    const connector = this.connectorManager.getConnector(id)
-    if (!connector) return
-    if (id === 'telegram' && metadata.OWNER_CHAT_ID) {
-      const chatId = Number(metadata.OWNER_CHAT_ID)
-      if (!Number.isNaN(chatId) && 'setOwnerChatId' in connector) {
-        ;(connector as { setOwnerChatId: (id: number) => void }).setOwnerChatId(chatId)
-        log.info({ chatId }, 'Telegram owner chat ID set')
-      }
-    }
-    if (id === 'polymarket') {
-      if (metadata.WALLET_ADDRESS && 'setWalletAddress' in connector) {
-        ;(connector as { setWalletAddress: (addr: string) => void }).setWalletAddress(metadata.WALLET_ADDRESS)
-      }
-      const addr = metadata.CLOB_ADDRESS
-      const apiKey = metadata.CLOB_API_KEY
-      const secret = metadata.CLOB_SECRET
-      const passphrase = metadata.CLOB_PASSPHRASE
-      if (addr && apiKey && secret && passphrase && 'setL2Creds' in connector) {
-        ;(connector as {
-          setL2Creds: (creds: { apiKey: string; secret: string; passphrase: string; address: string }) => void
-        }).setL2Creds({ apiKey, secret, passphrase, address: addr })
-      }
-    }
-  }
-
   // ── Helpers ─────────────────────────────────────────────────────
 
   /** Public: forward agent manager events to client */
@@ -4471,10 +4504,6 @@ const SENSITIVE_METADATA_KEYS = new Set([
   'client_secret',
   'api_key',
   'signing_secret',
-  // Polymarket CLOB L2 credentials (never expose to UI)
-  'CLOB_API_KEY',
-  'CLOB_SECRET',
-  'CLOB_PASSPHRASE',
   // Per-install HMAC key the proxy uses to sign forwarded Slack events to
   // the agent-server. Lives in slack-bot metadata; never expose to UI.
   'forward_secret',

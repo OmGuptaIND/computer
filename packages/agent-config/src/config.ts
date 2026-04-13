@@ -1565,14 +1565,19 @@ export function updateConnector(
   if (idx === -1) return null
   const current = config.connectors[idx]
 
-  const mergedMetadata =
-    changes.metadata !== undefined
-      ? { ...(current.metadata ?? {}), ...changes.metadata }
-      : current.metadata
+  const { metadata: metadataIn, ...rest } = changes
+  let mergedMetadata = current.metadata
+  if (metadataIn !== undefined) {
+    mergedMetadata =
+      Object.keys(metadataIn).length === 0
+        ? undefined
+        : { ...(current.metadata ?? {}), ...metadataIn }
+  }
+
   config.connectors[idx] = {
     ...current,
-    ...changes,
-    ...(changes.metadata !== undefined ? { metadata: mergedMetadata } : {}),
+    ...rest,
+    ...(metadataIn !== undefined ? { metadata: mergedMetadata } : {}),
   }
   saveConfig(config)
   return config.connectors[idx]
@@ -1665,7 +1670,7 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     id: 'polymarket',
     name: 'Polymarket',
     description:
-      'Read Polymarket markets/orderbooks, track a public wallet portfolio, and (optionally) submit signed orders via CLOB with an API key.',
+      'Read Polymarket markets/orderbooks and track a public wallet portfolio.',
     icon: '🟦',
     category: 'other',
     type: 'api',
@@ -1675,36 +1680,20 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
         key: 'WALLET_ADDRESS',
         label: 'Public Wallet Address',
         hint:
-          'Optional. 0x-prefixed address used for portfolio tracking (positions/value). You can also set this later via tool call.',
+          '0x-prefixed address used for portfolio tracking (positions/value). Find it on Polymarket: go to polymarket.com/settings and copy your “Wallet Address” / “Profile Address”. Adding this alone enables the connector.',
       },
       {
-        key: 'CLOB_ADDRESS',
-        label: 'CLOB Signer Address',
+        key: 'API_KEY',
+        label: 'API Key',
         hint:
-          'Optional. Signer address associated with your CLOB API key. Required for authenticated CLOB endpoints.',
-      },
-      {
-        key: 'CLOB_API_KEY',
-        label: 'CLOB API Key',
-        hint: 'Optional. Polymarket CLOB L2 apiKey (UUID).',
-      },
-      {
-        key: 'CLOB_SECRET',
-        label: 'CLOB Secret',
-        hint: 'Optional. Polymarket CLOB L2 secret (base64/base64url).',
-      },
-      {
-        key: 'CLOB_PASSPHRASE',
-        label: 'CLOB Passphrase',
-        hint: 'Optional. Polymarket CLOB L2 passphrase.',
+          'Optional. Create one on Polymarket (Builders tab): polymarket.com/settings?tab=builder. Not required for market data or portfolio tracking.',
       },
     ],
     featured: false,
     setupGuide: {
       steps: [
-        'For read-only usage: (optional) add your public wallet address.',
-        'For trading endpoints: add CLOB L2 credentials (apiKey/secret/passphrase) and the associated signer address.',
-        'Note: posting orders still requires a pre-signed order payload (EIP-712). This connector can submit that payload once signed.',
+        'Add your public wallet address to enable portfolio tracking.',
+        '(Optional) Add an API key for future authenticated features.',
       ],
       url: 'https://docs.polymarket.com/api-reference/introduction',
       urlLabel: 'Polymarket API Docs',

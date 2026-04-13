@@ -14,6 +14,7 @@ export type PolymarketL2Creds = {
 export type PolymarketConfig = {
   mode: PolymarketMode
   walletAddress?: string
+  apiKey?: string
   l2?: PolymarketL2Creds
   clobBase?: string
   gammaBase?: string
@@ -47,27 +48,43 @@ export class PolymarketAPI {
 
   setToken(token: string): void {
     // Supported token formats:
-    // - "0xabc..." (wallet address only; read mode)
-    // - JSON string: {"mode":"read","walletAddress":"0x..."} or {"mode":"trade","walletAddress":"0x...","l2":{...}}
-    const maybe = parseMaybeJson<Partial<PolymarketConfig>>(token)
-    if (maybe && typeof maybe === 'object') {
-      const mode: PolymarketMode = maybe.mode === 'trade' ? 'trade' : 'read'
-      this.config = {
-        mode,
-        walletAddress: maybe.walletAddress,
-        l2: maybe.l2,
-        clobBase: maybe.clobBase,
-        gammaBase: maybe.gammaBase,
-        dataBase: maybe.dataBase,
-      }
+    // - "" / "{}" — no-op so wallet/apiKey applied via metadata (agent-server) are not wiped
+    // - "0xabc..." (40 hex) — set default wallet (read mode), merge with existing config
+    // - JSON: partial PolymarketConfig merged into existing (does not clear unspecified fields)
+    // - any other string — treat as opaque apiKey / secret material
+    const trimmed = token.trim()
+    if (!trimmed || trimmed === '{}') {
       return
     }
-    // Fallback: treat token as wallet address
-    this.config = { mode: 'read', walletAddress: token }
+
+    const maybe = parseMaybeJson<Partial<PolymarketConfig>>(trimmed)
+    if (maybe && typeof maybe === 'object' && maybe !== null && !Array.isArray(maybe)) {
+      const next: PolymarketConfig = { ...this.config }
+      if (maybe.mode === 'trade' || maybe.mode === 'read') next.mode = maybe.mode
+      if (maybe.walletAddress !== undefined) next.walletAddress = maybe.walletAddress
+      if (maybe.apiKey !== undefined) next.apiKey = maybe.apiKey
+      if (maybe.l2 !== undefined) next.l2 = maybe.l2
+      if (maybe.clobBase !== undefined) next.clobBase = maybe.clobBase
+      if (maybe.gammaBase !== undefined) next.gammaBase = maybe.gammaBase
+      if (maybe.dataBase !== undefined) next.dataBase = maybe.dataBase
+      this.config = next
+      return
+    }
+
+    if (/^0x[a-fA-F0-9]{40}$/.test(trimmed)) {
+      this.config = { ...this.config, mode: 'read', walletAddress: trimmed }
+      return
+    }
+
+    this.config = { ...this.config, apiKey: trimmed }
   }
 
   setWalletAddress(addr: string): void {
     this.config.walletAddress = addr
+  }
+
+  setApiKey(key: string | undefined): void {
+    this.config.apiKey = key
   }
 
   setMode(mode: PolymarketMode): void {

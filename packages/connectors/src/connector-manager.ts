@@ -5,6 +5,22 @@ import type { ConnectorFactory, DirectConnector, TokenGetter } from './types.js'
 
 const log = createLogger('connector-manager')
 
+/** Resolve a metadata value by exact key or case-insensitive match (YAML / clients may vary). */
+function pickMetadataValue(metadata: Record<string, string>, ...keys: string[]): string {
+  for (const k of keys) {
+    const v = metadata[k]?.trim()
+    if (v) return v
+  }
+  const lowerKeyToVal = new Map(
+    Object.entries(metadata).map(([k, v]) => [k.toLowerCase(), v.trim()]),
+  )
+  for (const k of keys) {
+    const v = lowerKeyToVal.get(k.toLowerCase())
+    if (v) return v
+  }
+  return ''
+}
+
 /**
  * Per-tool permission override applied at runtime. Mirrors McpToolPermission
  * — kept in sync intentionally so the session-layer enforcement can treat
@@ -276,17 +292,62 @@ export class ConnectorManager {
     }))
   }
 
+  /**
+   * Apply persisted config metadata to a live connector (wallet, API key hints, Telegram chat id).
+   * Call after setToken so optional fields from config are never skipped.
+   */
+  applyPersistedRuntimeMetadata(
+    providerId: string,
+    metadata: Record<string, string> | undefined,
+  ): void {
+    const connector = this.connectors.get(providerId)
+    if (!connector || !metadata) return
+    this.applyPersistedRuntimeMetadataToInstance(connector, providerId, metadata)
+  }
+
+  private applyPersistedRuntimeMetadataToInstance(
+    connector: DirectConnector,
+    providerId: string,
+    metadata: Record<string, string>,
+  ): void {
+    if (providerId === 'telegram') {
+      const raw = pickMetadataValue(metadata, 'OWNER_CHAT_ID', 'owner_chat_id')
+      if (raw) {
+        const chatId = Number(raw)
+        if (!Number.isNaN(chatId)) {
+          const c = connector as { setOwnerChatId?: (id: number) => void }
+          c.setOwnerChatId?.call(connector, chatId)
+        }
+      }
+    }
+
+    const wallet = pickMetadataValue(metadata, 'WALLET_ADDRESS', 'wallet_address')
+    if (wallet) {
+      const c = connector as { setWalletAddress?: (addr: string) => void }
+      c.setWalletAddress?.call(connector, wallet)
+    }
+
+    const apiKeyMeta = pickMetadataValue(metadata, 'API_KEY', 'api_key')
+    if (apiKeyMeta) {
+      const c = connector as { setApiKey?: (key: string) => void }
+      c.setApiKey?.call(connector, apiKeyMeta)
+    }
+  }
+
   /** Activate a connector with an explicit token (for non-OAuth connectors). */
   activateWithToken(
     providerId: string,
     token: string,
-    opts?: { registryId?: string; accountDisplayName?: string },
+    opts?: { registryId?: string; accountDisplayName?: string; metadata?: Record<string, string> },
   ): void {
     const factoryId = opts?.registryId ?? providerId
     const factory = this.factories[factoryId]
     if (!factory) return
     const connector = factory()
     connector.setToken(token)
+    if (opts?.metadata) {
+      this.applyPersistedRuntimeMetadataToInstance(connector, providerId, opts.metadata)
+    }
     this.connectors.set(providerId, connector)
     this.registryMap.set(providerId, factoryId)
     if (opts?.accountDisplayName) {
