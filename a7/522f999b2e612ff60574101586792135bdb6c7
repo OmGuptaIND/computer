@@ -1,0 +1,46 @@
+packages/agent-core/src/commands.ts
+  40fd85d2377e2dc9 26-33,79-89,241,246,248-258,264-287
+packages/agent-server/src/webhooks/router.ts
+  40fd85d2377e2dc9 273-287
+packages/agent-server/src/webhooks/agent-runner.ts
+  40fd85d2377e2dc9 16-17,21,138-140,148-183
+  dcc21069373345c8 279-288,580-609,644-649
+packages/agent-server/src/server.ts
+  dcc21069373345c8 2076-2078
+  40fd85d2377e2dc9 3577-3580
+packages/agent-server/src/webhooks/bindings.ts
+  40fd85d2377e2dc9 60,64-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "a7522f999b2e612ff60574101586792135bdb6c7",
+  "prompts": {
+    "40fd85d2377e2dc9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "19b1e986-9055-432c-bd36-4f6de7f3d1a7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 133,
+      "total_deletions": 14,
+      "accepted_lines": 129,
+      "overriden_lines": 0
+    },
+    "dcc21069373345c8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d4ae5263-235c-44e6-91ac-0054bf2b85f5",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 62,
+      "total_deletions": 10,
+      "accepted_lines": 49,
+      "overriden_lines": 0
+    }
+  }
+}
