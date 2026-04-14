@@ -10,6 +10,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
+## [1.0.55] - 2026-04-14
+
+### Features
+- add unified credential store and refactor connector auth
+
+### Fixes
+- resolve merge conflicts and align PolymarketConnector with DirectConnector interface
+
+### Chores
+- reorganize specs/ into logical subfolders with clean overview
+
+### Other
+- docs: add connector creation guide, permissions setup, and validation checklist to specs
+- fixes
+- add icon
+- add polymarket stuff
+---
+
 ## [1.0.54] - 2026-04-13
 
 ### Features
@@ -527,7 +545,8 @@ Maintenance release.
 
 ---
 
-[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.54...HEAD
+[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.55...HEAD
+[1.0.55]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.55
 [1.0.54]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.54
 [1.0.53]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.53
 [1.0.52]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.52
