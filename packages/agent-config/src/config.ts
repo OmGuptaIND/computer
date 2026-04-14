@@ -255,6 +255,10 @@ export interface ConnectorConfig {
   args?: string[]
   env?: Record<string, string>
 
+  // For API key connectors (type: 'api')
+  apiKey?: string
+  baseUrl?: string
+
   // For OAuth connectors (type: 'oauth') — tokens stored separately in CredentialStore
   oauthProvider?: string
 

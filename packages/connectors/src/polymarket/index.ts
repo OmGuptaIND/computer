@@ -1,5 +1,5 @@
 import type { AgentTool } from '@mariozechner/pi-agent-core'
-import type { DirectConnector } from '../types.js'
+import type { ConnectorEnv, DirectConnector } from '../types.js'
 import { PolymarketAPI, type PolymarketL2Creds } from './api.js'
 import { createPolymarketTools } from './tools.js'
 
@@ -10,12 +10,22 @@ export class PolymarketConnector implements DirectConnector {
   private api = new PolymarketAPI()
   private tools: AgentTool[] = []
 
-  setToken(token: string): void {
-    this.api.setToken(token)
+  configure(config: ConnectorEnv): void {
+    const token = config.env.TOKEN ?? config.env.POLYMARKET_TOKEN ?? ''
+    if (token) {
+      this.api.setToken(token)
+    }
+    const wallet = config.env.WALLET_ADDRESS ?? ''
+    if (wallet) {
+      this.api.setWalletAddress(wallet)
+    }
+    const apiKey = config.env.API_KEY ?? ''
+    if (apiKey) {
+      this.api.setApiKey(apiKey)
+    }
     this.tools = createPolymarketTools(this.api)
   }
 
-  // Optional runtime metadata configuration, set by agent-server after activation
   setWalletAddress(addr: string): void {
     this.api.setWalletAddress(addr)
   }

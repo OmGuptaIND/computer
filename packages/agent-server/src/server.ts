@@ -3748,77 +3748,7 @@ export class AgentServer {
     /* secret is now read directly from config; nothing to invalidate */
   }
 
-<<<<<<< HEAD
-  private connectorRegistryEntry(
-    c: Pick<ConnectorConfig, 'id' | 'registryId'>,
-  ): (typeof CONNECTOR_REGISTRY)[number] | undefined {
-    return CONNECTOR_REGISTRY.find((e) => e.id === (c.registryId ?? c.id))
-  }
-
-  /**
-   * Built-in API connectors may list only optional fields (no required env). Those can
-   * register tools without a stored token; optional secrets still come from metadata / apiKey.
-   */
-  private apiConnectorMayActivateWithoutStoredToken(
-    c: Pick<ConnectorConfig, 'id' | 'registryId' | 'type'>,
-  ): boolean {
-    if (c.type !== 'api') return false
-    const entry = this.connectorRegistryEntry(c)
-    return (entry?.requiredEnv.length ?? -1) === 0
-  }
-
-  /** When registry optional field `API_KEY` is used, mirror it to top-level `apiKey` for persistence and env fallbacks. */
-  private normalizeApiConnectorAgainstRegistry(connector: ConnectorConfig): ConnectorConfig {
-    const entry = this.connectorRegistryEntry(connector)
-    const usesMetaApiKey = entry?.optionalFields?.some((f) => f.key === 'API_KEY') ?? false
-    const out: ConnectorConfig = {
-      ...connector,
-      metadata: connector.metadata ? { ...connector.metadata } : undefined,
-    }
-    if (connector.type !== 'api' || !usesMetaApiKey) return out
-    const mk = out.metadata?.API_KEY?.trim()
-    if (mk) out.apiKey = mk
-    else delete out.apiKey
-    return out
-  }
-
-  private persistApiConnectorMetadataApiKeyIfNeeded(updated: ConnectorConfig): ConnectorConfig {
-    const normalized = this.normalizeApiConnectorAgainstRegistry(updated)
-    if ((normalized.apiKey ?? '') === (updated.apiKey ?? '')) return updated
-    const again = updateConnectorConfig(this.config, updated.id, {
-      apiKey: normalized.apiKey,
-    })
-    return again ?? updated
-  }
-
-  /** Activate direct connectors that have a stored apiKey in config or a matching env var. */
-  private startApiConnectors(): void {
-    const apiConnectors = getConnectors(this.config).filter(
-      (c) =>
-        c.type === 'api' && c.enabled && this.connectorManager.hasFactory(c.registryId ?? c.id),
-    )
-
-    for (const c of apiConnectors) {
-      const aligned = this.normalizeApiConnectorAgainstRegistry(c)
-      const envKey = (aligned.registryId ?? aligned.id).toUpperCase()
-      const token =
-        aligned.apiKey ??
-        process.env[`${envKey}_BOT_TOKEN`] ??
-        process.env[`${envKey}_API_KEY`]
-      if (token || this.apiConnectorMayActivateWithoutStoredToken(aligned)) {
-        const safeToken = token ?? '{}' // connectors may ignore this; metadata applied immediately after activation
-        this.connectorManager.activateWithToken(c.id, safeToken, {
-          registryId: c.registryId,
-          accountDisplayName: c.accountLabel ?? c.accountEmail,
-          metadata: c.metadata,
-        })
-        log.info({ connectorId: c.id }, 'Activated API connector')
-      }
-    }
-  }
-=======
   // startApiConnectors removed — unified into startConnectors()
->>>>>>> c6ba11a625aec37d37b94503fd8b68e36c7ad39e
 
   private connectorToMcpConfig(c: ConnectorConfig): McpServerConfig {
     return {
@@ -3877,37 +3807,6 @@ export class AgentServer {
 
   private async handleConnectorAdd(msg: { connector: ConnectorConfig }): Promise<void> {
     try {
-<<<<<<< HEAD
-      const persisted = this.normalizeApiConnectorAgainstRegistry(msg.connector)
-      addConnector(this.config, persisted)
-      if (persisted.id === 'slack-bot') this.invalidateSlackBotSecretCache()
-
-      if (persisted.type === 'mcp' && persisted.command) {
-        await this.mcpManager.addConnector(this.connectorToMcpConfig(persisted))
-        this.mcpManager.setToolPermissions(persisted.id, persisted.toolPermissions)
-      } else if (persisted.toolPermissions) {
-        // Direct connector (api/oauth) — apply persisted permissions to the
-        // ConnectorManager so 'never'/'ask' tools are honoured immediately.
-        this.connectorManager.setToolPermissions(persisted.id, persisted.toolPermissions)
-      }
-
-      // Activate direct API connectors immediately using the provided token
-      const apiFactoryId = persisted.registryId ?? persisted.id
-      if (persisted.type === 'api' && this.connectorManager.hasFactory(apiFactoryId)) {
-        if (persisted.apiKey || this.apiConnectorMayActivateWithoutStoredToken(persisted)) {
-          const safeToken = persisted.apiKey ?? '{}'
-          this.connectorManager.activateWithToken(persisted.id, safeToken, {
-            registryId: persisted.registryId,
-            accountDisplayName: persisted.accountLabel ?? persisted.accountEmail,
-            metadata: persisted.metadata,
-          })
-          this.refreshAllSessionTools()
-        }
-      }
-
-      // Start Telegram webhook provider if just connected
-      if (persisted.id === 'telegram' && persisted.apiKey && !this.telegramProvider) {
-=======
       // Store all env values in the credential store (encrypted)
       if (msg.connector.env && Object.keys(msg.connector.env).length > 0) {
         this.credentialStore.save(msg.connector.id, {
@@ -3945,17 +3844,16 @@ export class AgentServer {
 
       // Start Telegram webhook provider if just connected
       if (msg.connector.id === 'telegram' && this.credentialStore.has('telegram') && !this.telegramProvider) {
->>>>>>> c6ba11a625aec37d37b94503fd8b68e36c7ad39e
         this.startWebhooks().catch((err) => log.error({ err }, 'Webhook startup failed'))
       }
 
       const saved =
-        getConnectors(this.config).find((c) => c.id === persisted.id) ?? persisted
+        getConnectors(this.config).find((c) => c.id === msg.connector.id) ?? msg.connector
       this.sendToClient(Channel.AI, {
         type: 'connector_added',
         connector: this.buildConnectorStatus(saved),
       })
-      log.info({ connectorId: persisted.id, name: persisted.name }, 'Connector added')
+      log.info({ connectorId: msg.connector.id, name: msg.connector.name }, 'Connector added')
     } catch (err) {
       this.sendToClient(Channel.AI, {
         type: 'error',
@@ -3969,9 +3867,6 @@ export class AgentServer {
     changes: Partial<ConnectorConfig>
   }): Promise<void> {
     try {
-<<<<<<< HEAD
-      let updated = updateConnectorConfig(this.config, msg.id, msg.changes)
-=======
       // If env values provided, merge into credential store
       if (msg.changes.env && Object.keys(msg.changes.env).length > 0) {
         let existing: import('./credential-store.js').StoredCredentials | null = null
@@ -3985,12 +3880,10 @@ export class AgentServer {
       // Don't persist env to config.yaml
       const { env: _env, ...configChanges } = msg.changes
       const updated = updateConnectorConfig(this.config, msg.id, configChanges)
->>>>>>> c6ba11a625aec37d37b94503fd8b68e36c7ad39e
       if (!updated) {
         this.sendToClient(Channel.AI, { type: 'error', message: `Connector not found: ${msg.id}` })
         return
       }
-      updated = this.persistApiConnectorMetadataApiKeyIfNeeded(updated)
       if (msg.id === 'slack-bot') this.invalidateSlackBotSecretCache()
 
       if (updated.type === 'mcp' && updated.command) {
@@ -3999,19 +3892,10 @@ export class AgentServer {
         this.mcpManager.setToolPermissions(updated.id, updated.toolPermissions)
       } else {
         this.connectorManager.setToolPermissions(updated.id, updated.toolPermissions)
-<<<<<<< HEAD
-        // Re-apply metadata to live instances (e.g. Polymarket WALLET_ADDRESS / API_KEY edits)
-        if (this.connectorManager.isActive(updated.id)) {
-          this.connectorManager.applyPersistedRuntimeMetadata(updated.id, updated.metadata)
-        }
-        // Tools the agent sees may have changed (a 'never' tool just got
-        // re-enabled, for instance) — push the new tool list into live sessions.
-=======
         // Reconfigure live connector if env changed
         if (msg.changes.env) {
           await this.connectorManager.reconfigure(msg.id)
         }
->>>>>>> c6ba11a625aec37d37b94503fd8b68e36c7ad39e
         this.refreshAllSessionTools()
       }
 
@@ -4080,31 +3964,10 @@ export class AgentServer {
       } else if (isDirectConnector) {
         if (msg.enabled) {
           const connectorConfig = getConnectors(this.config).find((c) => c.id === msg.id)
-<<<<<<< HEAD
-          if (connectorConfig?.type === 'api') {
-            const token =
-              connectorConfig.apiKey ??
-              process.env[`${msg.id.toUpperCase()}_BOT_TOKEN`] ??
-              process.env[`${msg.id.toUpperCase()}_API_KEY`]
-            if (
-              token ||
-              (connectorConfig && this.apiConnectorMayActivateWithoutStoredToken(connectorConfig))
-            ) {
-              this.connectorManager.activateWithToken(msg.id, token ?? '{}', {
-                registryId: connectorConfig.registryId,
-                accountDisplayName: connectorConfig.accountLabel ?? connectorConfig.accountEmail,
-                metadata: connectorConfig.metadata,
-              })
-            }
-          } else {
-            await this.connectorManager.activate(msg.id)
-          }
-=======
           await this.connectorManager.activate(msg.id, {
             registryId: connectorConfig?.registryId,
             accountDisplayName: connectorConfig?.accountLabel ?? connectorConfig?.accountEmail,
           })
->>>>>>> c6ba11a625aec37d37b94503fd8b68e36c7ad39e
         } else {
           this.connectorManager.deactivate(msg.id)
         }
@@ -4156,39 +4019,10 @@ export class AgentServer {
       if (this.connectorManager.hasFactory(msg.id)) {
         try {
           const connectorConfig = getConnectors(this.config).find((c) => c.id === msg.id)
-<<<<<<< HEAD
-          if (connectorConfig?.type === 'api') {
-            const token =
-              connectorConfig.apiKey ??
-              process.env[`${msg.id.toUpperCase()}_BOT_TOKEN`] ??
-              process.env[`${msg.id.toUpperCase()}_API_KEY`]
-            if (
-              !token &&
-              !this.apiConnectorMayActivateWithoutStoredToken(connectorConfig)
-            ) {
-              this.sendToClient(Channel.AI, {
-                type: 'connector_test_response',
-                id: msg.id,
-                success: false,
-                tools: [],
-                error: `No API key configured for ${msg.id}`,
-              })
-              return
-            }
-            this.connectorManager.activateWithToken(msg.id, token ?? '{}', {
-              registryId: connectorConfig.registryId,
-              accountDisplayName: connectorConfig.accountLabel ?? connectorConfig.accountEmail,
-              metadata: connectorConfig.metadata,
-            })
-          } else {
-            await this.connectorManager.activate(msg.id)
-          }
-=======
           await this.connectorManager.activate(msg.id, {
             registryId: connectorConfig?.registryId,
             accountDisplayName: connectorConfig?.accountLabel ?? connectorConfig?.accountEmail,
           })
->>>>>>> c6ba11a625aec37d37b94503fd8b68e36c7ad39e
           const result = await this.connectorManager.testConnection(msg.id)
           const tools = this.connectorManager.getStatus().find((s) => s.id === msg.id)?.tools ?? []
           this.sendToClient(Channel.AI, {
@@ -4586,11 +4420,6 @@ export class AgentServer {
     }
   }
 
-<<<<<<< HEAD
-=======
-  // applyConnectorMetadata removed — Telegram configure() now reads OWNER_CHAT_ID from env
-
->>>>>>> c6ba11a625aec37d37b94503fd8b68e36c7ad39e
   // ── Helpers ─────────────────────────────────────────────────────
 
   /** Public: forward agent manager events to client */
