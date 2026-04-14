@@ -4117,7 +4117,18 @@ export class AgentServer {
     // Build provider-specific extra params
     let extraParams: Record<string, string> | undefined
     if (entry?.oauthProvider === 'websearch') {
-      const domain = process.env.DOMAIN
+      let domain = process.env.DOMAIN
+      if (!domain) {
+        // Derive domain from callback base URL so the OAuth proxy gets a valid value
+        const publicUrl = this.getPublicUrl()
+        if (publicUrl) {
+          try {
+            domain = new URL(publicUrl).hostname
+          } catch {
+            /* ignore */
+          }
+        }
+      }
       if (domain) extraParams = { domain }
     }
 
