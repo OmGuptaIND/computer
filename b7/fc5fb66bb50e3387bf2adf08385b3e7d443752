@@ -1,0 +1,27 @@
+packages/connectors/src/polymarket/index.ts
+  4b0daefebcede911 2,13-25
+packages/agent-server/src/server.ts
+  4b0daefebcede911 3851,3856
+packages/agent-config/src/config.ts
+  4b0daefebcede911 258-261
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "b7fc5fb66bb50e3387bf2adf08385b3e7d443752",
+  "prompts": {
+    "4b0daefebcede911": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c6871e48-744c-45fd-959a-7e2f432c0a80",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 2324,
+      "total_deletions": 263,
+      "accepted_lines": 2317,
+      "overriden_lines": 0
+    }
+  }
+}
