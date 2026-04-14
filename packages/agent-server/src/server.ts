@@ -3847,9 +3847,11 @@ export class AgentServer {
         this.startWebhooks().catch((err) => log.error({ err }, 'Webhook startup failed'))
       }
 
+      const saved =
+        getConnectors(this.config).find((c) => c.id === msg.connector.id) ?? msg.connector
       this.sendToClient(Channel.AI, {
         type: 'connector_added',
-        connector: this.buildConnectorStatus(msg.connector),
+        connector: this.buildConnectorStatus(saved),
       })
       log.info({ connectorId: msg.connector.id, name: msg.connector.name }, 'Connector added')
     } catch (err) {
@@ -3969,10 +3971,7 @@ export class AgentServer {
         } else {
           this.connectorManager.deactivate(msg.id)
         }
-        // Refresh tools on active sessions
-        for (const session of this.sessions.values()) {
-          session.refreshConnectorTools()
-        }
+        this.refreshAllSessionTools()
         const status = this.connectorManager.getStatus().find((s) => s.id === msg.id)
         this.sendToClient(Channel.AI, {
           type: 'connector_status',
@@ -4420,8 +4419,6 @@ export class AgentServer {
       log.warn({ status: res.status }, 'slack-bot /_disconnect responded non-2xx')
     }
   }
-
-  // applyConnectorMetadata removed — Telegram configure() now reads OWNER_CHAT_ID from env
 
   // ── Helpers ─────────────────────────────────────────────────────
 

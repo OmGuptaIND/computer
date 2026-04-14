@@ -229,6 +229,30 @@ export function AppSetup({
   const isOAuth = entry.type === 'oauth'
   const allEnvFilled = entry.requiredEnv.every((k: string) => envValues[k])
   const canAddAnother = entry.multiAccount && isConfigured
+  /** Per-row account UI (with per-account Disconnect) — only when needed to avoid duplicate Disconnect buttons */
+  const showPerAccountRows =
+    isConfigured &&
+    instances.length > 0 &&
+    (entry.multiAccount || isOAuth || instances.length > 1)
+
+  const existingMetaKey = existing?.metadata
+    ? Object.entries(existing.metadata)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${k}=${v}`)
+        .join('|')
+    : ''
+
+  // Prefill optional fields from existing connector metadata (so "Connect" opens a usable editor)
+  useEffect(() => {
+    if (!existing?.metadata) return
+    const next: Record<string, string> = {}
+    for (const field of entry.optionalFields ?? []) {
+      const v = existing.metadata[field.key]
+      if (typeof v === 'string' && v.length > 0) next[field.key] = v
+    }
+    if (Object.keys(next).length > 0) setOptionalValues(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existing?.id, existingMetaKey])
 
   const startOAuthFlow = (instanceId: string, registryId?: string) => {
     setOauthWaiting(true)
@@ -314,8 +338,28 @@ export function AppSetup({
     for (const key of entry.requiredEnv) {
       if (envValues[key]) env[key] = envValues[key]
     }
+
+    let apiKey: string | undefined
+    let baseUrl: string | undefined
+    if (entry.type === 'api' && entry.requiredEnv.length > 0) {
+      const firstEnv = entry.requiredEnv[0]
+      if (firstEnv.toLowerCase().includes('url')) {
+        baseUrl = envValues[firstEnv]
+      } else {
+        apiKey = envValues[firstEnv]
+      }
+    }
+
+    const metadata: Record<string, string> = {}
     for (const field of entry.optionalFields ?? []) {
+      const v = (optionalValues[field.key] ?? '').trim()
+      if (v) metadata[field.key] = v
       if (optionalValues[field.key]) env[field.key] = optionalValues[field.key]
+    }
+
+    let outApiKey = apiKey
+    if (entry.id === 'polymarket' && metadata.API_KEY) {
+      outApiKey = metadata.API_KEY
     }
 
     connectorStore.getState().addConnectorRemote({
@@ -327,6 +371,9 @@ export function AppSetup({
       command: entry.command,
       args: entry.args,
       env,
+      ...(outApiKey ? { apiKey: outApiKey } : {}),
+      ...(baseUrl ? { baseUrl } : {}),
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
       enabled: true,
     })
 
@@ -403,6 +450,21 @@ export function AppSetup({
     }, 30_000)
   }
 
+  const handleSaveOptionalFields = () => {
+    if (!existing) return
+    const metadata: Record<string, string> = { ...(existing.metadata ?? {}) }
+    for (const field of entry.optionalFields ?? []) {
+      const v = (optionalValues[field.key] ?? '').trim()
+      if (v) metadata[field.key] = v
+      else delete metadata[field.key]
+    }
+    connectorStore.getState().updateConnectorRemote(existing.id, {
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+    })
+    // Refresh list to reflect new metadata + connection status
+    connectorStore.getState().listConnectors()
+  }
+
   return (
     <div
       className="app-detail-overlay"
@@ -432,8 +494,8 @@ export function AppSetup({
         {/* Description */}
         <p className="app-detail__desc">{entry.description}</p>
 
-        {/* Connected accounts list (multi-account) */}
-        {isConfigured && instances.length > 0 && (
+        {/* Connected accounts — per-row actions only for multi / OAuth / multiple instances */}
+        {showPerAccountRows && (
           <div className="app-detail__accounts">
             {instances.map((inst) => (
               <div key={inst.id} className="app-detail__account-row">
@@ -471,6 +533,24 @@ export function AppSetup({
             ))}
           </div>
         )}
+
+        {/* Single-account API: compact status (no duplicate Disconnect in the row above) */}
+        {isConfigured &&
+          !showPerAccountRows &&
+          entry.type === 'api' &&
+          instances[0]?.connected && (
+            <div className="app-detail__accounts app-detail__accounts--compact">
+              <div className="app-detail__account-row app-detail__account-row--static">
+                <div className="app-detail__account-info">
+                  <span className="app-detail__account-dot app-detail__account-dot--connected" />
+                  <span className="app-detail__account-name">{entry.name}</span>
+                  <span className="app-detail__account-tools">
+                    {instances[0].toolCount ?? instances[0].tools?.length ?? 0} tools
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
         {/* Add another account button (multi-account) */}
         {canAddAnother && isOAuth && (
@@ -605,12 +685,49 @@ export function AppSetup({
               {testing ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
               Test Connection
             </button>
+            {entry.type === 'api' && (entry.optionalFields?.length ?? 0) > 0 && (
+              <button
+                type="button"
+                className="app-detail__action-btn"
+                onClick={() => setShowDetails((v) => !v)}
+              >
+                {showDetails ? 'Hide Settings' : 'Edit Settings'}
+              </button>
+            )}
             <button
               type="button"
               className="app-detail__action-btn app-detail__action-btn--danger"
               onClick={() => handleDisconnect(existing!.id)}
             >
               <Trash2 size={14} /> Disconnect
+            </button>
+          </div>
+        )}
+
+        {/* Settings editor for configured API connectors */}
+        {isConfigured && entry.type === 'api' && showDetails && (entry.optionalFields?.length ?? 0) > 0 && (
+          <div className="app-detail__fields">
+            {(entry.optionalFields ?? []).map(
+              (field: { key: string; label: string; hint?: string }) => (
+                <div key={field.key} className="app-detail__field">
+                  <label htmlFor={`opt-${field.key}`}>
+                    {field.label} <span className="app-detail__field-optional">(optional)</span>
+                  </label>
+                  {field.hint && <p className="app-detail__field-hint">{field.hint}</p>}
+                  <input
+                    id={`opt-${field.key}`}
+                    type="text"
+                    placeholder={field.label}
+                    value={optionalValues[field.key] || ''}
+                    onChange={(e) =>
+                      setOptionalValues((prev) => ({ ...prev, [field.key]: e.target.value }))
+                    }
+                  />
+                </div>
+              ),
+            )}
+            <button type="button" className="app-detail__connect" onClick={handleSaveOptionalFields}>
+              Save
             </button>
           </div>
         )}

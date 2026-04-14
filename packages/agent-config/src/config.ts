@@ -255,6 +255,10 @@ export interface ConnectorConfig {
   args?: string[]
   env?: Record<string, string>
 
+  // For API key connectors (type: 'api')
+  apiKey?: string
+  baseUrl?: string
+
   // For OAuth connectors (type: 'oauth') — tokens stored separately in CredentialStore
   oauthProvider?: string
 
@@ -1561,14 +1565,19 @@ export function updateConnector(
   if (idx === -1) return null
   const current = config.connectors[idx]
 
-  const mergedMetadata =
-    changes.metadata !== undefined
-      ? { ...(current.metadata ?? {}), ...changes.metadata }
-      : current.metadata
+  const { metadata: metadataIn, ...rest } = changes
+  let mergedMetadata = current.metadata
+  if (metadataIn !== undefined) {
+    mergedMetadata =
+      Object.keys(metadataIn).length === 0
+        ? undefined
+        : { ...(current.metadata ?? {}), ...metadataIn }
+  }
+
   config.connectors[idx] = {
     ...current,
-    ...changes,
-    ...(changes.metadata !== undefined ? { metadata: mergedMetadata } : {}),
+    ...rest,
+    ...(metadataIn !== undefined ? { metadata: mergedMetadata } : {}),
   }
   saveConfig(config)
   return config.connectors[idx]
@@ -1656,6 +1665,39 @@ export const CONNECTOR_REGISTRY: ConnectorRegistryEntry[] = [
     oauthProvider: 'websearch',
     requiredEnv: [],
     featured: true,
+  },
+  {
+    id: 'polymarket',
+    name: 'Polymarket',
+    description:
+      'Read Polymarket markets/orderbooks and track a public wallet portfolio.',
+    icon: '🟦',
+    category: 'other',
+    type: 'api',
+    requiredEnv: [],
+    optionalFields: [
+      {
+        key: 'WALLET_ADDRESS',
+        label: 'Public Wallet Address',
+        hint:
+          '0x-prefixed address used for portfolio tracking (positions/value). Find it on Polymarket: go to polymarket.com/settings and copy your “Wallet Address” / “Profile Address”. Adding this alone enables the connector.',
+      },
+      {
+        key: 'API_KEY',
+        label: 'API Key',
+        hint:
+          'Optional. Create one on Polymarket (Builders tab): polymarket.com/settings?tab=builder. Not required for market data or portfolio tracking.',
+      },
+    ],
+    featured: false,
+    setupGuide: {
+      steps: [
+        'Add your public wallet address to enable portfolio tracking.',
+        '(Optional) Add an API key for future authenticated features.',
+      ],
+      url: 'https://docs.polymarket.com/api-reference/introduction',
+      urlLabel: 'Polymarket API Docs',
+    },
   },
   {
     id: 'telegram',

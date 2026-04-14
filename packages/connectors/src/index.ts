@@ -16,6 +16,7 @@ export { GoogleSheetsConnector } from './google-sheets/index.js'
 export { GoogleSearchConsoleConnector } from './google-search-console/index.js'
 export { AirtableConnector } from './airtable/index.js'
 export { LinkedInConnector } from './linkedin/index.js'
+export { PolymarketConnector } from './polymarket/index.js'
 
 import { AirtableConnector } from './airtable/index.js'
 import { ExaConnector } from './exa/index.js'
@@ -30,6 +31,7 @@ import { GranolaConnector } from './granola/index.js'
 import { LinearConnector } from './linear/index.js'
 import { LinkedInConnector } from './linkedin/index.js'
 import { NotionConnector } from './notion/index.js'
+import { PolymarketConnector } from './polymarket/index.js'
 import { SlackBotConnector, SlackUserConnector } from './slack/index.js'
 import { TelegramConnector } from './telegram/index.js'
 import type { ConnectorFactory } from './types.js'
@@ -52,4 +54,5 @@ export const CONNECTOR_FACTORIES: Record<string, ConnectorFactory> = {
   'google-search-console': () => new GoogleSearchConsoleConnector(),
   airtable: () => new AirtableConnector(),
   linkedin: () => new LinkedInConnector(),
+  polymarket: () => new PolymarketConnector(),
 }
