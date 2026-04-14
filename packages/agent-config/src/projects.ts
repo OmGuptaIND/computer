@@ -18,7 +18,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type {
   AgentMetadata,
   AgentSession,
@@ -310,6 +310,7 @@ export function saveProjectFile(projectId: string, filename: string, content: Bu
   }
 
   const filePath = join(filesDir, filename)
+  mkdirSync(dirname(filePath), { recursive: true })
   writeFileSync(filePath, content)
 
   // Update project context.files tracking

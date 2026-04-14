@@ -10,7 +10,15 @@
  */
 
 import { execSync, spawn } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  symlinkSync,
+  unlinkSync,
+} from 'node:fs'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
 import { join, resolve } from 'node:path'
@@ -32,7 +40,10 @@ import {
   getGlobalMemoryDir,
   getProjectSessionsDir,
   getProvidersList,
+  getPublished,
+  getPublishedDir,
   getSyncVersion,
+  incrementViews,
   listProjectIndex,
   listProjectSessions,
   listProjectWorkflows,
@@ -46,6 +57,7 @@ import {
   onSyncChange,
   saveConfig,
   saveProjectInstructions,
+  savePublishedMeta,
   setDefault,
   setProviderKey,
   setProviderModels,
@@ -81,7 +93,12 @@ import { createLogger } from '@anton/logger'
 import { Channel, decodeFrame, encodeFrame, parseJsonPayload } from '@anton/protocol'
 import type { AiMessage, ChannelId, ControlMessage, TerminalMessage } from '@anton/protocol'
 import { WebSocket, WebSocketServer } from 'ws'
-import { OAuthFlow, CredentialStore, fetchAccountIdentity, oauthCallbackHandler } from './oauth/index.js'
+import {
+  CredentialStore,
+  OAuthFlow,
+  fetchAccountIdentity,
+  oauthCallbackHandler,
+} from './oauth/index.js'
 import type { Scheduler } from './scheduler.js'
 import { Updater } from './updater.js'
 import { extractBindingKey, getBinding } from './webhooks/bindings.js'
@@ -252,9 +269,8 @@ export class AgentServer {
     // Initialize OAuth infrastructure
     this.credentialStore = new CredentialStore(getAntonDir(), config.token)
     this.oauthFlow = new OAuthFlow(config, this.credentialStore)
-    this.connectorManager = new ConnectorManager(
-      CONNECTOR_FACTORIES,
-      (id) => this.resolveConnectorEnv(id),
+    this.connectorManager = new ConnectorManager(CONNECTOR_FACTORIES, (id) =>
+      this.resolveConnectorEnv(id),
     )
 
     // Clean expired sessions on startup
@@ -433,6 +449,17 @@ export class AgentServer {
         )
         return
       }
+      // View counter beacon
+      if (req.method === 'POST' && req.url?.startsWith('/_anton/views/')) {
+        const viewSlug = req.url.slice('/_anton/views/'.length)
+        if (viewSlug && /^[a-zA-Z0-9_-]+$/.test(viewSlug)) {
+          incrementViews(viewSlug)
+        }
+        res.writeHead(204)
+        res.end()
+        return
+      }
+
       res.writeHead(426, { 'Content-Type': 'text/plain' })
       res.end('WebSocket connections only')
     })
@@ -1507,8 +1534,25 @@ export class AgentServer {
     contentType: 'html' | 'markdown' | 'svg' | 'mermaid' | 'code'
     language?: string
     slug?: string
+    projectId?: string
   }) {
     try {
+      // Reject if slug is already taken by a different artifact
+      if (msg.slug) {
+        const existing = getPublished(msg.slug)
+        if (existing && existing.artifactId && existing.artifactId !== msg.artifactId) {
+          this.sendToClient(Channel.AI, {
+            type: 'publish_artifact_response',
+            artifactId: msg.artifactId,
+            publicUrl: '',
+            slug: msg.slug,
+            success: false,
+            error: `Slug "${msg.slug}" is already used by "${existing.title}". Choose a different slug.`,
+          })
+          return
+        }
+      }
+
       const result = executePublish(
         {
           title: msg.title,
@@ -1525,6 +1569,48 @@ export class AgentServer {
       const publicUrl = urlMatch?.[1] || ''
       const slugMatch = publicUrl.match(/\/a\/([^/]+)$/)
       const slug = slugMatch?.[1] || msg.slug || ''
+
+      // Save metadata to published index
+      savePublishedMeta({
+        slug,
+        artifactId: msg.artifactId,
+        title: msg.title,
+        type: msg.contentType,
+        language: msg.language,
+        description:
+          msg.content
+            .slice(0, 200)
+            .replace(/[#*_\n]/g, ' ')
+            .trim() || undefined,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        projectId: msg.projectId,
+        views: 0,
+      })
+
+      // Symlink published file into project workspace
+      if (msg.projectId) {
+        try {
+          const project = loadProject(msg.projectId)
+          if (project?.workspacePath) {
+            const publishedDir = join(project.workspacePath, 'published')
+            mkdirSync(publishedDir, { recursive: true })
+            const linkPath = join(publishedDir, `${slug}.html`)
+            const targetPath = join(getPublishedDir(), slug, 'index.html')
+            // Remove existing symlink if re-publishing same slug
+            if (existsSync(linkPath)) {
+              try {
+                unlinkSync(linkPath)
+              } catch {
+                /* ignore */
+              }
+            }
+            symlinkSync(targetPath, linkPath)
+          }
+        } catch {
+          // Non-critical — don't fail the publish if symlink fails
+        }
+      }
 
       this.sendToClient(Channel.AI, {
         type: 'publish_artifact_response',
@@ -3492,7 +3578,9 @@ export class AgentServer {
    * Resolve env + refreshToken for a connector. Used by ConnectorManager.activate().
    * Priority: 1) encrypted secrets, 2) legacy OAuth accessToken, 3) process.env fallback.
    */
-  private async resolveConnectorEnv(providerId: string): Promise<import('@anton/connectors').ConnectorEnv> {
+  private async resolveConnectorEnv(
+    providerId: string,
+  ): Promise<import('@anton/connectors').ConnectorEnv> {
     const env: Record<string, string> = {}
     const cfg = getConnectors(this.config).find((c) => c.id === providerId)
 
@@ -3526,9 +3614,7 @@ export class AgentServer {
     }
 
     // 3. OAuth refresh callback (only if this connector has a refresh token)
-    const refreshToken = creds?.refreshToken
-      ? () => this.oauthFlow.getToken(providerId)
-      : undefined
+    const refreshToken = creds?.refreshToken ? () => this.oauthFlow.getToken(providerId) : undefined
 
     return { env, refreshToken }
   }
@@ -3817,7 +3903,7 @@ export class AgentServer {
 
       // Strip secrets from config before persisting to config.yaml
       const configToSave = { ...msg.connector }
-      delete configToSave.env
+      configToSave.env = undefined
       addConnector(this.config, configToSave)
       if (msg.connector.id === 'slack-bot') this.invalidateSlackBotSecretCache()
 
@@ -3843,7 +3929,11 @@ export class AgentServer {
       }
 
       // Start Telegram webhook provider if just connected
-      if (msg.connector.id === 'telegram' && this.credentialStore.has('telegram') && !this.telegramProvider) {
+      if (
+        msg.connector.id === 'telegram' &&
+        this.credentialStore.has('telegram') &&
+        !this.telegramProvider
+      ) {
         this.startWebhooks().catch((err) => log.error({ err }, 'Webhook startup failed'))
       }
 
@@ -3870,7 +3960,11 @@ export class AgentServer {
       // If env values provided, merge into credential store
       if (msg.changes.env && Object.keys(msg.changes.env).length > 0) {
         let existing: import('./credential-store.js').StoredCredentials | null = null
-        try { existing = this.credentialStore.load(msg.id) } catch { /* fresh */ }
+        try {
+          existing = this.credentialStore.load(msg.id)
+        } catch {
+          /* fresh */
+        }
         const mergedSecrets = { ...(existing?.secrets ?? {}), ...msg.changes.env }
         this.credentialStore.save(msg.id, {
           ...(existing ?? { provider: msg.id }),
