@@ -1,0 +1,23 @@
+packages/desktop/src/components/connectors/ConnectorsPage.tsx
+  61b2258f970b3fe5 336,357,789-791,796
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "96b623021ed83dd7954bb552f0cbe503f50299b0",
+  "prompts": {
+    "61b2258f970b3fe5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cfd237df-bfb9-4d65-ae42-90e03fcd0891",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 4,
+      "accepted_lines": 8,
+      "overriden_lines": 0
+    }
+  }
+}
