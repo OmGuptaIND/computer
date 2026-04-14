@@ -1,0 +1,31 @@
+packages/protocol/src/messages.ts
+  6e403219b35648ed 1079-1080
+packages/agent-server/src/server.ts
+  6e403219b35648ed 4120-4131
+packages/agent-config/src/config.ts
+  6e403219b35648ed 1643-1645,1712-1719,1724-1725
+packages/desktop/src/index.css
+  6e403219b35648ed 11929-11934,11959-11966,12002-12004,12007-12010,12012,12014-12017,12020-12030,12034
+packages/desktop/src/components/connectors/ConnectorsPage.tsx
+  6e403219b35648ed 610-631,633-634,642,651,654,665-688,727,736
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "cba920505fcdff1e50facc1356cea97f27883594",
+  "prompts": {
+    "6e403219b35648ed": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "32825e61-312d-4392-8a12-3ac4b95c150c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 122,
+      "total_deletions": 54,
+      "accepted_lines": 120,
+      "overriden_lines": 0
+    }
+  }
+}
