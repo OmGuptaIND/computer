@@ -81,7 +81,11 @@ if ! id anton &>/dev/null; then
     useradd --system --create-home --shell /bin/bash anton
 fi
 mkdir -p "${ANTON_DIR}"
+mkdir -p "${ANTON_DIR}/published"
 mkdir -p /home/anton/Anton
+# Caddy (running as 'caddy' user) needs to traverse /home/anton to serve
+# published artifacts and project files — default 0700 from useradd blocks it.
+chmod 755 /home/anton
 # Grant passwordless sudo so the agent can install packages, manage services, etc.
 echo "anton ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/anton
 chmod 0440 /etc/sudoers.d/anton

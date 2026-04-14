@@ -1,19 +1,20 @@
 /**
- * Publish tool — converts artifacts to full HTML documents and writes them
- * to the published directory, making them accessible via public URL.
+ * Publish tool — converts artifacts to self-contained HTML documents
+ * and writes them to the published directory for public access.
  *
- * Content types are converted to standalone HTML pages:
+ * All rendering happens server-side at publish time:
  *   html     → pass through (ensure doctype wrapper)
- *   markdown → client-side rendering via marked CDN
+ *   markdown → server-side rendered via marked
  *   svg      → inline SVG in HTML with viewport
- *   mermaid  → mermaid CDN for rendering
- *   code     → <pre><code> with monospace styling
+ *   mermaid  → mermaid CDN (needs DOM, no server-side option)
+ *   code     → styled <pre><code> with monospace theme
  */
 
 import { randomBytes } from 'node:crypto'
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getPublishedDir } from '@anton/agent-config'
+import { marked } from 'marked'
 
 export interface PublishInput {
   title: string
@@ -23,23 +24,10 @@ export interface PublishInput {
   slug?: string
 }
 
+const VALID_SLUG = /^[a-zA-Z0-9_-]+$/
+
 function generateSlug(): string {
   return randomBytes(4).toString('hex') // 8 hex chars
-}
-
-function wrapHtml(title: string, body: string, headExtra = ''): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapeHtml(title)}</title>
-${headExtra}
-</head>
-<body>
-${body}
-</body>
-</html>`
 }
 
 function escapeHtml(str: string): string {
@@ -50,78 +38,269 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function convertToHtml(input: PublishInput): string {
-  const { title, content, type, language } = input
+// ── Shared template ─────────────────────────────────────────────
 
-  switch (type) {
-    case 'html':
-      if (content.includes('<!DOCTYPE') || content.includes('<html')) {
-        return content
-      }
-      return wrapHtml(
-        title,
-        content,
-        '<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif}</style>',
-      )
+const BASE_STYLES = `
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0a0a;--bg-surface:#141414;--bg-elevated:#1a1a1a;
+  --text:#e5e5e5;--text-muted:#999;--text-dim:#666;
+  --accent:#60a5fa;--border:#262626;
+  --font-sans:system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-mono:'SF Mono',Monaco,'Cascadia Code','Fira Code',monospace;
+}
+html{font-size:16px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{background:var(--bg);color:var(--text);font-family:var(--font-sans);line-height:1.7}
+`
 
+const FOOTER_HTML = `<footer style="margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--border);display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim)">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+Published with <a href="https://antoncomputer.in" style="color:var(--text-muted);text-decoration:none;border-bottom:1px solid var(--border)">Anton</a>
+</footer>`
+
+function buildPage(
+  title: string,
+  body: string,
+  extra: {
+    styles?: string
+    scripts?: string
+    description?: string
+    domain?: string
+    slug?: string
+  } = {},
+): string {
+  const desc = extra.description || `${title} — published with Anton`
+  const pageUrl = extra.domain && extra.slug ? `https://${extra.domain}/a/${extra.slug}` : ''
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<meta name="description" content="${escapeHtml(desc)}">
+<meta property="og:title" content="${escapeHtml(title)}">
+<meta property="og:description" content="${escapeHtml(desc)}">
+<meta property="og:type" content="article">
+${pageUrl ? `<meta property="og:url" content="${escapeHtml(pageUrl)}">` : ''}
+${pageUrl ? `<meta property="og:image" content="${escapeHtml(pageUrl)}/og.svg">` : ''}
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${escapeHtml(title)}">
+<meta name="twitter:description" content="${escapeHtml(desc)}">
+${pageUrl ? `<meta name="twitter:image" content="${escapeHtml(pageUrl)}/og.svg">` : ''}
+<style>${BASE_STYLES}${extra.styles || ''}</style>
+</head>
+<body>
+${body}
+${extra.scripts || ''}
+${extra.slug ? `<script>fetch('/_anton/views/${extra.slug}',{method:'POST',keepalive:true}).catch(function(){})<\/script>` : ''}
+</body>
+</html>`
+}
+
+// ── OG image generation ─────────────────────────────────────────
+
+const TYPE_COLORS: Record<string, string> = {
+  html: '#60a5fa',
+  markdown: '#a78bfa',
+  svg: '#34d399',
+  mermaid: '#f472b6',
+  code: '#fbbf24',
+}
+
+function generateOgSvg(title: string, type: string, domain?: string): string {
+  const truncated = title.length > 60 ? `${title.slice(0, 57)}...` : title
+  const color = TYPE_COLORS[type] || '#60a5fa'
+  const brandText = domain || 'Anton'
+  return `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+<rect width="1200" height="630" fill="#0a0a0a"/>
+<rect x="60" y="480" width="${type.length * 14 + 32}" height="36" rx="18" fill="${color}" opacity="0.15"/>
+<text x="${60 + (type.length * 14 + 32) / 2}" y="504" text-anchor="middle" fill="${color}" font-family="system-ui,sans-serif" font-size="16" font-weight="600">${escapeHtml(type.toUpperCase())}</text>
+<text x="60" y="300" fill="#e5e5e5" font-family="system-ui,sans-serif" font-size="48" font-weight="700" letter-spacing="-1">${escapeHtml(truncated)}</text>
+<text x="60" y="580" fill="#666" font-family="system-ui,sans-serif" font-size="18">${escapeHtml(brandText)}</text>
+</svg>`
+}
+
+// ── Content-type renderers ──────────────────────────────────────
+
+function renderMarkdown(input: PublishInput, domain?: string, slug?: string): string {
+  const html = marked.parse(input.content, { async: false, gfm: true, breaks: false }) as string
+
+  const styles = `
+.page{max-width:720px;margin:0 auto;padding:2.5rem 1.5rem}
+.page h1{font-size:1.75rem;font-weight:600;margin:2rem 0 0.75rem;color:#f5f5f5;letter-spacing:-0.02em}
+.page h2{font-size:1.35rem;font-weight:600;margin:1.75rem 0 0.5rem;color:#f5f5f5;letter-spacing:-0.01em}
+.page h3{font-size:1.1rem;font-weight:600;margin:1.5rem 0 0.5rem;color:#e5e5e5}
+.page p{margin:0.75rem 0;color:var(--text)}
+.page a{color:var(--accent);text-decoration:none;border-bottom:1px solid transparent}
+.page a:hover{border-bottom-color:var(--accent)}
+.page strong{color:#f5f5f5;font-weight:600}
+.page img{max-width:100%;border-radius:8px;margin:1rem 0}
+.page ul,.page ol{margin:0.75rem 0;padding-left:1.5rem;color:var(--text)}
+.page li{margin:0.25rem 0}
+.page li::marker{color:var(--text-dim)}
+.page blockquote{margin:1rem 0;padding:0.75rem 1rem;border-left:3px solid var(--border);color:var(--text-muted);background:var(--bg-surface);border-radius:0 6px 6px 0}
+.page pre{background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;padding:1rem;overflow-x:auto;margin:1rem 0;font-size:0.875rem;line-height:1.6}
+.page code{font-family:var(--font-mono);font-size:0.9em}
+.page :not(pre)>code{background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:0.85em;color:#e5a0e0}
+.page table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:0.9rem}
+.page th{text-align:left;padding:0.5rem 0.75rem;border-bottom:2px solid var(--border);color:var(--text-muted);font-weight:500;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.05em}
+.page td{padding:0.5rem 0.75rem;border-bottom:1px solid var(--border)}
+.page hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
+`
+
+  return buildPage(input.title, `<article class="page">${html}\n${FOOTER_HTML}</article>`, {
+    styles,
+    domain,
+    slug,
+    description: input.content
+      .slice(0, 200)
+      .replace(/[#*_\n]/g, ' ')
+      .trim(),
+  })
+}
+
+function injectIntoFullHtml(
+  html: string,
+  title: string,
+  extra: { domain?: string; slug?: string },
+): string {
+  const desc = `${title} — published with Anton`
+  const pageUrl = extra.domain && extra.slug ? `https://${extra.domain}/a/${extra.slug}` : ''
+
+  const ogTags = [
+    `<meta property="og:title" content="${escapeHtml(title)}">`,
+    `<meta property="og:description" content="${escapeHtml(desc)}">`,
+    `<meta property="og:type" content="article">`,
+    pageUrl ? `<meta property="og:url" content="${escapeHtml(pageUrl)}">` : '',
+    pageUrl ? `<meta property="og:image" content="${escapeHtml(pageUrl)}/og.svg">` : '',
+    `<meta name="twitter:card" content="summary_large_image">`,
+    `<meta name="twitter:title" content="${escapeHtml(title)}">`,
+    `<meta name="twitter:description" content="${escapeHtml(desc)}">`,
+    pageUrl ? `<meta name="twitter:image" content="${escapeHtml(pageUrl)}/og.svg">` : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  const viewScript = extra.slug
+    ? `<script>fetch('/_anton/views/${extra.slug}',{method:'POST',keepalive:true}).catch(function(){})<\/script>`
+    : ''
+
+  let result = html
+  // Strip any previously injected OG/Twitter meta and view script to avoid duplicates on re-publish
+  result = result.replace(/<meta property="og:[^"]*"[^>]*>\n?/g, '')
+  result = result.replace(/<meta name="twitter:[^"]*"[^>]*>\n?/g, '')
+  result = result.replace(/<script>fetch\('\/\_anton\/views\/[^']*'[^<]*<\/script>\n?/g, '')
+
+  if (result.includes('</head>')) {
+    result = result.replace('</head>', `${ogTags}\n</head>`)
+  }
+  if (viewScript && result.includes('</body>')) {
+    result = result.replace('</body>', `${viewScript}\n</body>`)
+  }
+  return result
+}
+
+function renderHtml(input: PublishInput, domain?: string, slug?: string): string {
+  // Full HTML documents: inject OG meta and view tracking, keep everything else
+  if (input.content.includes('<!DOCTYPE') || input.content.includes('<html')) {
+    return injectIntoFullHtml(input.content, input.title, { domain, slug })
+  }
+
+  const styles = `
+body{font-family:var(--font-sans)}
+.page{max-width:960px;margin:0 auto;padding:2rem 1.5rem}
+`
+
+  return buildPage(input.title, `<div class="page">${input.content}\n${FOOTER_HTML}</div>`, {
+    styles,
+    domain,
+    slug,
+  })
+}
+
+function renderCode(input: PublishInput, domain?: string, slug?: string): string {
+  const lang = input.language || 'text'
+
+  const styles = `
+.page{max-width:960px;margin:0 auto;padding:2rem 1.5rem}
+.code-header{display:flex;align-items:center;justify-content:space-between;padding:0.625rem 1rem;background:var(--bg-elevated);border:1px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0;font-size:0.8rem;color:var(--text-dim)}
+.code-lang{font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.05em}
+.code-copy{background:none;border:1px solid var(--border);color:var(--text-muted);padding:3px 10px;border-radius:4px;cursor:pointer;font-size:0.75rem;font-family:var(--font-sans)}
+.code-copy:hover{background:var(--bg-surface);color:var(--text)}
+pre{background:var(--bg-surface);border:1px solid var(--border);border-radius:0 0 8px 8px;padding:1.25rem;overflow-x:auto;margin:0;font-size:0.875rem;line-height:1.6}
+code{font-family:var(--font-mono);color:var(--text)}
+`
+
+  const scripts = `<script>
+document.querySelector('.code-copy')?.addEventListener('click',function(){
+  navigator.clipboard.writeText(document.querySelector('code').textContent);
+  this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)
+})
+<\/script>`
+
+  const body = `<div class="page">
+<div class="code-header"><span class="code-lang">${escapeHtml(lang)}</span><button class="code-copy">Copy</button></div>
+<pre><code class="language-${escapeHtml(lang)}">${escapeHtml(input.content)}</code></pre>
+${FOOTER_HTML}
+</div>`
+
+  return buildPage(input.title, body, { styles, scripts, domain, slug })
+}
+
+function renderSvg(input: PublishInput, domain?: string, slug?: string): string {
+  const styles = `
+.page{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:2rem}
+svg{max-width:100%;height:auto}
+`
+  return buildPage(input.title, `<div class="page">${input.content}\n${FOOTER_HTML}</div>`, {
+    styles,
+    domain,
+    slug,
+  })
+}
+
+function renderMermaid(input: PublishInput, domain?: string, slug?: string): string {
+  const styles = `
+.page{max-width:960px;margin:0 auto;padding:2rem 1.5rem;display:flex;flex-direction:column;align-items:center}
+.mermaid{margin:2rem 0}
+`
+  const scripts = `<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"><\/script>
+<script>mermaid.initialize({startOnLoad:true,theme:'dark'})<\/script>`
+
+  return buildPage(
+    input.title,
+    `<div class="page"><pre class="mermaid">${escapeHtml(input.content)}</pre>\n${FOOTER_HTML}</div>`,
+    { styles, scripts, domain, slug },
+  )
+}
+
+// ── Dispatcher ──────────────────────────────────────────────────
+
+function convertToHtml(input: PublishInput, domain?: string, slug?: string): string {
+  switch (input.type) {
     case 'markdown':
-      return wrapHtml(
-        title,
-        `<div id="content"></div>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"><\/script>
-<script>
-document.getElementById('content').innerHTML = marked.parse(${JSON.stringify(content)});
-<\/script>`,
-        `<style>
-body{max-width:800px;margin:0 auto;padding:2rem;font-family:system-ui,sans-serif;line-height:1.6;color:#1a1a1a}
-h1,h2,h3{margin-top:1.5em;margin-bottom:0.5em}
-pre{background:#f5f5f5;padding:1rem;border-radius:6px;overflow-x:auto}
-code{font-family:'SF Mono',Monaco,monospace;font-size:0.9em}
-a{color:#2563eb}
-img{max-width:100%}
-table{border-collapse:collapse;width:100%}
-th,td{border:1px solid #ddd;padding:8px;text-align:left}
-blockquote{border-left:4px solid #ddd;margin:1em 0;padding:0.5em 1em;color:#555}
-</style>`,
-      )
-
-    case 'svg':
-      return wrapHtml(
-        title,
-        `<div style="display:flex;justify-content:center;align-items:center;min-height:100vh;padding:2rem">
-${content}
-</div>`,
-        '<style>body{margin:0;background:#fff}svg{max-width:100%;height:auto}</style>',
-      )
-
-    case 'mermaid':
-      return wrapHtml(
-        title,
-        `<pre class="mermaid">${escapeHtml(content)}</pre>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"><\/script>
-<script>mermaid.initialize({startOnLoad:true,theme:'default'})<\/script>`,
-        '<style>body{display:flex;justify-content:center;padding:2rem;background:#fff}</style>',
-      )
-
+      return renderMarkdown(input, domain, slug)
+    case 'html':
+      return renderHtml(input, domain, slug)
     case 'code':
-      return wrapHtml(
-        title,
-        `<pre><code class="language-${language || 'text'}">${escapeHtml(content)}</code></pre>`,
-        `<style>
-body{margin:0;padding:2rem;background:#1e1e1e;color:#d4d4d4}
-pre{margin:0;overflow-x:auto}
-code{font-family:'SF Mono',Monaco,'Cascadia Code',monospace;font-size:14px;line-height:1.5}
-</style>`,
-      )
-
+      return renderCode(input, domain, slug)
+    case 'svg':
+      return renderSvg(input, domain, slug)
+    case 'mermaid':
+      return renderMermaid(input, domain, slug)
     default:
-      return wrapHtml(title, `<pre>${escapeHtml(content)}</pre>`)
+      return renderMarkdown({ ...input, type: 'markdown' }, domain, slug)
   }
 }
 
+// ── Public API ──────────────────────────────────────────────────
+
 export function executePublish(input: PublishInput, domain?: string): string {
   const slug = input.slug || generateSlug()
-  const html = convertToHtml(input)
+  if (!VALID_SLUG.test(slug)) {
+    throw new Error('Invalid slug: must match [a-zA-Z0-9_-]+')
+  }
+  const html = convertToHtml(input, domain, slug)
 
   const publishedDir = getPublishedDir()
   const artifactDir = join(publishedDir, slug)
@@ -129,6 +308,12 @@ export function executePublish(input: PublishInput, domain?: string): string {
   const filePath = join(artifactDir, 'index.html')
   writeFileSync(filePath, html, 'utf-8')
   chmodSync(filePath, 0o644)
+
+  // Generate OG image
+  const ogSvg = generateOgSvg(input.title, input.type, domain)
+  const ogPath = join(artifactDir, 'og.svg')
+  writeFileSync(ogPath, ogSvg, 'utf-8')
+  chmodSync(ogPath, 0o644)
 
   const url = domain ? `https://${domain}/a/${slug}` : `/a/${slug}`
   return `Published "${input.title}" → ${url}`

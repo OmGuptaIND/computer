@@ -47,8 +47,23 @@ interface ArtifactState {
   }) => void
   clearBrowserState: () => void
 
+  // Publish modal
+  publishModalOpen: boolean
+  publishModalArtifactId: string | null
+  publishError: string | null
+  openPublishModal: (artifactId: string) => void
+  closePublishModal: () => void
+  setPublishError: (error: string | null) => void
+
   // Connection actions
-  publishArtifact: (artifactId: string, content: string, renderType: string, title?: string) => void
+  publishArtifact: (
+    artifactId: string,
+    content: string,
+    renderType: string,
+    title?: string,
+    projectId?: string,
+    slug?: string,
+  ) => void
 
   // Reset
   reset: () => void
@@ -62,6 +77,9 @@ export const artifactStore = create<ArtifactState>((set, get) => ({
   artifactFilterType: 'all',
   artifactViewMode: 'list',
   browserState: null,
+  publishModalOpen: false,
+  publishModalArtifactId: null,
+  publishError: null,
 
   addArtifact: (artifact) =>
     set((state) => {
@@ -113,13 +131,21 @@ export const artifactStore = create<ArtifactState>((set, get) => ({
 
   clearBrowserState: () => set({ browserState: null }),
 
-  publishArtifact: (artifactId, content, renderType, title) => {
+  openPublishModal: (artifactId) =>
+    set({ publishModalOpen: true, publishModalArtifactId: artifactId, publishError: null }),
+  closePublishModal: () =>
+    set({ publishModalOpen: false, publishModalArtifactId: null, publishError: null }),
+  setPublishError: (error) => set({ publishError: error }),
+
+  publishArtifact: (artifactId, content, renderType, title, projectId, slug) => {
     connection.send(Channel.AI, {
       type: 'publish_artifact',
       artifactId,
       content,
-      renderType,
+      contentType: renderType,
       title,
+      projectId,
+      slug,
     })
   },
 
@@ -132,5 +158,8 @@ export const artifactStore = create<ArtifactState>((set, get) => ({
       artifactFilterType: 'all',
       artifactViewMode: 'list',
       browserState: null,
+      publishModalOpen: false,
+      publishModalArtifactId: null,
+      publishError: null,
     }),
 }))

@@ -158,6 +158,8 @@ export function handleToolMessage(msg: AiMessage, ctx: MessageContext): boolean 
         artifactStore
           .getState()
           .updateArtifactPublishStatus(msg.artifactId, msg.publicUrl, msg.slug)
+      } else if (!msg.success && msg.error) {
+        artifactStore.getState().setPublishError(msg.error)
       }
       return true
     }

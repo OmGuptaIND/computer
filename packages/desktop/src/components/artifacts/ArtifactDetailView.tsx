@@ -5,6 +5,7 @@ import type { Artifact } from '../../lib/artifacts.js'
 import { getArtifactFileExtension, getArtifactTypeLabel } from '../../lib/artifacts.js'
 import { artifactStore } from '../../lib/store/artifactStore.js'
 import { HighlightedBlock, MarkdownRenderer } from '../chat/MarkdownRenderer.js'
+import { PublishModal } from './PublishModal.js'
 
 // ── Sub-renderers ──────────────────────────────────────────────────
 
@@ -103,7 +104,7 @@ export function ArtifactDetailView() {
   const [copied, setCopied] = useState(false)
   const [copiedUrl, setCopiedUrl] = useState(false)
   const [viewMode, setContentViewMode] = useState<'preview' | 'source'>('preview')
-  const [publishing, setPublishing] = useState(false)
+  const openPublishModal = artifactStore((s) => s.openPublishModal)
 
   const canToggleView =
     artifact && ['html', 'svg', 'mermaid', 'markdown'].includes(artifact.renderType)
@@ -134,21 +135,6 @@ export function ArtifactDetailView() {
     a.click()
     URL.revokeObjectURL(url)
   }, [artifact])
-
-  const handlePublish = useCallback(() => {
-    if (!artifact || publishing) return
-    setPublishing(true)
-    artifactStore
-      .getState()
-      .publishArtifact(
-        artifact.id,
-        artifact.content,
-        artifact.renderType,
-        artifact.title || artifact.filename || 'Untitled',
-      )
-    // Publishing state resets when we get the response (publish status update)
-    setTimeout(() => setPublishing(false), 5000)
-  }, [artifact, publishing])
 
   if (!artifact) {
     setViewMode('list')
@@ -217,11 +203,10 @@ export function ArtifactDetailView() {
           <button
             type="button"
             className="artifact-detail__action artifact-detail__action--publish"
-            onClick={handlePublish}
-            disabled={publishing}
+            onClick={() => openPublishModal(artifact.id)}
           >
             <Globe size={14} />
-            <span>{publishing ? 'Publishing...' : 'Publish'}</span>
+            <span>Publish</span>
           </button>
         )}
       </div>
@@ -241,6 +226,8 @@ export function ArtifactDetailView() {
           </motion.div>
         </AnimatePresence>
       </div>
+
+      <PublishModal />
     </div>
   )
 }
