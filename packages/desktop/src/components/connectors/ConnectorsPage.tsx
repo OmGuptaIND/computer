@@ -309,25 +309,13 @@ export function AppSetup({
   }
 
   const handleConnect = () => {
+    // Collect all env values (required + optional) into a single env bag
     const env: Record<string, string> = {}
     for (const key of entry.requiredEnv) {
       if (envValues[key]) env[key] = envValues[key]
     }
-
-    let apiKey: string | undefined
-    let baseUrl: string | undefined
-    if (entry.type === 'api' && entry.requiredEnv.length > 0) {
-      const firstEnv = entry.requiredEnv[0]
-      if (firstEnv.toLowerCase().includes('url')) {
-        baseUrl = envValues[firstEnv]
-      } else {
-        apiKey = envValues[firstEnv]
-      }
-    }
-
-    const metadata: Record<string, string> = {}
     for (const field of entry.optionalFields ?? []) {
-      if (optionalValues[field.key]) metadata[field.key] = optionalValues[field.key]
+      if (optionalValues[field.key]) env[field.key] = optionalValues[field.key]
     }
 
     connectorStore.getState().addConnectorRemote({
@@ -339,9 +327,6 @@ export function AppSetup({
       command: entry.command,
       args: entry.args,
       env,
-      ...(apiKey ? { apiKey } : {}),
-      ...(baseUrl ? { baseUrl } : {}),
-      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
       enabled: true,
     })
 
@@ -684,12 +669,14 @@ function CustomApiTab({
   const handleAdd = () => {
     if (!name) return
     const id = `api-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`
+    const env: Record<string, string> = {}
+    if (apiKey) env.API_KEY = apiKey
+    if (baseUrl) env.BASE_URL = baseUrl
     connectorStore.getState().addConnectorRemote({
       id,
       name,
       type: 'api',
-      apiKey,
-      baseUrl,
+      env: Object.keys(env).length > 0 ? env : undefined,
       enabled: true,
     })
     setAdding(false)
