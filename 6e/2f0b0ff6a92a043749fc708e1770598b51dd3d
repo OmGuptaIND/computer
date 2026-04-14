@@ -1,0 +1,52 @@
+packages/connectors/src/connector-manager.ts
+  8381a8b03ae30669 8-23,295-336,341,348-350
+packages/connectors/src/polymarket/index.ts
+  8381a8b03ae30669 23-26
+packages/agent-config/src/config.ts
+  8381a8b03ae30669 1568-1575,1579-1580,1673,1683,1686-1687,1689,1695-1696
+packages/desktop/src/components/connectors/ConnectorsPage.tsx
+  8381a8b03ae30669 232-236,238-255,354-355,358-360,372,451-463,495-496,535-551,686-694,705-728
+packages/desktop/src/index.css
+  8381a8b03ae30669 12186-12195
+packages/agent-server/src/server.ts
+  8381a8b03ae30669 3694-3735,3744-3745,3747-3752,3755,3818-3820,3822-3825,3828,3832-3842,3846,3850-3851,3854,3856,3870,3875,3888-3891,3966-3974,3982,4036-4039,4049-4053
+packages/connectors/src/polymarket/api.ts
+  8381a8b03ae30669 17,51-56,59-79,86-87
+packages/connectors/src/polymarket/tools.ts
+  8381a8b03ae30669 52,201-202,204-209,251-252,254-259
+packages/desktop/src/components/connectors/ConnectorsView.tsx
+  8381a8b03ae30669 493-510
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "6e2f0b0ff6a92a043749fc708e1770598b51dd3d",
+  "prompts": {
+    "15b889b042a683d9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "fdbc8b0e-9289-4227-b6d3-7a65bd339378",
+        "model": "default"
+      },
+      "human_author": "Arush Kurundodi",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 31,
+      "overriden_lines": 0
+    },
+    "8381a8b03ae30669": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6d51cd6a-4884-47c7-b35f-09eb066f9162",
+        "model": "default"
+      },
+      "human_author": "Arush Kurundodi",
+      "messages": [],
+      "total_additions": 497,
+      "total_deletions": 237,
+      "accepted_lines": 370,
+      "overriden_lines": 0
+    }
+  }
+}
