@@ -1,6 +1,6 @@
 {
   "version": "1.0.55",
-  "gitHash": "",
+  "gitHash": "2b69001",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
   "changelog": "Features:\n- add unified credential store and refactor connector auth\n\nFixes:\n- resolve merge conflicts and align PolymarketConnector with DirectConnector interface\n\nChores:\n- reorganize specs/ into logical subfolders with clean overview\n\nOther:\n- docs: add connector creation guide, permissions setup, and validation checklist to specs\n- fixes\n- add icon\n- add polymarket stuff",
   "publishedAt": "2026-04-14T15:10:41.542Z",
