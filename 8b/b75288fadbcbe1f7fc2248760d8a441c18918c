@@ -1,0 +1,84 @@
+packages/agent-server/src/server.ts
+  35d7b460d404095c 84,237,253-257,487-488,3491-3497,3499-3534,3536-3559,3562-3563,3565-3566,3568,3570,3572,3575-3577,3581,3585-3587,3716,3718-3723,3751,3792,3810-3821,3831-3832,3835-3836,3838,3846,3868-3880,3893-3896,3931,3965-3968,4023-4026,4424
+packages/connectors/src/index.ts
+  35d7b460d404095c 1-2
+packages/protocol/src/messages.ts
+  35d7b460d404095c 1063
+packages/connectors/src/gmail/index.ts
+  35d7b460d404095c 2,13-17
+packages/connectors/src/connector-manager.ts
+  35d7b460d404095c 4,15-17,25,50,52,56,74,76,278-288
+packages/connectors/src/google-sheets/index.ts
+  35d7b460d404095c 2,13-17
+packages/connectors/src/linear/index.ts
+  35d7b460d404095c 2,13-17
+packages/connectors/src/google-docs/index.ts
+  35d7b460d404095c 2,13-17
+packages/connectors/src/exa/index.ts
+  35d7b460d404095c 2,13-20
+packages/connectors/src/google-search-console/index.ts
+  35d7b460d404095c 2,13-17
+packages/agent-server/src/oauth/index.ts
+  35d7b460d404095c 1-3
+packages/connectors/src/google-calendar/index.ts
+  35d7b460d404095c 2,13-17
+packages/agent-server/src/credential-store.ts
+  35d7b460d404095c 1-97
+packages/connectors/src/linkedin/index.ts
+  35d7b460d404095c 2,13-24
+packages/connectors/src/github/index.ts
+  35d7b460d404095c 2,13-17
+packages/agent-server/src/oauth/oauth-flow.ts
+  35d7b460d404095c 13,32,35,154,204-206,210
+packages/connectors/src/types.ts
+  35d7b460d404095c 18-29,51-52
+packages/desktop/src/components/connectors/ConnectorsPage.tsx
+  35d7b460d404095c 312,318,672-674,679
+packages/connectors/src/google-drive/index.ts
+  35d7b460d404095c 2,13-17
+packages/connectors/src/airtable/index.ts
+  35d7b460d404095c 2,13-17
+packages/connectors/src/granola/index.ts
+  35d7b460d404095c 2,13-14
+packages/agent-config/src/config.ts
+  35d7b460d404095c 258
+packages/connectors/src/notion/index.ts
+  35d7b460d404095c 2,13-17
+packages/connectors/src/slack/index.ts
+  35d7b460d404095c 2,20-24,69-73
+packages/connectors/src/telegram/index.ts
+  35d7b460d404095c 2,14-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "8bb75288fadbcbe1f7fc2248760d8a441c18918c",
+  "prompts": {
+    "35d7b460d404095c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8c760af2-9f5f-49f2-a478-680270708b9d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 401,
+      "overriden_lines": 0
+    },
+    "6d1a34f961d845af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8a73fd7a-e154-4f5d-ab55-23e7ce174058",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 6,
+      "accepted_lines": 7025,
+      "overriden_lines": 0
+    }
+  }
+}
