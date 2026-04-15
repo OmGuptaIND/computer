@@ -1,0 +1,25 @@
+packages/agent-config/src/projects.ts
+  1543214574df0854 162
+packages/desktop/src/App.tsx
+  1543214574df0854 96,350,368
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "5416219cbff16e1ad408f3104461b1b39c8bbf39",
+  "prompts": {
+    "1543214574df0854": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3cd8b4c-57eb-450f-867c-ed1ce4b50f98",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 1633,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}
