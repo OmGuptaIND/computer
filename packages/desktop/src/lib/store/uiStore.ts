@@ -71,6 +71,10 @@ interface UIState {
   sendTerminalResize: (id: string, cols: number, rows: number) => void
   sendFilesystemList: (path: string, showHidden?: boolean) => void
 
+  // Notifications
+  notificationsEnabled: boolean
+  setNotificationsEnabled: (enabled: boolean) => void
+
   // Reset
   reset: () => void
 }
@@ -189,6 +193,13 @@ export const uiStore = create<UIState>((set, get) => ({
   sendTerminalData: (id, data) => connection.sendTerminalData(id, data),
   sendTerminalResize: (id, cols, rows) => connection.sendTerminalResize(id, cols, rows),
   sendFilesystemList: (path, showHidden) => connection.sendFilesystemList(path, showHidden),
+
+  // Notifications — persisted via localStorage
+  notificationsEnabled: localStorage.getItem('anton-notifications') !== 'false', // default on
+  setNotificationsEnabled: (enabled) => {
+    localStorage.setItem('anton-notifications', String(enabled))
+    set({ notificationsEnabled: enabled })
+  },
 
   // Reset — preserves theme, devMode, and sidebar preferences
   reset: () =>
