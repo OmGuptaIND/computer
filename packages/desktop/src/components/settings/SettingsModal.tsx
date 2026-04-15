@@ -86,6 +86,8 @@ function GeneralPage() {
   const setDevMode = uiStore((s) => s.setDevMode)
   const timezone = uiStore((s) => s.timezone)
   const setTimezone = uiStore((s) => s.setTimezone)
+  const notificationsEnabled = uiStore((s) => s.notificationsEnabled)
+  const setNotificationsEnabled = uiStore((s) => s.setNotificationsEnabled)
 
   const appearanceOptions: { key: AppearanceMode; label: string; icon: React.ReactNode }[] = [
     { key: 'light', label: 'Light', icon: <Sun size={16} strokeWidth={1.5} /> },
@@ -162,6 +164,24 @@ function GeneralPage() {
       {/* Communication preferences */}
       <section className="settings-section">
         <div className="settings-section__label">Communication preferences</div>
+
+        <div className="settings-toggle-row">
+          <div className="settings-toggle-row__info">
+            <div className="settings-toggle-row__title">Task completion notifications</div>
+            <div className="settings-toggle-row__desc">
+              Show a desktop notification when Anton finishes a task and the window is not focused.
+            </div>
+          </div>
+          <button
+            type="button"
+            className={`settings-toggle${notificationsEnabled ? ' settings-toggle--on' : ''}`}
+            onClick={() => setNotificationsEnabled(!notificationsEnabled)}
+            role="switch"
+            aria-checked={notificationsEnabled}
+          >
+            <span className="settings-toggle__knob" />
+          </button>
+        </div>
 
         <div className="settings-toggle-row">
           <div className="settings-toggle-row__info">

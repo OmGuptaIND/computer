@@ -4,6 +4,7 @@
 
 import type { AiMessage } from '@anton/protocol'
 import { updateCacheEntry } from '../../conversationCache.js'
+import { notify } from '../../notifications.js'
 import { useStore } from '../../store.js'
 import { artifactStore } from '../artifactStore.js'
 import { projectStore } from '../projectStore.js'
@@ -11,6 +12,13 @@ import { sessionStore } from '../sessionStore.js'
 import type { SessionMeta } from '../types.js'
 import { uiStore } from '../uiStore.js'
 import type { MessageContext } from './shared.js'
+
+/** Guard: only fire notification if notifications are enabled in settings. */
+function maybeNotify(event: Parameters<typeof notify>[0]) {
+  if (uiStore.getState().notificationsEnabled) {
+    notify(event)
+  }
+}
 
 export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): boolean {
   switch (msg.type) {
@@ -25,6 +33,7 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
             sessionId: sid,
           },
         })
+        maybeNotify({ type: 'confirm', command: msg.command, sessionId: sid })
       }
       return true
     }
@@ -40,6 +49,7 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
             sessionId: sid,
           },
         })
+        maybeNotify({ type: 'plan_confirm', planTitle: msg.title, sessionId: sid })
       }
       return true
     }
@@ -54,6 +64,8 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
             sessionId: sid,
           },
         })
+        const firstQuestion = msg.questions?.[0]?.question || 'Anton needs your input'
+        maybeNotify({ type: 'ask_user', question: firstQuestion, sessionId: sid })
       }
       return true
     }
@@ -91,6 +103,7 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
           timestamp: Date.now(),
         })
         ss.updateSessionState(sid, { isStreaming: false, status: 'error' })
+        maybeNotify({ type: 'error', message: msg.message, sessionId: sid })
       } else {
         console.warn(
           '[WS] Received error without sessionId, not adding to conversation:',
@@ -192,6 +205,11 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
           isError: true,
           timestamp: Date.now(),
         })
+      }
+
+      // Notify on successful completion
+      if (wasWorking && !noResponse) {
+        maybeNotify({ type: 'done', title: doneConv?.title, sessionId: doneSessionId })
       }
 
       if (doneSessionId) {

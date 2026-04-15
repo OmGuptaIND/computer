@@ -3348,6 +3348,29 @@ export class AgentServer {
         'Turn complete',
       )
 
+      // Fire-and-forget: OS notification when turn finishes.
+      // Desktop clients handle their own notifications via Tauri plugin,
+      // so this only fires for headless / CLI-only runs (no connected GUI client).
+      if (!this.activeClient && toolCallCount > 0) {
+        const title = session.getInfo().title || 'Task completed'
+        try {
+          if (process.platform === 'darwin') {
+            // Use spawn (non-blocking) + pass args as array (no shell escaping needed)
+            spawn('osascript', [
+              '-e',
+              `display notification ${JSON.stringify(title)} with title "Anton" sound name "Glass"`,
+            ], { stdio: 'ignore', detached: true }).unref()
+          } else {
+            spawn('notify-send', ['Anton', title], {
+              stdio: 'ignore',
+              detached: true,
+            }).unref()
+          }
+        } catch {
+          // Non-critical — silently ignore notification failures
+        }
+      }
+
       // Fire-and-forget: background memory extraction
       session.maybeExtractMemories().catch((err) => {
         log.warn({ err, sessionId }, 'background memory extraction failed')
