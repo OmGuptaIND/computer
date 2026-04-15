@@ -38,7 +38,7 @@
   --shadow-md: 0 16px 40px rgba(0, 0, 0, 0.22);
 
   /* Typography */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", Menlo, monospace;
   --font-serif: "Iowan Old Style", Georgia, "Times New Roman", serif;
 
@@ -4124,51 +4124,156 @@ button {
   justify-content: center;
   background: var(--bg);
   position: relative;
+  overflow: hidden;
+}
+
+/* Canvas particle background */
+.connect-canvas {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Auto-connect screen */
+.connect-auto {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  z-index: 1;
+}
+
+.connect-auto__status {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
+}
+
+.connect-auto__switch {
+  font-size: 13px;
+  color: var(--text-subtle);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 8px;
+  transition: color 0.15s ease, background 0.15s ease;
+  font-family: var(--font-sans);
+}
+
+.connect-auto__switch:hover {
+  color: var(--text-muted);
+  background: rgba(var(--overlay), 0.06);
 }
 
 .connect-brand {
   position: absolute;
-  top: 18px;
-  left: 22px;
+  top: 22px;
+  left: 28px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  z-index: 1;
 }
 
 .connect-brand__text {
-  font-size: 19px;
-  font-weight: 400;
-  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 500;
+  font-family: var(--font-sans);
   color: var(--text-muted);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
 .connect-center {
   width: 100%;
-  max-width: 400px;
+  max-width: 380px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 0 24px;
+  align-items: stretch;
+  z-index: 1;
 }
 
-/* Legacy connect-logo (now using connect-brand at top-left) */
-
 .connect-heading {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 600;
   color: var(--text);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   margin-bottom: 8px;
-  text-align: center;
+  font-family: var(--font-sans);
+  line-height: 1.2;
 }
 
 .connect-subheading {
   font-size: 14px;
   color: var(--text-muted);
-  text-align: center;
   margin-bottom: 28px;
-  line-height: 1.5;
+  line-height: 1.55;
+}
+
+/* "Connect a new machine" button */
+.connect-new-machine-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  margin-top: 8px;
+  border-radius: 10px;
+  border: 1px dashed rgba(var(--overlay), 0.12);
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.connect-new-machine-btn:hover {
+  color: var(--text-muted);
+  border-color: rgba(var(--overlay), 0.2);
+  background: rgba(var(--overlay), 0.03);
+}
+
+/* Back to saved machines */
+.connect-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  margin-bottom: 20px;
+  background: none;
+  border: none;
+  color: var(--text-subtle);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.connect-back-btn:hover {
+  color: var(--text-muted);
+}
+
+/* Form field with label */
+.connect-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.connect-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
 }
 
 /* Saved machines */
@@ -4216,6 +4321,8 @@ button {
   font-size: 14px;
   font-weight: 500;
   color: var(--text);
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
 }
 
 .connect-saved__host {
@@ -4229,25 +4336,6 @@ button {
   height: 14px;
   color: var(--text-subtle);
   flex-shrink: 0;
-}
-
-.connect-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 16px 0;
-}
-
-.connect-divider__line {
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-
-.connect-divider__text {
-  font-size: 12px;
-  color: var(--text-subtle);
-  white-space: nowrap;
 }
 
 /* Mode tabs */
@@ -4274,6 +4362,7 @@ button {
   color: var(--text-subtle);
   font-size: 13px;
   font-weight: 500;
+  font-family: var(--font-sans);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -4302,20 +4391,21 @@ button {
 
 .connect-input {
   width: 100%;
-  height: 46px;
+  height: 44px;
   padding: 0 14px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: rgba(var(--overlay), 0.04);
+  border-radius: 10px;
+  border: 1px solid rgba(var(--overlay), 0.1);
+  background: rgba(var(--overlay), 0.06);
   color: var(--text);
   font-size: 14px;
+  font-family: var(--font-sans);
   outline: none;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .connect-input:focus {
-  border-color: rgba(var(--overlay), 0.18);
-  background: rgba(var(--overlay), 0.06);
+  border-color: rgba(var(--overlay), 0.25);
+  background: rgba(var(--overlay), 0.08);
 }
 
 .connect-input::placeholder {
@@ -4439,14 +4529,16 @@ button {
   justify-content: center;
   gap: 8px;
   width: 100%;
-  height: 46px;
+  height: 44px;
   margin-top: 6px;
-  border-radius: 12px;
+  border-radius: 10px;
   border: none;
   background: var(--send-bg);
   color: var(--send-text);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
   cursor: pointer;
   transition: background 0.15s ease, opacity 0.15s ease;
 }
@@ -12890,6 +12982,7 @@ button {
   }
 }
 
+/* ── Welcome Modal (Tab-based Onboarding) ── */
 .welcome-modal {
   position: fixed;
   inset: 0;
@@ -12903,14 +12996,14 @@ button {
 .welcome-modal__overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(24px);
 }
 
 .welcome-modal__container {
   position: relative;
   width: 100%;
-  max-width: 560px;
+  max-width: 520px;
   border-radius: var(--radius-xl);
   border: 1px solid var(--border-strong);
   background: var(--bg-elevated);
@@ -12922,41 +13015,60 @@ button {
   animation-delay: 0.05s;
 }
 
-/* Progress dots */
-.welcome-modal__progress {
+/* Tab navigation */
+.welcome-modal__tabs {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 20px 24px 0;
+  gap: 2px;
+  padding: 16px 24px 0;
+  border-bottom: 1px solid var(--border);
 }
 
-.welcome-modal__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: rgba(var(--overlay), 0.1);
+.welcome-modal__tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-subtle);
+  background: none;
   border: none;
-  padding: 0;
   cursor: default;
-  transition: all 0.3s ease;
+  position: relative;
+  transition: color 0.15s ease;
+  letter-spacing: 0;
+  font-family: var(--font-sans);
 }
 
-.welcome-modal__dot--active {
-  background: var(--text);
-  width: 24px;
-  border-radius: 4px;
-}
-
-.welcome-modal__dot--done {
-  background: rgba(var(--overlay), 0.25);
+.welcome-modal__tab--done {
+  color: var(--text-muted);
   cursor: pointer;
+}
+
+.welcome-modal__tab--done:hover {
+  color: var(--text);
+}
+
+.welcome-modal__tab--active {
+  color: var(--text);
+}
+
+.welcome-modal__tab--active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 14px;
+  right: 14px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 2px 2px 0 0;
 }
 
 /* Body */
 .welcome-modal__body {
-  padding: 20px 28px;
-  min-height: 360px;
+  padding: 24px 28px 8px;
+  min-height: 380px;
   display: flex;
   align-items: flex-start;
   overflow-y: auto;
@@ -12969,83 +13081,74 @@ button {
   flex-direction: column;
 }
 
-/* Hero (step 1) */
+/* Hero (step 1 logo) */
 .welcome-modal__hero {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 12px;
-  margin-bottom: 28px;
+  align-items: flex-start;
+  margin-bottom: 20px;
 }
 
 .welcome-modal__logo-ring {
-  position: relative;
-  width: 72px;
-  height: 72px;
-  border-radius: 20px;
-  background: rgba(var(--overlay), 0.04);
-  border: 1px solid rgba(var(--overlay), 0.08);
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: rgba(var(--overlay), 0.06);
+  border: 1px solid rgba(var(--overlay), 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 2px;
 }
 
-.welcome-modal__logo-glow {
-  position: absolute;
-  inset: -16px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(var(--overlay), 0.06) 0%, transparent 70%);
-  pointer-events: none;
-}
-
+/* Title */
 .welcome-modal__title {
   font-size: 22px;
   font-weight: 600;
   color: var(--text);
-  letter-spacing: -0.02em;
-  margin: 0;
+  letter-spacing: -0.03em;
+  margin: 0 0 8px;
+  line-height: 1.2;
+  font-family: var(--font-sans);
 }
 
+/* Subtitle */
 .welcome-modal__subtitle {
   font-size: 14px;
-  line-height: 1.5;
-  color: var(--text);
-  opacity: 0.7;
-  max-width: 360px;
-  margin: 0;
+  line-height: 1.55;
+  color: var(--text-muted);
+  margin: 0 0 24px;
+  max-width: 420px;
 }
 
-/* Role cards (step 1) */
+/* Role cards */
 .welcome-modal__roles {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .welcome-modal__role {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   padding: 14px 16px;
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   background: rgba(var(--overlay), 0.04);
   border: 1px solid rgba(var(--overlay), 0.08);
   cursor: pointer;
   transition: all 0.15s ease;
   text-align: left;
+  font-family: var(--font-sans);
 }
 
 .welcome-modal__role:hover {
-  background: rgba(var(--overlay), 0.1);
-  border-color: rgba(var(--overlay), 0.18);
-  transform: translateY(-1px);
+  background: rgba(var(--overlay), 0.08);
+  border-color: rgba(var(--overlay), 0.14);
 }
 
 .welcome-modal__role--selected {
-  background: rgba(var(--overlay), 0.12);
-  border-color: rgba(var(--overlay), 0.25);
+  background: rgba(var(--overlay), 0.1);
+  border-color: rgba(var(--overlay), 0.22);
 }
 
 .welcome-modal__role-icon {
@@ -13068,48 +13171,34 @@ button {
 .welcome-modal__role-text {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
+  flex: 1;
 }
 
 .welcome-modal__role-label {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--text);
-}
-
-.welcome-modal__role-desc {
-  font-size: 11.5px;
-  color: var(--text-muted);
-  line-height: 1.3;
-}
-
-/* Section header */
-.welcome-modal__section-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.welcome-modal__section-header svg {
-  color: var(--text-muted);
-}
-
-.welcome-modal__section-header h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text);
-  margin: 0;
   letter-spacing: -0.01em;
 }
 
-.welcome-modal__section-subtitle {
-  font-size: 13.5px;
-  line-height: 1.5;
-  color: var(--text);
-  opacity: 0.65;
-  margin: 0 0 18px;
+.welcome-modal__role-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.welcome-modal__role-check {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 /* Prompts (step 2) */
@@ -13125,13 +13214,13 @@ button {
   align-items: flex-start;
   gap: 10px;
   padding: 12px 14px;
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   background: rgba(var(--overlay), 0.04);
   border: 1px solid rgba(var(--overlay), 0.07);
   font-size: 13px;
   color: var(--text);
-  opacity: 0.85;
-  line-height: 1.4;
+  line-height: 1.45;
+  font-family: var(--font-sans);
 }
 
 .welcome-modal__prompt-icon {
@@ -13140,53 +13229,30 @@ button {
   color: var(--text-subtle);
 }
 
-/* Project features (step 3) */
-.welcome-modal__features {
+/* Info block (replaces "why anton") */
+.welcome-modal__info-block {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.welcome-modal__info-items {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
-.welcome-modal__feature {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 16px;
-  border-radius: var(--radius-md);
-  background: rgba(var(--overlay), 0.04);
-  border: 1px solid rgba(var(--overlay), 0.07);
-}
-
-.welcome-modal__feature-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: rgba(var(--overlay), 0.08);
+.welcome-modal__info-item {
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  gap: 10px;
+  font-size: 13px;
   color: var(--text-muted);
+  line-height: 1.4;
 }
 
-.welcome-modal__feature-text {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.welcome-modal__feature-title {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.welcome-modal__feature-desc {
-  font-size: 12.5px;
-  color: var(--text);
-  opacity: 0.65;
-  line-height: 1.45;
+.welcome-modal__info-item svg {
+  flex-shrink: 0;
+  color: var(--text-subtle);
 }
 
 /* Connectors grid */
@@ -13203,7 +13269,7 @@ button {
   align-items: center;
   gap: 6px;
   padding: 14px 8px;
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   background: rgba(var(--overlay), 0.04);
   border: 1px solid rgba(var(--overlay), 0.07);
   transition: all 0.15s ease;
@@ -13215,9 +13281,11 @@ button {
 }
 
 .welcome-modal__connector span {
-  font-size: 10.5px;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-muted);
   white-space: nowrap;
+  font-family: var(--font-sans);
 }
 
 /* Connector highlight callout */
@@ -13226,7 +13294,7 @@ button {
   align-items: flex-start;
   gap: 12px;
   padding: 14px 16px;
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   background: rgba(42, 171, 238, 0.06);
   border: 1px solid rgba(42, 171, 238, 0.12);
 }
@@ -13247,13 +13315,13 @@ button {
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
+  font-family: var(--font-sans);
 }
 
 .welcome-modal__connector-highlight-desc {
   font-size: 12px;
-  color: var(--text);
-  opacity: 0.65;
-  line-height: 1.45;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 
 /* Provider logos in setup note */
@@ -13268,27 +13336,9 @@ button {
   border-radius: 3px;
 }
 
-/* Screenshot placeholder */
-.welcome-modal__screenshot-placeholder {
-  border-radius: var(--radius-md);
-  background: rgba(var(--overlay), 0.03);
-  border: 1px dashed rgba(var(--overlay), 0.12);
-  padding: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  color: var(--text-subtle);
-}
-
-.welcome-modal__screenshot-placeholder--large {
-  padding: 48px 32px;
-  margin-bottom: 16px;
-}
-
-/* Screenshot image (replaces placeholder) */
+/* Screenshot image */
 .welcome-modal__screenshot {
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   overflow: hidden;
   border: 1px solid rgba(var(--overlay), 0.08);
 }
@@ -13310,7 +13360,7 @@ button {
   font-size: 12px;
   color: var(--text-subtle);
   padding: 10px 14px;
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   background: rgba(var(--overlay), 0.02);
   border: 1px solid rgba(var(--overlay), 0.05);
 }
@@ -13318,46 +13368,6 @@ button {
 .welcome-modal__setup-note svg {
   flex-shrink: 0;
   color: var(--text-subtle);
-}
-
-/* Why Anton section */
-.welcome-modal__why {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-
-.welcome-modal__why-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-subtle);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.welcome-modal__why-items {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.welcome-modal__why-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: 12.5px;
-  line-height: 1.4;
-  color: var(--text);
-  opacity: 0.75;
-}
-
-.welcome-modal__why-item svg {
-  flex-shrink: 0;
-  margin-top: 2px;
-  color: var(--success);
 }
 
 /* Footer */
@@ -13372,13 +13382,15 @@ button {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 20px;
+  padding: 10px 22px;
   border-radius: 12px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   border: none;
   cursor: pointer;
   transition: all 0.15s ease;
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
 }
 
 .welcome-modal__btn--primary {
@@ -13399,15 +13411,6 @@ button {
 .welcome-modal__btn--secondary:hover {
   background: rgba(var(--overlay), 0.12);
   color: var(--text);
-}
-
-.welcome-modal__btn--ghost {
-  background: transparent;
-  color: var(--text-subtle);
-}
-
-.welcome-modal__btn--ghost:hover {
-  color: var(--text-muted);
 }
 
 /* ══════════════════════════════════════════════════════════════════════

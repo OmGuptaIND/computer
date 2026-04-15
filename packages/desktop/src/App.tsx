@@ -25,6 +25,7 @@ import { SettingsModal } from './components/settings/SettingsModal.js'
 import { SkillsPanel } from './components/skills/SkillsPanel.js'
 import { WorkflowsPage } from './components/workflows/WorkflowsPage.js'
 import { connection } from './lib/connection.js'
+import { initNotifications, setNavigationHandler } from './lib/notifications.js'
 import { sanitizeTitle } from './lib/conversations.js'
 import { useConnectionStatus, useStore } from './lib/store.js'
 import { artifactStore } from './lib/store/artifactStore.js'
@@ -86,6 +87,19 @@ export function App() {
       return () => mq.removeEventListener('change', handler)
     }
   }, [theme])
+
+  // Request notification permission + wire click-to-navigate on mount
+  useEffect(() => {
+    initNotifications()
+    setNavigationHandler((sessionId) => {
+      const store = useStore.getState()
+      const conv = store.findConversationBySession(sessionId)
+      if (conv) {
+        store.switchConversation(conv.id)
+        uiStore.getState().setActiveView('chat')
+      }
+    })
+  }, [])
 
   // If the active conversation belongs to a project, find the project
   const activeConvProjectId = activeConv?.projectId
