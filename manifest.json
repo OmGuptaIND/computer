@@ -1,12 +1,12 @@
 {
-  "version": "1.0.56",
-  "gitHash": "6585f66",
+  "version": "1.0.57",
+  "gitHash": "",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
-  "changelog": "Features:\n- publish modal improvements and connection domain support\n- add Pages view for managing published pages\n- publish modal with metadata tracking, view counting, and slug collision detection\n\nFixes:\n- tighten research sub-agent with tool whitelists, budgets, and call limits\n- remove dedicated ProjectView UI and consolidate into HomeView\n- improve Telegram connector UI and fix Exa OAuth missing domain\n- resolve missing domain param in web search OAuth and rename DOMAIN to ANTON_HOST\n\nAdded:\n- stuff\n\nOther:\n- restore: undo accidental mass deletion from bcef5a6",
-  "publishedAt": "2026-04-15T11:40:06.876Z",
-  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.56/anton-cli.mjs",
+  "changelog": "Chores:\n- fix lint issues across packages",
+  "publishedAt": "2026-04-15T11:57:30.517Z",
+  "cli": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.57/anton-cli.mjs",
   "sidecar": {
-    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.56/anton-sidecar-linux-arm64",
-    "linux-amd64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.56/anton-sidecar-linux-amd64"
+    "linux-arm64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.57/anton-sidecar-linux-arm64",
+    "linux-amd64": "https://github.com/OmGuptaIND/computer/releases/download/v1.0.57/anton-sidecar-linux-amd64"
   }
 }

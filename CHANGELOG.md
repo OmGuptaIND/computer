@@ -10,6 +10,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ---
 
+## [1.0.57] - 2026-04-15
+
+### Chores
+- fix lint issues across packages
+---
+
 ## [1.0.56] - 2026-04-15
 
 ### Features
@@ -565,7 +571,8 @@ Maintenance release.
 
 ---
 
-[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.56...HEAD
+[Unreleased]: https://github.com/OmGuptaIND/computer/compare/v1.0.57...HEAD
+[1.0.57]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.57
 [1.0.56]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.56
 [1.0.55]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.55
 [1.0.54]: https://github.com/OmGuptaIND/computer/compare/v$(changelog.match(/## [(d+.d+.d+)]/g)[1].match(/d+.d+.d+/)[0])...v1.0.54
