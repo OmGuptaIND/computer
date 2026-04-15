@@ -1,0 +1,49 @@
+packages/desktop/src/lib/store/uiStore.ts
+  e0e349ab18355d64 74-77,197-203
+packages/desktop/src/lib/notifications.ts
+  e0e349ab18355d64 1-93,95-173,177-189,192-265
+  50e1be18bc636fd0 94,174-176,190-191
+packages/agent-server/src/server.ts
+  e0e349ab18355d64 3351-3372
+packages/desktop/src-tauri/capabilities/default.json
+  e0e349ab18355d64 1-16
+packages/desktop/src/App.tsx
+  e0e349ab18355d64 28,92-104
+packages/desktop/src/lib/store/handlers/interactionHandler.ts
+  e0e349ab18355d64 7,16-22,36,52,67-68,106,210-214
+packages/desktop/src/components/settings/SettingsModal.tsx
+  e0e349ab18355d64 89-90,170-185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "46fbe3f3ea2281cc2f519480b4f1c7c467a1f140",
+  "prompts": {
+    "50e1be18bc636fd0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9660e045-7831-4f94-9fce-ce51978b4f9b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 3,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "e0e349ab18355d64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "76709610-930e-4cc3-b5bd-e0b5c572f927",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 463,
+      "total_deletions": 99,
+      "accepted_lines": 361,
+      "overriden_lines": 0
+    }
+  }
+}
