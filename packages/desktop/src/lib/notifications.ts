@@ -258,7 +258,7 @@ function fireNotification(title: string, body: string) {
 function bounceDock() {
   if (!tauriGetCurrentWindow) return
   try {
-    tauriGetCurrentWindow().requestUserAttention(2) // Informational = single bounce
+    tauriGetCurrentWindow().requestUserAttention(2).catch(() => {}) // Informational = single bounce
   } catch {
     // Non-critical
   }
