@@ -3,11 +3,11 @@ import {
   Bot,
   Briefcase,
   Check,
-  FolderOpen,
   GraduationCap,
   Link2,
   Megaphone,
   Rocket,
+  Settings,
   User,
   Zap,
 } from 'lucide-react'
@@ -81,31 +81,6 @@ const rolePrompts: Record<Role, string[]> = {
   ],
 }
 
-const whyAnton = [
-  "True agentic AI. Anton doesn't just suggest code, it executes, deploys, and manages it.",
-  "Always running. Autonomous agents work 24/7 on your server, even when you're not looking.",
-  'Your server, your data. Everything runs on your machine. No data leaves, no security risks.',
-  'Fully open source. No black boxes, no vendor lock-in. You own everything.',
-]
-
-const projectFeatures = [
-  {
-    icon: Bot,
-    title: 'Autonomous Agents',
-    desc: 'Create agents that run on a schedule. Monitor your servers, scrape data, post reports. They work while you sleep.',
-  },
-  {
-    icon: FolderOpen,
-    title: 'Persistent Context',
-    desc: 'Every project remembers its files, conversations, and history. Pick up right where you left off.',
-  },
-  {
-    icon: Zap,
-    title: 'Real Execution',
-    desc: 'Not just suggestions. Projects have real access to your terminal, databases, APIs, and deployment pipelines.',
-  },
-]
-
 const connectorShowcase = [
   { id: 'slack', name: 'Slack' },
   { id: 'github', name: 'GitHub' },
@@ -120,11 +95,10 @@ const connectorShowcase = [
 ]
 
 const steps = [
-  { id: 'role', label: 'About you' },
-  { id: 'prompts', label: 'Try these' },
-  { id: 'projects', label: 'Projects' },
-  { id: 'connectors', label: 'Connectors' },
-  { id: 'model', label: 'Setup' },
+  { id: 'role', label: 'About You', icon: User },
+  { id: 'prompts', label: 'Try These', icon: Rocket },
+  { id: 'connectors', label: 'Connect', icon: Link2 },
+  { id: 'model', label: 'Setup', icon: Settings },
 ] as const
 
 type StepId = (typeof steps)[number]['id']
@@ -149,9 +123,6 @@ export function WelcomeModal({ open, onClose, onOpenSettings }: Props) {
 
   const handleRoleSelect = useCallback((role: Role) => {
     setSelectedRole(role)
-    setTimeout(() => {
-      setCurrentStep('prompts')
-    }, 200)
   }, [])
 
   const handleGetStarted = useCallback(() => {
@@ -177,18 +148,20 @@ export function WelcomeModal({ open, onClose, onOpenSettings }: Props) {
       <div className="welcome-modal__overlay" />
 
       <div className="welcome-modal__container">
-        {/* Progress dots */}
-        <div className="welcome-modal__progress">
+        {/* Tab navigation */}
+        <div className="welcome-modal__tabs">
           {steps.map((step, i) => (
             <button
               key={step.id}
               type="button"
-              className={`welcome-modal__dot${i === stepIndex ? ' welcome-modal__dot--active' : i < stepIndex ? ' welcome-modal__dot--done' : ''}`}
+              className={`welcome-modal__tab${i === stepIndex ? ' welcome-modal__tab--active' : ''}${i < stepIndex ? ' welcome-modal__tab--done' : ''}`}
               onClick={() => {
-                if (i < stepIndex) setCurrentStep(step.id)
+                if (i <= stepIndex) setCurrentStep(step.id)
               }}
-              aria-label={step.label}
-            />
+            >
+              <step.icon size={15} strokeWidth={1.5} />
+              <span>{step.label}</span>
+            </button>
           ))}
         </div>
 
@@ -199,17 +172,15 @@ export function WelcomeModal({ open, onClose, onOpenSettings }: Props) {
             <div className="welcome-modal__step">
               <div className="welcome-modal__hero">
                 <div className="welcome-modal__logo-ring">
-                  <div className="welcome-modal__logo-glow" />
-                  <AntonLogo size={48} />
+                  <AntonLogo size={40} />
                 </div>
-
-                <h1 className="welcome-modal__title">Welcome to Anton</h1>
-
-                <p className="welcome-modal__subtitle">
-                  A computer that thinks. Tell us about yourself so we can personalize your
-                  experience.
-                </p>
               </div>
+
+              <h1 className="welcome-modal__title">Welcome to Anton</h1>
+              <p className="welcome-modal__subtitle">
+                This is your AI-powered computer. Tell us a bit about yourself so we can personalize
+                your experience.
+              </p>
 
               <div className="welcome-modal__roles">
                 {roles.map((role) => (
@@ -226,20 +197,22 @@ export function WelcomeModal({ open, onClose, onOpenSettings }: Props) {
                       <span className="welcome-modal__role-label">{role.label}</span>
                       <span className="welcome-modal__role-desc">{role.desc}</span>
                     </div>
+                    {selectedRole === role.id && (
+                      <div className="welcome-modal__role-check">
+                        <Check size={14} strokeWidth={2} />
+                      </div>
+                    )}
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Step 2: Try these prompts + Why Anton */}
+          {/* Step 2: Try these prompts */}
           {currentStep === 'prompts' && (
             <div className="welcome-modal__step">
-              <div className="welcome-modal__section-header">
-                <h2>{stepTwoHeading}</h2>
-              </div>
-
-              <p className="welcome-modal__section-subtitle">
+              <h1 className="welcome-modal__title">{stepTwoHeading}</h1>
+              <p className="welcome-modal__subtitle">
                 Here are some things you can ask Anton to do. Just type and it handles the rest.
               </p>
 
@@ -252,58 +225,26 @@ export function WelcomeModal({ open, onClose, onOpenSettings }: Props) {
                 ))}
               </div>
 
-              <div className="welcome-modal__why">
-                <span className="welcome-modal__why-title">Why Anton is different</span>
-                <div className="welcome-modal__why-items">
-                  {whyAnton.map((item) => (
-                    <div key={item} className="welcome-modal__why-item">
-                      <Check size={14} strokeWidth={2} />
-                      <span>{item}</span>
-                    </div>
-                  ))}
+              <div className="welcome-modal__info-block">
+                <div className="welcome-modal__info-items">
+                  <div className="welcome-modal__info-item">
+                    <Bot size={16} strokeWidth={1.5} />
+                    <span>Autonomous agents run 24/7, even when you're not looking</span>
+                  </div>
+                  <div className="welcome-modal__info-item">
+                    <Zap size={16} strokeWidth={1.5} />
+                    <span>Real execution - not just suggestions, actual deployments</span>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Step 3: Projects */}
-          {currentStep === 'projects' && (
-            <div className="welcome-modal__step">
-              <div className="welcome-modal__section-header">
-                <FolderOpen size={18} strokeWidth={1.5} />
-                <h2>Projects are powerful</h2>
-              </div>
-
-              <p className="welcome-modal__section-subtitle">
-                Projects are how you organize real work in Anton. Each project gets its own
-                workspace with persistent memory, autonomous agents, and full system access.
-              </p>
-
-              <div className="welcome-modal__features">
-                {projectFeatures.map((feat) => (
-                  <div key={feat.title} className="welcome-modal__feature">
-                    <div className="welcome-modal__feature-icon">
-                      <feat.icon size={18} strokeWidth={1.5} />
-                    </div>
-                    <div className="welcome-modal__feature-text">
-                      <span className="welcome-modal__feature-title">{feat.title}</span>
-                      <span className="welcome-modal__feature-desc">{feat.desc}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Step 4: Connectors */}
+          {/* Step 3: Connectors */}
           {currentStep === 'connectors' && (
             <div className="welcome-modal__step">
-              <div className="welcome-modal__section-header">
-                <Link2 size={18} strokeWidth={1.5} />
-                <h2>Connect your tools</h2>
-              </div>
-
-              <p className="welcome-modal__section-subtitle">
+              <h1 className="welcome-modal__title">Connect your tools</h1>
+              <p className="welcome-modal__subtitle">
                 Anton integrates with the tools you already use. Connect them and Anton can read,
                 write, and automate across all of them.
               </p>
@@ -324,25 +265,21 @@ export function WelcomeModal({ open, onClose, onOpenSettings }: Props) {
                     Talk to Anton from anywhere
                   </span>
                   <span className="welcome-modal__connector-highlight-desc">
-                    Connect Telegram in 2 steps and message Anton from your phone. It always works,
-                    even when your laptop is closed.
+                    Connect Telegram and message Anton from your phone. It always works, even when
+                    your laptop is closed.
                   </span>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Step 5: Set up model */}
+          {/* Step 4: Set up model */}
           {currentStep === 'model' && (
             <div className="welcome-modal__step">
-              <div className="welcome-modal__section-header">
-                <User size={18} strokeWidth={1.5} />
-                <h2>One last thing</h2>
-              </div>
-
-              <p className="welcome-modal__section-subtitle">
-                Anton needs an AI model to work. After connecting, click the model selector in the
-                chat input to choose your provider and add your API key.
+              <h1 className="welcome-modal__title">One last thing</h1>
+              <p className="welcome-modal__subtitle">
+                Anton needs an AI model to work. Click the model selector in the chat input to
+                choose your provider and add your API key.
               </p>
 
               <div className="welcome-modal__screenshot welcome-modal__screenshot--large">
@@ -362,9 +299,9 @@ export function WelcomeModal({ open, onClose, onOpenSettings }: Props) {
           )}
         </div>
 
-        {/* Footer - only show on steps after role selection */}
-        {currentStep !== 'role' && (
-          <div className="welcome-modal__footer">
+        {/* Footer */}
+        <div className="welcome-modal__footer">
+          {stepIndex > 0 ? (
             <button
               type="button"
               className="welcome-modal__btn welcome-modal__btn--secondary"
@@ -372,28 +309,40 @@ export function WelcomeModal({ open, onClose, onOpenSettings }: Props) {
             >
               Back
             </button>
+          ) : (
+            <div />
+          )}
 
-            {stepIndex < steps.length - 1 ? (
-              <button
-                type="button"
-                className="welcome-modal__btn welcome-modal__btn--primary"
-                onClick={goNext}
-              >
-                <span>Next</span>
-                <ArrowRight size={16} strokeWidth={1.5} />
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="welcome-modal__btn welcome-modal__btn--primary"
-                onClick={handleGetStarted}
-              >
-                <span>Get Started</span>
-                <ArrowRight size={16} strokeWidth={1.5} />
-              </button>
-            )}
-          </div>
-        )}
+          {stepIndex < steps.length - 1 ? (
+            <button
+              type="button"
+              className="welcome-modal__btn welcome-modal__btn--primary"
+              onClick={() => {
+                if (currentStep === 'role' && selectedRole) {
+                  goNext()
+                } else if (currentStep !== 'role') {
+                  goNext()
+                }
+              }}
+              style={{
+                opacity: currentStep === 'role' && !selectedRole ? 0.4 : 1,
+                pointerEvents: currentStep === 'role' && !selectedRole ? 'none' : 'auto',
+              }}
+            >
+              <span>Next</span>
+              <ArrowRight size={16} strokeWidth={1.5} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="welcome-modal__btn welcome-modal__btn--primary"
+              onClick={handleGetStarted}
+            >
+              <span>Get Started</span>
+              <ArrowRight size={16} strokeWidth={1.5} />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
