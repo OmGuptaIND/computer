@@ -1,6 +1,6 @@
 import {
   ArrowRight,
-  Bot,
+  Repeat,
   Briefcase,
   Check,
   FolderOpen,
@@ -90,9 +90,9 @@ const whyAnton = [
 
 const projectFeatures = [
   {
-    icon: Bot,
-    title: 'Autonomous Agents',
-    desc: 'Create agents that run on a schedule. Monitor your servers, scrape data, post reports. They work while you sleep.',
+    icon: Repeat,
+    title: 'Routines',
+    desc: 'Create routines that run on a schedule. Monitor your servers, scrape data, post reports. They work while you sleep.',
   },
   {
     icon: FolderOpen,
