@@ -3358,7 +3358,7 @@ export class AgentServer {
             // Use spawn (non-blocking) + pass args as array (no shell escaping needed)
             spawn('osascript', [
               '-e',
-              `display notification ${JSON.stringify(title)} with title "Anton" sound name "Glass"`,
+              `display notification ${JSON.stringify(title.replace(/\\/g, '\\\\').replace(/"/g, '\\"'))} with title "Anton" sound name "Glass"`,
             ], { stdio: 'ignore', detached: true }).unref()
           } else {
             spawn('notify-send', ['Anton', title], {
