@@ -1,6 +1,6 @@
 {
   "version": "1.0.57",
-  "gitHash": "",
+  "gitHash": "6ff7a69",
   "releaseUrl": "https://github.com/OmGuptaIND/computer/releases",
   "changelog": "Chores:\n- fix lint issues across packages",
   "publishedAt": "2026-04-15T11:57:30.517Z",
