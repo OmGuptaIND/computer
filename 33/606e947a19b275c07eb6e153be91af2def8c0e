@@ -1,0 +1,155 @@
+packages/desktop/src/lib/store/projectStore.ts
+  591d861704ec3754 2,6,31-36,62-63,72,88-89,99,101,104,127,144-148,182-186,238-239,246,257-262,282-283,293-297,314-316
+packages/mobile/app/settings.tsx
+  591d861704ec3754 17-18,21,77,79,84,86,95
+specs/features/agents/skills.md
+  2de7c339656c5b05 314
+packages/agent-core/src/compaction-prompt.ts
+  2de7c339656c5b05 8
+packages/protocol/src/projects.ts
+  591d861704ec3754 12,43,45,48,50-51,62-64,66,68,70,76,85,94,97-98,101,103-104
+packages/desktop/src/App.tsx
+  591d861704ec3754 4,14,115-116,271-272,353,355
+specs/features/core/session-sync-protocol.md
+  2de7c339656c5b05 233
+specs/features/agents/agents.md
+  2de7c339656c5b05 1,5,7,19,28,44,56,60,69,74,78,80,82,84,89,93,95,99,103,105,109,113,117-119,124,127-129,131,134-136,139,141,147-148,152,156,158-160,162,164-166,171-174,177-182,186,189,191,195,199,201,203-205
+specs/architecture/SESSIONS.md
+  2de7c339656c5b05 391,393-395,430,435
+specs/architecture/CONCURRENT_CONVERSATIONS.md
+  2de7c339656c5b05 91
+specs/operations/anton-test-prompts.md
+  2de7c339656c5b05 182,184
+packages/desktop/src/lib/store/index.ts
+  591d861704ec3754 32-33
+packages/desktop/src/components/chat/RoutineEmptyState.tsx
+  591d861704ec3754 1-317
+packages/mobile/src/lib/store/handlers/projectHandler.ts
+  591d861704ec3754 2,5,41-42,46-49,51,53-54,57,63,65,69
+specs/features/agents/workflows.md
+  2de7c339656c5b05 7,9,23,27,29,32,37,143,227-228,234,301,359
+packages/desktop/src/index.css
+  591d861704ec3754 6454,9660,9667,9670,9674,9679,9689,9697,9708,9717,9722,9727,9730,9738,9741,9745,9752,9759,9765,9778,9782,9786,9791,9794,9808,9811,9815,9820,9832,9845,9848,9866,9875,9878,9887,9894,9903,14838,15071,15078,15084,15096,15103,15111,15120,15127,15136,15144,15148,15152,15159,15167,15174,15181,15189,15195,15202,15212,15217,15221,15226,15230,15235,15240,16276,16283,16294,16298,16302,16310,16317,16326,16334,16341,16350,16363,16391,16395,16405,16411,16426,16431,16437,16444,16452,16459,16468,16474,16480,16488,16494,16509,16517,16526,16533,16541,16549,16553,16559,16564,16579,16583,16600,16607,16615,16621,16629,16632,16635,16638,16643,16650,16899,16905,16915,16919,16980,16990,16998
+packages/desktop/src/lib/store/types.ts
+  591d861704ec3754 56,58,137
+specs/architecture/ARCHITECTURE.md
+  2de7c339656c5b05 5,20,42,49,104,109,129,192,206,223,230,233,255,263,265,276
+packages/desktop/src/lib/store/sessionStore.ts
+  591d861704ec3754 18,44,52,186-188,373,380
+packages/mobile/src/lib/store/projectStore.ts
+  591d861704ec3754 2,16,28,39-40,58-59,63,70,79-81,90-91,98-99
+  2de7c339656c5b05 5,15,24
+specs/reference/GOALS.md
+  2de7c339656c5b05 23
+packages/desktop/src/lib/store/handlers/projectHandler.ts
+  591d861704ec3754 2,158-159,162,167,169-174,179,181-182,187,189,193-194,209-210,234,236,246,270,272
+  2de7c339656c5b05 271,273,275
+packages/desktop/src/components/routines/RoutineRunView.tsx
+  591d861704ec3754 1-455
+specs/features/agents/workflow-multi-agent-architecture.md
+  2de7c339656c5b05 5,7,9,34,36,38-39,44,46,49,61,64-65,67,70,72-73,75,110,113,119,123-124,149,153,158,168-169,175-177,193,203,210,218,222,224,230,232,236,244,246
+packages/protocol/src/messages.ts
+  2de7c339656c5b05 1015
+  591d861704ec3754 1,857,860-861,863,872-873,877-878,880,885-887,890-891,893,896-898,901-902,907-908,910-911,916-918,926-928,930,933,1386-1396,1464-1465,1497
+specs/features/core/TASK_TRACKER.md
+  2de7c339656c5b05 221,247
+packages/desktop/src/components/RoutineChat.tsx
+  591d861704ec3754 1-312
+packages/desktop/src/components/WelcomeModal.tsx
+  2de7c339656c5b05 3,93-95
+packages/desktop/src/components/chat/AskUserInline.tsx
+  591d861704ec3754 107-109,112-114,118,120-122,129-130,134-135,138-139,141,147-148,151-152,159,162,169,172,200-202,205-207,211-212,216-218,221-222,229,232,239,242
+  2de7c339656c5b05 2,110,219
+packages/mobile/src/lib/connection.ts
+  591d861704ec3754 230-231,234,239
+packages/desktop/src/lib/store/handlers/eventsHandler.ts
+  591d861704ec3754 17,40
+packages/agent-config/prompts/system.md
+  2de7c339656c5b05 1,394,398-399,410,415,417,422,424,426-429,431,433,437,441,444,449,458,463,465,467,473,475-477,479,488,517
+packages/agent-server/src/server.ts
+  591d861704ec3754 1392-1394,1396-1397,1399-1400,1402-1403,2304,2306,2308,2312,2319-2320,2326,2329,2331,2335,2337,2339,2343,2345,2354-2355,2359-2360,2364-2365,2371,2378,2387,2411,2431,2436,2438,2517,2585,2593,2599,2744,2747,2754-2755,2759,2770-2771,2776-2777,2782,2784,2788,2820,2824,2828,2831-2832,2893,2906,2908-2909,2911
+specs/architecture/project-context-and-memory.md
+  2de7c339656c5b05 13,39
+specs/README.md
+  2de7c339656c5b05 28
+packages/mobile/app/connect.tsx
+  591d861704ec3754 274
+specs/features/ui/TOOL_CALLS_UI.md
+  2de7c339656c5b05 54
+packages/desktop/src/components/chat/MessageList.tsx
+  591d861704ec3754 4,60
+specs/reference/project-first-architecture.md
+  2de7c339656c5b05 22,62,76,82,114,172,177,208
+specs/architecture/project-scoped-pages.md
+  2de7c339656c5b05 3,13,29,60,118,123-125,127,129-131,135-136,183,217,248,250,261,282,296,362,390
+packages/desktop/src/lib/store/handlers/toolHandler.ts
+  591d861704ec3754 63,133
+packages/desktop/src/components/chat/RoutineChatHeader.tsx
+  591d861704ec3754 1-55
+packages/desktop/src/components/routines/RoutinesView.tsx
+  591d861704ec3754 1-156
+packages/desktop/src/components/routines/RoutineDetailView.tsx
+  591d861704ec3754 1-403
+packages/desktop/src/components/routines/RoutineListView.tsx
+  2de7c339656c5b05 3,339
+  591d861704ec3754 1-2,4-338,340-480
+packages/desktop/src/components/Sidebar.tsx
+  591d861704ec3754 299-301
+  2de7c339656c5b05 4,298
+packages/desktop/src/components/ui/StatusIndicator.tsx
+  591d861704ec3754 2,6,14,49
+packages/desktop/src/lib/store.ts
+  591d861704ec3754 19,70-71,134,177,705,710,920
+packages/desktop/src/components/workflows/WorkflowStatusBanner.tsx
+  591d861704ec3754 1,27,36,42
+specs/features/ui/CONVERSATION_WORKSPACES.md
+  2de7c339656c5b05 181
+packages/mobile/app/projects.tsx
+  591d861704ec3754 26,52-54,88-89,91-93,95-99,103,105,107-108,112,142-143,153,156,272,278,281,286,291
+  2de7c339656c5b05 6,10,94
+specs/features/core/ARTIFACT_PUBLISHING.md
+  2de7c339656c5b05 260
+packages/agent-server/src/workflows/workflow-installer.ts
+  591d861704ec3754 86
+packages/desktop/src/lib/connection.ts
+  591d861704ec3754 322,324,326,334,337-338,341,346,349,357
+packages/agent-server/src/agents/agent-manager.ts
+  591d861704ec3754 23,47-48,56,106,115,140,162,166,175,186,272,282,293,348-349
+packages/agent-config/src/projects.ts
+  2de7c339656c5b05 23-24,33,688,702,732-733,743
+packages/agent-core/src/evals/workflow-prompts.ts
+  2de7c339656c5b05 2,5,101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "33606e947a19b275c07eb6e153be91af2def8c0e",
+  "prompts": {
+    "2de7c339656c5b05": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1ee049e-a6b7-4e80-8259-d0952707d0f7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 262,
+      "total_deletions": 261,
+      "accepted_lines": 256,
+      "overriden_lines": 0
+    },
+    "591d861704ec3754": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e778c223-a048-462d-9874-7e2b83379a35",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 3266,
+      "total_deletions": 769,
+      "accepted_lines": 2966,
+      "overriden_lines": 42
+    }
+  }
+}
