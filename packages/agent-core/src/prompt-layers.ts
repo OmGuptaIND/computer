@@ -1,20 +1,22 @@
 /**
- * Per-turn prompt assembly for the harness path.
+ * Prompt layer builders — single source of truth for every
+ * <system-reminder> block that both the Pi SDK Session and the harness
+ * path inject into the model's prompt.
  *
- * Mirrors the contextual layers Pi SDK's Session.getSystemPrompt() injects
- * via <system-reminder> tags — project context, memory, workflow catalog,
- * agent standing instructions, surface hints — so a Claude Code / Codex
- * turn sees the same Anton-owned state that a Pi SDK turn sees.
+ * `Session.getSystemPrompt()` calls these for the shared layers (memory,
+ * workflows, agent context, project memory instructions, surface). The
+ * harness assembles them into the string it passes via
+ * `--append-system-prompt` (Claude) / `-c instructions=…` (Codex),
+ * layered on top of the CLI's own core prompt.
  *
- * We intentionally do NOT re-emit the full CORE_SYSTEM_PROMPT here. The
- * CLIs already ship their own core instructions; the harness prompt is
- * appended (`--append-system-prompt` for Claude, `-c instructions=…` for
- * Codex) on top of the CLI's own prompt, so our job is to layer on
- * Anton-specific context only.
+ * Session-only layers (workspace rules, user rules, active skills,
+ * project type guidelines, reference knowledge, current context with
+ * platform/OS/sudo) live inline in session.ts — those don't apply to
+ * harness CLIs because the CLI has its own equivalents.
  */
 
-import type { MemoryData } from '../context.js'
-import type { SurfaceInfo } from '../session.js'
+import type { MemoryData } from './context.js'
+import type { SurfaceInfo } from './session.js'
 
 // ── Shared helper ───────────────────────────────────────────────────
 
@@ -144,18 +146,18 @@ export function buildWorkflowsLayer(workflows?: WorkflowEntry[]): string {
 
 /**
  * Current-surface hints for non-desktop surfaces (Slack, Telegram, etc.).
- * Reuses Pi SDK's renderSurfaceBlock wording so formatting rules don't drift.
  */
 export function buildSurfaceLayer(surface?: SurfaceInfo): string {
   if (!surface || surface.kind === 'desktop') return ''
-  return systemReminder('Current Surface', renderSurfaceBlockForHarness(surface))
+  return systemReminder('Current Surface', renderSurfaceBlock(surface))
 }
 
 /**
- * Kept private to this module; Session keeps its own copy.
- * Identical output — if either drifts, update both.
+ * Render the "Current Surface" system-reminder body. Short and
+ * directive — it appears on every turn for Slack / Telegram surfaces.
+ * Exported so Session can reuse it from a single location.
  */
-function renderSurfaceBlockForHarness(surface: SurfaceInfo): string {
+export function renderSurfaceBlock(surface: SurfaceInfo): string {
   const lines: string[] = []
   if (surface.label) {
     lines.push(`You are currently replying on ${surface.label}.`)

@@ -96,7 +96,7 @@ console.log(`\nAll ${cases.length} harness fixture checks passed`)
 // against an accidental rename of a <system-reminder> heading, which
 // would silently change prompt shape for the LLM.
 
-import { buildHarnessContextPrompt } from '../prompt-layers.js'
+import { buildHarnessContextPrompt } from '../../prompt-layers.js'
 
 interface LayerCase {
   name: string
@@ -285,3 +285,102 @@ if (regFailed > 0) {
 }
 
 console.log(`All ${registryCases.length} registry checks passed`)
+
+// ── Shared-layer byte-for-byte check ───────────────────────────────
+// Proves the layer builders produce the same <system-reminder> blocks
+// Session.getSystemPrompt used to inline. If a builder's wording drifts,
+// this fails loudly before a Pi SDK prompt regression ships.
+
+import {
+  buildMemoryLayer as _buildMemoryLayer,
+  buildWorkflowsLayer as _buildWorkflowsLayer,
+  buildAgentContextLayer as _buildAgentContextLayer,
+  buildProjectMemoryInstructionsLayer as _buildProjectMemoryInstructionsLayer,
+  buildSurfaceLayer as _buildSurfaceLayer,
+} from '../../prompt-layers.js'
+
+interface LayerSnapshot {
+  name: string
+  actual: string
+  expected: string
+}
+
+const layerSnapshots: LayerSnapshot[] = [
+  {
+    name: 'memory (all three buckets)',
+    actual: _buildMemoryLayer({
+      globalMemories: [{ key: 'prefer_short_replies', content: 'Keep answers brief.' }],
+      conversationMemories: [{ key: 'current_task', content: 'Fixing the login bug.' }],
+      crossConversationMemories: [
+        { key: 'deploy_cmd', content: 'pnpm deploy', source: 'sess_abc' },
+      ],
+    }),
+    expected:
+      '\n\n<system-reminder>\n# Memory\n' +
+      '## Global Memory\n\n' +
+      '### prefer_short_replies\nKeep answers brief.\n\n' +
+      '## Conversation Memory\n\n' +
+      '### current_task\nFixing the login bug.\n\n' +
+      '## Relevant Context (from other conversations)\n\n' +
+      '### deploy_cmd (from: sess_abc)\npnpm deploy\n</system-reminder>',
+  },
+  {
+    name: 'workflows',
+    actual: _buildWorkflowsLayer([
+      { name: 'triage-slack', description: 'Summarize unread DMs.', whenToUse: 'on slack request' },
+    ]),
+    expected:
+      '\n\n<system-reminder>\n# Available Workflows\n' +
+      'The following automation workflows are available for the user to install. ' +
+      "If the user's request matches a workflow, suggest it naturally in your response. " +
+      "Don't force it — only suggest when genuinely relevant. " +
+      'Mention the workflow by name and briefly describe what it does.\n\n' +
+      '### triage-slack\nSummarize unread DMs.\non slack request\n</system-reminder>',
+  },
+  {
+    name: 'agent context',
+    actual: _buildAgentContextLayer('Run the daily lead scan.', 'Last run: 2026-04-15, 3 leads.'),
+    expected:
+      '\n\n<system-reminder>\n# Agent Context\n' +
+      '## Standing Instructions\nYou are a scheduled agent. Execute these instructions on every run.\n' +
+      'Do NOT re-create scripts or tooling that you have already built in previous runs. Re-use existing work.\n' +
+      'If something is broken, fix it. If everything works, just run it.\n\n' +
+      'Run the daily lead scan.\n\n' +
+      '## Run History\nThis is your memory from previous runs. Use it to know what you\'ve already built, where scripts are, and what happened last time. Do NOT rebuild things that already exist.\n\n' +
+      'Last run: 2026-04-15, 3 leads.\n</system-reminder>',
+  },
+  {
+    name: 'project memory instructions',
+    actual: _buildProjectMemoryInstructionsLayer('proj_1'),
+    expected:
+      '\n\n<system-reminder>\n# Project Memory Instructions\n' +
+      'When you have completed meaningful work in this session (e.g. implemented a feature, fixed a bug, made a significant decision), call the update_project_context tool once near the end of the conversation with:\n' +
+      '- session_summary: A 1-2 sentence summary of what was accomplished\n' +
+      "- project_summary: An updated overall project summary (only if something significant changed about the project's state, goals, or architecture)\n" +
+      'Do not call this on every turn — only once per session when there is something worth remembering.\n</system-reminder>',
+  },
+  {
+    name: 'surface (desktop returns empty)',
+    actual: _buildSurfaceLayer({ kind: 'desktop' }),
+    expected: '',
+  },
+]
+
+let snapFailed = 0
+for (const s of layerSnapshots) {
+  if (s.actual === s.expected) {
+    console.log(`✓ snapshot: ${s.name}`)
+  } else {
+    snapFailed++
+    console.error(`✗ snapshot: ${s.name}`)
+    console.error('  expected:', JSON.stringify(s.expected))
+    console.error('  actual:  ', JSON.stringify(s.actual))
+  }
+}
+
+if (snapFailed > 0) {
+  console.error(`\n${snapFailed}/${layerSnapshots.length} snapshot checks failed`)
+  process.exit(1)
+}
+
+console.log(`All ${layerSnapshots.length} snapshot checks passed`)

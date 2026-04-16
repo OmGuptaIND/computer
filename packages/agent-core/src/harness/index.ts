@@ -17,6 +17,9 @@ export {
   type AntonToolRegistryOpts,
   type HarnessSessionContext,
 } from './tool-registry.js'
+// Prompt layer builders moved out of harness/ because Session uses them too.
+// Re-exported here so external callers that still import from
+// '@anton/agent-core/harness' keep working.
 export {
   buildHarnessContextPrompt,
   buildCurrentContextLayer,
@@ -28,4 +31,4 @@ export {
   systemReminder,
   type HarnessContextPromptOpts,
   type WorkflowEntry,
-} from './prompt-layers.js'
+} from '../prompt-layers.js'

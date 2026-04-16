@@ -180,6 +180,14 @@ import {
 } from './compaction.js'
 import { type ContextInfo, type MemoryData, assembleConversationContext } from './context.js'
 import {
+  buildAgentContextLayer,
+  buildMemoryLayer,
+  buildProjectMemoryInstructionsLayer,
+  buildSurfaceLayer,
+  buildWorkflowsLayer,
+  systemReminder,
+} from './prompt-layers.js'
+import {
   type Span,
   categorizeError,
   computeHeuristicScores,
@@ -2131,15 +2139,7 @@ export class Session {
     return undefined
   }
 
-  /**
-   * Wrap content in a <system-reminder> tag with a heading.
-   * Returns empty string if content is blank (avoids empty tags).
-   */
-  private static systemReminder(heading: string, content: string): string {
-    const trimmed = content.trim()
-    if (!trimmed) return ''
-    return `\n\n<system-reminder>\n# ${heading}\n${trimmed}\n</system-reminder>`
-  }
+  // systemReminder moved to prompt-layers.ts — imported at top of this file.
 
   /** Get the full composed system prompt. Used internally and exposed for dev mode inspection. */
   getComposedSystemPrompt(): string {
@@ -2181,11 +2181,11 @@ export class Session {
     // Layer 1: Workspace rules (.anton.md) — highest priority contextual layer
     if (this.workspacePath) {
       const workspaceRules = loadWorkspaceRules(this.workspacePath)
-      prompt += Session.systemReminder('Workspace Rules', workspaceRules)
+      prompt += systemReminder('Workspace Rules', workspaceRules)
     }
 
     // Layer 2: User rules (append.md + rules/*.md from ~/.anton/prompts/)
-    prompt += Session.systemReminder('User Rules', loadUserRules())
+    prompt += systemReminder('User Rules', loadUserRules())
 
     // Layer 3: Current context — workspace, project, date
     const contextLines: string[] = []
@@ -2227,68 +2227,20 @@ export class Session {
       contextLines.push('- Sudo: not available')
     }
 
-    prompt += Session.systemReminder('Current Context', contextLines.join('\n'))
+    prompt += systemReminder('Current Context', contextLines.join('\n'))
 
-    if (this.surface && this.surface.kind !== 'desktop') {
-      prompt += Session.systemReminder('Current Surface', renderSurfaceBlock(this.surface))
-    }
-
-    // Layer 4: Memory — global, conversation, and cross-conversation
-    if (this.memoryData) {
-      const memSections: string[] = []
-      if (this.memoryData.globalMemories.length > 0) {
-        memSections.push('## Global Memory')
-        for (const mem of this.memoryData.globalMemories) {
-          memSections.push(`### ${mem.key}\n${mem.content}`)
-        }
-      }
-      if (this.memoryData.conversationMemories.length > 0) {
-        memSections.push('## Conversation Memory')
-        for (const mem of this.memoryData.conversationMemories) {
-          memSections.push(`### ${mem.key}\n${mem.content}`)
-        }
-      }
-      if (this.memoryData.crossConversationMemories.length > 0) {
-        memSections.push('## Relevant Context (from other conversations)')
-        for (const mem of this.memoryData.crossConversationMemories) {
-          memSections.push(`### ${mem.key} (from: ${mem.source})\n${mem.content}`)
-        }
-      }
-      prompt += Session.systemReminder('Memory', memSections.join('\n\n'))
-    }
-
-    // Layer 5: Project memory instructions
-    if (this.projectId) {
-      prompt += Session.systemReminder(
-        'Project Memory Instructions',
-        `When you have completed meaningful work in this session (e.g. implemented a feature, fixed a bug, made a significant decision), call the update_project_context tool once near the end of the conversation with:
-- session_summary: A 1-2 sentence summary of what was accomplished
-- project_summary: An updated overall project summary (only if something significant changed about the project's state, goals, or architecture)
-Do not call this on every turn — only once per session when there is something worth remembering.`,
-      )
-    }
-
-    // Layer 6: Agent context — standing instructions + run history (scheduled agents only)
-    if (this.agentInstructions || this.agentMemory) {
-      const agentSections: string[] = []
-      if (this.agentInstructions) {
-        agentSections.push(
-          `## Standing Instructions\nYou are a scheduled agent. Execute these instructions on every run.\nDo NOT re-create scripts or tooling that you have already built in previous runs. Re-use existing work.\nIf something is broken, fix it. If everything works, just run it.\n\n${this.agentInstructions}`,
-        )
-      }
-      if (this.agentMemory) {
-        agentSections.push(
-          `## Run History\nThis is your memory from previous runs. Use it to know what you've already built, where scripts are, and what happened last time. Do NOT rebuild things that already exist.\n\n${this.agentMemory}`,
-        )
-      }
-      prompt += Session.systemReminder('Agent Context', agentSections.join('\n\n'))
-    }
+    // Shared layers — wording lives in prompt-layers.ts so the harness
+    // path sees byte-identical blocks. Do not inline here.
+    prompt += buildSurfaceLayer(this.surface)
+    prompt += buildMemoryLayer(this.memoryData)
+    prompt += buildProjectMemoryInstructionsLayer(this.projectId)
+    prompt += buildAgentContextLayer(this.agentInstructions, this.agentMemory)
 
     // Layer 7: Project type guidelines (code.md, document.md, etc.)
     if (this.projectType) {
       const typePrompt = loadProjectTypePrompt(this.projectType as ProjectType)
       if (typePrompt) {
-        prompt += Session.systemReminder('Project Type Guidelines', typePrompt)
+        prompt += systemReminder('Project Type Guidelines', typePrompt)
       }
     }
 
@@ -2298,7 +2250,7 @@ Do not call this on every turn — only once per session when there is something
       firstMessage: this.firstMessage,
     })
     if (refs) {
-      prompt += Session.systemReminder('Reference Knowledge', refs)
+      prompt += systemReminder('Reference Knowledge', refs)
     }
 
     // Layer 9: Active skills
@@ -2307,21 +2259,11 @@ Do not call this on every turn — only once per session when there is something
       for (const skill of this.config.skills) {
         skillBlock += `### ${skill.name}\n${skill.description}\n${skill.prompt}\n\n`
       }
-      prompt += Session.systemReminder('Active Skills', skillBlock)
+      prompt += systemReminder('Active Skills', skillBlock)
     }
 
-    // Layer 10: Available workflows (for auto-suggestion)
-    if (this.availableWorkflows && this.availableWorkflows.length > 0) {
-      let workflowBlock =
-        'The following automation workflows are available for the user to install. ' +
-        "If the user's request matches a workflow, suggest it naturally in your response. " +
-        "Don't force it — only suggest when genuinely relevant. " +
-        'Mention the workflow by name and briefly describe what it does.\n\n'
-      for (const wf of this.availableWorkflows) {
-        workflowBlock += `### ${wf.name}\n${wf.description}\n${wf.whenToUse}\n\n`
-      }
-      prompt += Session.systemReminder('Available Workflows', workflowBlock)
-    }
+    // Shared layer — wording lives in prompt-layers.ts.
+    prompt += buildWorkflowsLayer(this.availableWorkflows)
 
     // Compute prompt version hash for tracing
     this._promptVersion = hashPromptVersion(prompt)
@@ -2361,55 +2303,7 @@ Do not call this on every turn — only once per session when there is something
   }
 }
 
-/**
- * Render the "Current Surface" system-reminder body. Kept outside the class
- * so the text is easy to tweak without touching the prompt-assembly logic,
- * and so the exact string is trivially grep-able. The guidance here should
- * be short and directive — it appears on every turn.
- */
-function renderSurfaceBlock(surface: SurfaceInfo): string {
-  const lines: string[] = []
-  if (surface.label) {
-    lines.push(`You are currently replying on ${surface.label}.`)
-  } else {
-    lines.push(`You are currently replying on ${surface.kind}.`)
-  }
-  if (surface.userLabel) {
-    lines.push(`The human on the other end is ${surface.userLabel}.`)
-  }
-  if (surface.details) {
-    for (const [k, v] of Object.entries(surface.details)) {
-      if (v) lines.push(`- ${k}: ${v}`)
-    }
-  }
-
-  // Formatting guidance. Short and directive — the reply-path formatter
-  // will catch slips anyway, but telling the model up front produces
-  // cleaner output and fewer escape artefacts.
-  if (surface.format === 'slack-mrkdwn') {
-    lines.push(
-      '',
-      'Format your replies as Slack mrkdwn, NOT CommonMark:',
-      '- Bold uses *single asterisks*, never **double**.',
-      '- No `#` / `##` headings — use *bold* as a heading substitute.',
-      '- Links are `<https://url|text>`, not `[text](url)`.',
-      '- Strikethrough is `~text~`, not `~~text~~`.',
-      '- Keep replies short. Slack is a chat, not a document — link to',
-      '  longer output rather than pasting it inline.',
-    )
-  } else if (surface.format === 'telegram-md') {
-    lines.push(
-      '',
-      'Format your replies for Telegram (legacy Markdown):',
-      '- Bold uses *single asterisks*, not **double**.',
-      '- No `#` / `##` headings — use *bold* as a heading substitute.',
-      '- Telegram renders on mobile — keep replies short and scan-able.',
-      '- Avoid wide tables; Telegram wraps them into an unreadable mess.',
-    )
-  }
-
-  return lines.join('\n')
-}
+// renderSurfaceBlock moved to prompt-layers.ts — imported at top of this file.
 
 /**
  * Create a new session from scratch.
