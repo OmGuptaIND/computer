@@ -1,5 +1,11 @@
 # BYOS: Bring Your Own Subscription (Harness Providers)
 
+> ⚠️ **Partially superseded.** Architecture, tool surface, session lifecycle, storage model, and delivery status are all now authoritatively described in [HARNESS_ARCHITECTURE.md](./HARNESS_ARCHITECTURE.md). This doc is kept for:
+> - the original product rationale (**Problem** section below)
+> - the historical decision log
+>
+> Where the two disagree — trust `HARNESS_ARCHITECTURE.md`. Some original decisions (e.g. "long-lived with message injection") did not survive implementation; the shipped model is spawn-per-turn with `--resume` as a performance cache, which the newer spec covers in detail.
+
 ## Problem
 
 Anton currently relies 100% on the Pi Agent SDK for LLM calls, which means users need API keys. But many users already pay for Claude Pro/Max ($20-200/mo), ChatGPT/Codex Plus ($20/mo), or Gemini subscriptions that include CLI access. They don't want to pay twice.
