@@ -22,6 +22,7 @@ export {
 // string; it lives next to Session.getSystemPrompt in prompt-layers.ts.
 export {
   buildHarnessContextPrompt,
+  buildHarnessIdentityBlock,
   type HarnessContextPromptOpts,
   type WorkflowEntry,
 } from '../prompt-layers.js'

@@ -297,6 +297,8 @@ import {
   buildAgentContextLayer as _buildAgentContextLayer,
   buildProjectMemoryInstructionsLayer as _buildProjectMemoryInstructionsLayer,
   buildSurfaceLayer as _buildSurfaceLayer,
+  buildHarnessIdentityBlock as _buildHarnessIdentityBlock,
+  buildHarnessContextPrompt as _buildHarnessContextPrompt,
 } from '../../prompt-layers.js'
 
 interface LayerSnapshot {
@@ -384,6 +386,92 @@ if (snapFailed > 0) {
 }
 
 console.log(`All ${layerSnapshots.length} snapshot checks passed`)
+
+// ── Identity block checks ──────────────────────────────────────────
+// Structural asserts rather than a full byte-for-byte snapshot — the
+// exact wording can tune over time, but these markers are load-bearing
+// (the harness prompt shape depends on them).
+
+interface IdentityCase {
+  name: string
+  assert: (block: string) => string | null // null = pass; string = failure message
+}
+
+const identityBlock = _buildHarnessIdentityBlock()
+const identityCases: IdentityCase[] = [
+  {
+    name: 'wrapped in <system-reminder> with Anton heading',
+    assert: (b) =>
+      b.startsWith('\n\n<system-reminder>\n# Anton\n') ? null : 'missing <system-reminder># Anton header',
+  },
+  {
+    name: 'role-setting sentence present',
+    assert: (b) =>
+      b.includes('You are running inside Anton') ? null : 'missing role-setting sentence',
+  },
+  {
+    name: 'What Anton adds section',
+    assert: (b) => (b.includes('## What Anton adds') ? null : 'missing "What Anton adds" header'),
+  },
+  {
+    name: 'Scope section (prevents over-application)',
+    assert: (b) => (b.includes('## Scope') ? null : 'missing "Scope" header'),
+  },
+  {
+    name: 'every core tool name is mentioned',
+    assert: (b) => {
+      const required = [
+        '`memory`',
+        '`notification`',
+        '`database`',
+        '`publish`',
+        '`update_project_context`',
+        '`activate_workflow`',
+      ]
+      const missing = required.filter((r) => !b.includes(r))
+      return missing.length > 0 ? `missing tool references: ${missing.join(', ')}` : null
+    },
+  },
+  {
+    name: 'tools/list discovery hint',
+    assert: (b) =>
+      b.includes('`tools/list`') ? null : 'missing tools/list discovery hint',
+  },
+  {
+    name: 'identity prepended in buildHarnessContextPrompt',
+    assert: () => {
+      const full = _buildHarnessContextPrompt({})
+      // Identity block should land first (trimStart removes leading \n\n
+      // but the # Anton heading is still the first line).
+      return full.startsWith('<system-reminder>\n# Anton\n')
+        ? null
+        : `expected identity block first, got: ${full.slice(0, 80)}`
+    },
+  },
+]
+
+let identityFailed = 0
+for (const c of identityCases) {
+  try {
+    const err = c.assert(identityBlock)
+    if (err === null) {
+      console.log(`✓ identity: ${c.name}`)
+    } else {
+      identityFailed++
+      console.error(`✗ identity: ${c.name} — ${err}`)
+    }
+  } catch (err) {
+    identityFailed++
+    console.error(`✗ identity: ${c.name} (threw)`, err)
+  }
+}
+
+if (identityFailed > 0) {
+  console.error(`\n${identityFailed}/${identityCases.length} identity checks failed`)
+  process.exit(1)
+}
+
+console.log(`All ${identityCases.length} identity checks passed`)
 
 // ── Mirror synthesizer tests ───────────────────────────────────────
 // Pure-function coverage of synthesizeHarnessTurn. No disk I/O.

@@ -196,6 +196,60 @@ export function renderSurfaceBlock(surface: SurfaceInfo): string {
   return lines.join('\n')
 }
 
+/**
+ * Identity block — the first thing a harness CLI sees in its appended
+ * system prompt.
+ *
+ * Why it exists: Claude Code / Codex ship with their own core system
+ * prompts tuned around their native tools (filesystem, shell, code
+ * editing). They don't know they're running inside Anton unless we
+ * tell them, which means the MCP tools we expose (memory, connectors,
+ * workflows, publish, project context) get under-used — the model
+ * treats them as "just more tools" instead of "Anton's unique surface
+ * area that extends what you can already do."
+ *
+ * Wording choices (see research notes in the commit message):
+ *   • Imperative voice + markdown headers → Codex/gpt-5-codex prefers
+ *     this structure and responds well to imperative commands.
+ *   • Explicit "why" clauses per rule → Claude (especially 4.7) needs
+ *     the reason to generalize correctly instead of applying rules
+ *     literally.
+ *   • Explicit scope paragraph at the end → prevents Claude's literal
+ *     reading from over-applying Anton-first rules to every filesystem
+ *     or shell operation.
+ *   • Per-tool descriptions stay on each tool's definition and reach
+ *     the CLI via tools/list; this block only frames WHEN to prefer
+ *     Anton's tools, not WHAT each one does.
+ *   • Short by design: the CLI already has a long core prompt. Every
+ *     token here shows up on every turn.
+ *
+ * Per-provider variants are deliberately not introduced yet — the shape
+ * below reads well for both Claude and Codex based on their documented
+ * prompting conventions. Revisit after we have usage telemetry.
+ */
+export function buildHarnessIdentityBlock(): string {
+  return systemReminder(
+    'Anton',
+    `You are running inside Anton, a personal AI computer. The user interacts with Anton's desktop or mobile UI; your output streams there.
+
+## What Anton adds
+
+Anton extends your native tools with persistent cross-session state and user-facing integrations, exposed over MCP. Call \`tools/list\` at session start to discover every Anton tool available to you. Prefer Anton's tools over recreating their capabilities yourself:
+
+- **\`memory\`** — cross-session facts (user preferences, project notes, things to remember). Use this instead of writing a local file when the goal is "remember across future sessions."
+- **\`notification\`** — alert the user through Anton's desktop or mobile app when a long task completes or something needs attention.
+- **\`database\`** — structured storage at \`~/.anton/data.db\`. Use for anything that benefits from SQL (lists, tables, history).
+- **\`publish\`** — share content at a public URL. Use instead of hand-rolling HTML or asking the user to host something themselves.
+- **Connector tools** (names vary: \`slack_*\`, \`github_*\`, \`linear_*\`, \`gmail_*\`, etc.) — reach the user's connected services. Anton handles OAuth; never ask the user for tokens or API keys for these.
+- **\`update_project_context\`** — when a project is attached AND meaningful work was done this session, call this exactly once near the end with a short \`session_summary\`.
+- **\`activate_workflow\`** — after the user explicitly approves a workflow suggestion from the "Available Workflows" block below.
+
+## Scope
+
+Your native tools (filesystem, shell, code editing, git, web search, etc.) remain primary for local and in-repo work — use them as you normally would. Anton adds the layer above them: memory, connectors, projects, workflows, publish. It is not a replacement for what you already do well.`,
+  )
+}
+
 // ── High-level entry point ──────────────────────────────────────────
 
 export interface HarnessContextPromptOpts {
@@ -219,6 +273,9 @@ export interface HarnessContextPromptOpts {
  */
 export function buildHarnessContextPrompt(opts: HarnessContextPromptOpts): string {
   return [
+    // Identity block comes first so the CLI reads "you are inside
+    // Anton" before any of the stateful context blocks below.
+    buildHarnessIdentityBlock(),
     buildCurrentContextLayer({
       projectContext: opts.projectContext,
       workspacePath: opts.workspacePath,
