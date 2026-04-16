@@ -12,16 +12,22 @@
  *   - progress updates for long-running tasks
  */
 
-import type { AgentConfig } from '@anton/agent-config'
+import { type AgentConfig, DEFAULT_PROVIDERS } from '@anton/agent-config'
 import type {
   CommandContext,
   CommandResult,
+  HarnessSession,
   JobActionHandler,
   McpManager,
   Session,
   SurfaceInfo,
 } from '@anton/agent-core'
-import { createSession, executeCommand, resumeSession } from '@anton/agent-core'
+import {
+  createSession,
+  executeCommand,
+  isHarnessSession,
+  resumeSession,
+} from '@anton/agent-core'
 import type { ConnectorManager } from '@anton/connectors'
 import { createLogger } from '@anton/logger'
 import type { TaskItem } from '@anton/protocol'
@@ -122,8 +128,21 @@ export function parseApprovalText(text: string): InteractionResponse {
   return { approved: false, feedback: text.trim() }
 }
 
+/**
+ * Factory for creating a harness-backed session for a webhook surface.
+ * Injected by the server so the runner can build HarnessSession without
+ * pulling AgentServer's full wiring into this module.
+ */
+export type HarnessSessionFactory = (opts: {
+  sessionId: string
+  providerName: string
+  model: string
+  projectId?: string
+  surface: string
+}) => HarnessSession
+
 export class WebhookAgentRunner {
-  private sessions = new Map<string, Session>()
+  private sessions = new Map<string, Session | HarnessSession>()
   /**
    * Per-sessionId promise chain. The `tail` is the most-recently queued
    * promise; new events `.then()` off it so they run strictly after every
@@ -157,6 +176,13 @@ export class WebhookAgentRunner {
     private mcpManager: McpManager,
     private connectorManager: ConnectorManager,
     private sessionOptionsBuilder?: WebhookSessionOptionsBuilder,
+    /**
+     * Optional — when set, lets the runner create harness-backed
+     * sessions (Codex, Claude Code) for webhook surfaces. Without it,
+     * harness providers fall back to Pi SDK createSession which throws
+     * on harness-only models like "gpt-5.4".
+     */
+    private harnessSessionFactory?: HarnessSessionFactory,
   ) {}
 
   /** Wire access to the scheduler's job list (called by the server after init). */
@@ -173,7 +199,13 @@ export class WebhookAgentRunner {
     const ctx: CommandContext = {
       sessionId,
       evictSession: () => this.sessions.delete(sessionId),
-      getSession: () => this.sessions.get(sessionId),
+      // CommandContext.getSession is typed for Pi SDK Session — the
+      // builtin /model and /status command handlers reach into
+      // session.model/provider which both Session and HarnessSession
+      // expose, but the type doesn't know that. Erase the harness
+      // discriminant so the existing handlers can read those fields
+      // without a code change here.
+      getSession: () => this.sessions.get(sessionId) as Session | undefined,
       getProjectId: () => getBinding(bindingKey)?.projectId || undefined,
       saveProjectBinding: (projectId) => saveBinding(bindingKey, projectId),
       saveModelOverride: (model) => saveModelOverride(bindingKey, model),
@@ -302,7 +334,9 @@ export class WebhookAgentRunner {
       // Pre-flight: check if the session's provider has a usable API key.
       // Mirrors the env-var map in Session.resolveApiKey so we can catch this
       // early with a clear message instead of a cryptic SDK error.
-      if (!this.hasApiKey(session.provider)) {
+      // Skip for harness sessions — they auth through the CLI's own OAuth
+      // (Codex login, Claude Code login), not an Anton-managed API key.
+      if (!isHarnessSession(session) && !this.hasApiKey(session.provider)) {
         return {
           text: 'No API key configured for your AI provider. Please set one up in Settings \u2192 Providers on the desktop app.',
           images: [],
@@ -311,7 +345,10 @@ export class WebhookAgentRunner {
       // Refresh the surface every turn — the same sessionId can span
       // multiple threads/users in a channel, and we want the model to see
       // the up-to-date label. No-op when surface is undefined (desktop).
-      if (event.surface) {
+      // Harness sessions don't expose setSurface (their surface is baked
+      // into the per-turn system prompt at HarnessSession build time);
+      // skip silently rather than throw.
+      if (event.surface && !isHarnessSession(session)) {
         // For brand-new sessions joining a thread, inject prior thread
         // messages into the surface so the model sees them in the system
         // prompt (not baked into user message history). Subsequent turns
@@ -325,8 +362,13 @@ export class WebhookAgentRunner {
         session.setSurface(event.surface)
       }
 
-      // Wire interactive handlers so tools that need approval work on webhooks.
-      this.wireInteractiveHandlers(session, sessionId, event, provider)
+      // Wire interactive handlers so tools that need approval work on
+      // webhooks. Harness CLIs handle their own approval UX (Codex
+      // --full-auto auto-approves, Claude Code has its own flow), so
+      // skip for harness sessions.
+      if (!isHarnessSession(session)) {
+        this.wireInteractiveHandlers(session, sessionId, event, provider)
+      }
 
       const chunks: string[] = []
       const errorMessages: string[] = []
@@ -595,6 +637,10 @@ export class WebhookAgentRunner {
   /** Refresh connector tools across all live webhook sessions. */
   refreshAllSessionTools(): void {
     for (const session of this.sessions.values()) {
+      // Harness sessions rebuild the tool list per-turn from the
+      // registry, so they pick up new connectors automatically — nothing
+      // to refresh here.
+      if (isHarnessSession(session)) continue
       session.refreshConnectorTools()
     }
   }
@@ -603,7 +649,20 @@ export class WebhookAgentRunner {
   switchAllSessionModels(provider: string, model: string): void {
     for (const [id, session] of this.sessions) {
       try {
-        session.switchModel(provider, model)
+        if (isHarnessSession(session)) {
+          // Harness model lives on the session and is read at every CLI
+          // spawn, so just mutating the field is enough — the next turn
+          // picks it up. Switching providers (codex ↔ claude-code)
+          // would need a fresh HarnessSession; we drop the entry so the
+          // next message recreates it via the factory.
+          if (session.provider === provider) {
+            session.model = model
+          } else {
+            this.sessions.delete(id)
+          }
+        } else {
+          session.switchModel(provider, model)
+        }
       } catch (err) {
         log.warn({ err, sessionId: id }, 'failed to switch webhook session model')
       }
@@ -632,7 +691,7 @@ export class WebhookAgentRunner {
   private getOrCreateSession(
     sessionId: string,
     surface?: SurfaceInfo,
-  ): { session: Session; isNew: boolean } {
+  ): { session: Session | HarnessSession; isNew: boolean } {
     const existing = this.sessions.get(sessionId)
     if (existing) return { session: existing, isNew: false }
 
@@ -643,6 +702,32 @@ export class WebhookAgentRunner {
       log.info({ sessionId, projectId: extra.projectId }, 'webhook session bound to project')
     }
 
+    // ── Harness providers (Codex, Claude Code) ────────────────────────
+    // Harness sessions don't go through Pi SDK's resumeSession/createSession
+    // (their model isn't in Pi SDK's registry, and history is stored in
+    // the harness mirror, not Pi SDK's tape). Delegate to the factory the
+    // server injected so the wiring matches desktop harness sessions.
+    const providerName = this.config.defaults.provider
+    const providerCfg = this.config.providers[providerName] || DEFAULT_PROVIDERS[providerName]
+    if (providerCfg?.type === 'harness') {
+      if (!this.harnessSessionFactory) {
+        throw new Error(
+          `Default provider "${providerName}" is harness-backed but no harnessSessionFactory was injected into WebhookAgentRunner`,
+        )
+      }
+      const surfaceLabel = surface?.kind ?? 'webhook'
+      const session = this.harnessSessionFactory({
+        sessionId,
+        providerName,
+        model: this.config.defaults.model,
+        projectId: extra?.projectId,
+        surface: surfaceLabel,
+      })
+      this.sessions.set(sessionId, session)
+      return { session, isNew: true }
+    }
+
+    // ── Pi SDK API providers (anton, openrouter, anthropic, …) ────────
     const baseOpts = {
       mcpManager: this.mcpManager,
       connectorManager: this.connectorManager,

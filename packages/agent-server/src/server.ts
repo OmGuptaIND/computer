@@ -1851,11 +1851,20 @@ export class AgentServer {
    *   • ensureHarnessSessionInit so meta.json exists
    *   • Announces session_created so the client renders the session
    */
-  private createHarnessSession(opts: {
+  /**
+   * Public so webhook surfaces (Slack, Telegram) can create harness
+   * sessions with the same wiring desktop uses. The `surface` opt
+   * controls which connector tools the tool-registry exposes for the
+   * session — defaults to 'desktop' for back-compat with the original
+   * caller.
+   */
+  createHarnessSession(opts: {
     id: string
     providerName: string
     model: string
     projectId?: string
+    /** Surface label for tool-registry filtering. Defaults to 'desktop'. */
+    surface?: string
     /**
      * One-shot context block prepended to the first turn's system
      * prompt after a provider switch. On turn 0 it's included; on
@@ -1863,7 +1872,14 @@ export class AgentServer {
      */
     replaySeedForFirstTurn?: string
   }): HarnessSession {
-    const { id, providerName, model, projectId: harnessProjectId, replaySeedForFirstTurn } = opts
+    const {
+      id,
+      providerName,
+      model,
+      projectId: harnessProjectId,
+      surface: surfaceLabel = 'desktop',
+      replaySeedForFirstTurn,
+    } = opts
 
     const adapter = providerName === 'codex' ? new CodexAdapter() : new ClaudeAdapter()
     const socketPath = join(getAntonDir(), 'harness.sock')
@@ -1889,7 +1905,7 @@ export class AgentServer {
     // filtered connector tools resolve correctly for this session.
     this.harnessSessionContexts.set(id, {
       projectId: harnessProjectId,
-      surface: 'desktop',
+      surface: surfaceLabel,
       onActivateWorkflow: harnessProjectId ? this.buildActivateWorkflowHandler() : undefined,
     })
 
@@ -4731,6 +4747,17 @@ export class AgentServer {
             availableWorkflows: this.getAvailableWorkflowsForPrompt(),
           }
         },
+        // Harness session factory — lets the runner build Codex /
+        // Claude Code sessions for Slack/Telegram with the same wiring
+        // desktop sessions use (IPC auth, tool registry, mirror, etc.)
+        ({ sessionId, providerName, model, projectId, surface }) =>
+          this.createHarnessSession({
+            id: sessionId,
+            providerName,
+            model,
+            projectId,
+            surface,
+          }),
       )
       // Wire scheduler access so /agents command works on Telegram/Slack
       if (this.scheduler) {
