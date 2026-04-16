@@ -640,3 +640,192 @@ if (mirrorFailed > 0) {
 }
 
 console.log(`All ${mirrorCases.length} mirror checks passed`)
+
+// ── Round-trip: synthesize → jsonl → readHarnessHistory ─────────────
+// Writes a fresh messages.jsonl into a temp session dir, reads it back
+// with readHarnessHistory, and asserts the flattened entries preserve
+// role/content/tool-name wiring. Guards against drift between the
+// mirror write-side shape and the history read-side parser.
+
+import { readHarnessHistory as _readHarnessHistory } from '../mirror.js'
+import { buildReplaySeed as _buildReplaySeed } from '../replay.js'
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join as pathJoin } from 'node:path'
+
+function writeMessagesJsonl(dir: string, msgs: SessionEvent[], userMsg: string): void {
+  const synthesized = synthesizeHarnessTurn(userMsg, msgs, 1000)
+  mkdirSync(dir, { recursive: true })
+  const lines = synthesized.map((m) => JSON.stringify(m)).join('\n')
+  writeFileSync(pathJoin(dir, 'messages.jsonl'), lines.length > 0 ? `${lines}\n` : '', 'utf-8')
+  // readHarnessHistory requires this path layout (conversationDir or
+  // projectSessionsDir). We write directly into the dir the reader
+  // expects, then pass the sessionId matching the last path segment.
+}
+
+function withTempSession<T>(fn: (sessionId: string, dir: string) => T): T {
+  // readHarnessHistory resolves ~/.anton/conversations/<id> for no
+  // projectId. Use a unique id under the real conversations dir so
+  // the path matches the reader's expectation, then clean up.
+  const sessionId = `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const base = pathJoin(
+    process.env.HOME ?? tmpdir(),
+    '.anton',
+    'conversations',
+    sessionId,
+  )
+  try {
+    return fn(sessionId, base)
+  } finally {
+    try {
+      rmSync(base, { recursive: true, force: true })
+    } catch {
+      /* cleanup best-effort */
+    }
+  }
+}
+
+interface RoundTripCase {
+  name: string
+  userMessage: string
+  events: SessionEvent[]
+  expectedRoles: string[]
+  assert?: (entries: import('@anton/protocol').SessionHistoryEntry[]) => string | null
+}
+
+const roundTripCases: RoundTripCase[] = [
+  {
+    name: 'simple user + assistant text',
+    userMessage: 'hello',
+    events: [{ type: 'text', content: 'Hi there.' }],
+    expectedRoles: ['user', 'assistant'],
+  },
+  {
+    name: 'tool call + result flatten correctly',
+    userMessage: 'run ls',
+    events: [
+      { type: 'thinking', text: 'listing' },
+      { type: 'tool_call', id: 't1', name: 'Bash', input: { command: 'ls' } },
+      { type: 'tool_result', id: 't1', output: 'a\nb' },
+      { type: 'text', content: 'two files' },
+    ],
+    // thinking + tool_use batch into ONE assistant message; flatten
+    // yields ['assistant' (thinking), 'tool_call'] then the tool_result
+    // and the final 'two files' assistant text.
+    expectedRoles: ['user', 'assistant', 'tool_call', 'tool_result', 'assistant'],
+    assert: (entries) => {
+      const call = entries.find((e) => e.role === 'tool_call')
+      const result = entries.find((e) => e.role === 'tool_result')
+      if (!call || call.toolName !== 'Bash') return 'tool_call missing toolName=Bash'
+      if (!result || result.toolId !== 't1') return 'tool_result missing toolId'
+      if (!result.toolName || result.toolName !== 'Bash') return 'tool_result missing cross-linked toolName'
+      return null
+    },
+  },
+  {
+    name: 'error flag carries through',
+    userMessage: 'try it',
+    events: [
+      { type: 'tool_call', id: 'x', name: 'shell', input: {} },
+      { type: 'tool_result', id: 'x', output: 'boom', isError: true },
+    ],
+    expectedRoles: ['user', 'tool_call', 'tool_result'],
+    assert: (entries) => {
+      const result = entries.find((e) => e.role === 'tool_result')
+      return result?.isError === true ? null : 'tool_result missing isError=true'
+    },
+  },
+]
+
+let rtFailed = 0
+for (const c of roundTripCases) {
+  try {
+    withTempSession((sessionId, dir) => {
+      writeMessagesJsonl(dir, c.events, c.userMessage)
+      const entries = _readHarnessHistory(sessionId)
+      const roles = entries.map((e) => e.role)
+      const rolesMatch = JSON.stringify(roles) === JSON.stringify(c.expectedRoles)
+      let customErr: string | null = null
+      if (c.assert) customErr = c.assert(entries)
+      if (rolesMatch && !customErr) {
+        console.log(`✓ roundtrip: ${c.name}`)
+      } else {
+        rtFailed++
+        console.error(`✗ roundtrip: ${c.name}`)
+        if (!rolesMatch) {
+          console.error('  expected roles:', c.expectedRoles)
+          console.error('  actual roles:  ', roles)
+        }
+        if (customErr) console.error('  assertion:', customErr)
+      }
+    })
+  } catch (err) {
+    rtFailed++
+    console.error(`✗ roundtrip: ${c.name} (threw)`, err)
+  }
+}
+
+if (rtFailed > 0) {
+  console.error(`\n${rtFailed}/${roundTripCases.length} round-trip checks failed`)
+  process.exit(1)
+}
+
+console.log(`All ${roundTripCases.length} round-trip checks passed`)
+
+// ── Replay seed smoke test ─────────────────────────────────────────
+// Builds a seed from a minimal stored conversation and checks it
+// contains the load-bearing markers the new provider will read.
+
+let replayFailed = 0
+try {
+  withTempSession((sessionId) => {
+    // Write a two-turn history
+    const events1: SessionEvent[] = [{ type: 'text', content: 'hello back' }]
+    const events2: SessionEvent[] = [
+      { type: 'tool_call', id: 'r', name: 'memory', input: { operation: 'save', key: 'x' } },
+      { type: 'tool_result', id: 'r', output: 'ok' },
+      { type: 'text', content: 'saved' },
+    ]
+    const dir = pathJoin(
+      process.env.HOME ?? tmpdir(),
+      '.anton',
+      'conversations',
+      sessionId,
+    )
+    mkdirSync(dir, { recursive: true })
+    const m1 = synthesizeHarnessTurn('hi', events1)
+    const m2 = synthesizeHarnessTurn('save x', events2)
+    const lines = [...m1, ...m2].map((m) => JSON.stringify(m)).join('\n')
+    writeFileSync(pathJoin(dir, 'messages.jsonl'), `${lines}\n`, 'utf-8')
+
+    const seed = _buildReplaySeed({ sessionId })
+    const required = [
+      '<system-reminder>',
+      '# Prior Conversation',
+      '<turn index="1">',
+      '<turn index="2">',
+      '[tool_call memory',
+      '<tool_result for="memory">ok</tool_result>',
+      'hi',
+      'saved',
+    ]
+    const missing = required.filter((r) => !seed.includes(r))
+    if (missing.length === 0) {
+      console.log('✓ replay-seed: renders prior conversation with turn/tool markers')
+    } else {
+      replayFailed++
+      console.error('✗ replay-seed: missing markers:', missing)
+      console.error('  seed was:', seed.slice(0, 400))
+    }
+  })
+} catch (err) {
+  replayFailed++
+  console.error('✗ replay-seed (threw)', err)
+}
+
+if (replayFailed > 0) {
+  console.error(`\n${replayFailed} replay-seed checks failed`)
+  process.exit(1)
+}
+
+console.log('All 1 replay-seed check passed')

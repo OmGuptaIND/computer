@@ -80,4 +80,6 @@ export {
   synthesizeHarnessTurn,
   ensureHarnessSessionInit,
   appendHarnessTurn,
+  readHarnessHistory,
+  buildReplaySeed,
 } from './harness/index.js'

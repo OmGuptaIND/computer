@@ -239,6 +239,29 @@ export interface SessionDestroyMessage {
   id: string
 }
 
+/**
+ * Client asks the server to swap the provider/model of an existing
+ * harness session without losing its conversation history. Server
+ * tears down the current HarnessSession, spawns a new one keyed on
+ * the same `id`, and seeds the new provider with a replay of the
+ * mirrored messages.jsonl on its first turn. Non-harness sessions
+ * are rejected.
+ */
+export interface SessionProviderSwitchMessage {
+  type: 'session_provider_switch'
+  id: string
+  provider: string
+  model: string
+}
+
+/** Ack for SessionProviderSwitchMessage. Fires after the new session is ready. */
+export interface SessionProviderSwitchedMessage {
+  type: 'session_provider_switched'
+  id: string
+  provider: string
+  model: string
+}
+
 export interface SessionDestroyedMessage {
   type: 'session_destroyed'
   id: string
@@ -1350,6 +1373,8 @@ export type AiMessage =
   | SessionSyncPush
   | SessionDestroyMessage
   | SessionDestroyedMessage
+  | SessionProviderSwitchMessage
+  | SessionProviderSwitchedMessage
   | SessionHistoryMessage
   | SessionHistoryResponse
   | ContextInfoMessage

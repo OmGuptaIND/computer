@@ -19,6 +19,7 @@ import {
   realpathSync,
   symlinkSync,
   unlinkSync,
+  writeFileSync,
 } from 'node:fs'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
@@ -102,6 +103,8 @@ import {
   ensureHarnessSessionInit,
   synthesizeHarnessTurn,
   appendHarnessTurn,
+  readHarnessHistory,
+  buildReplaySeed,
 } from '@anton/agent-core'
 import { CONNECTOR_FACTORIES, ConnectorManager } from '@anton/connectors'
 import { createLogger } from '@anton/logger'
@@ -1363,6 +1366,10 @@ export class AgentServer {
         this.handleSessionDestroy(msg)
         break
 
+      case 'session_provider_switch':
+        void this.handleSessionProviderSwitch(msg)
+        break
+
       case 'session_history':
         this.handleSessionHistory(msg)
         break
@@ -1742,230 +1749,16 @@ export class AgentServer {
       const providerConfig = this.config.providers[providerName] || DEFAULT_PROVIDERS[providerName]
 
       if (providerConfig?.type === 'harness') {
-        // ── Harness session: spawn CLI subprocess ──
-        const adapter = providerName === 'codex' ? new CodexAdapter() : new ClaudeAdapter()
+        // Harness sessions are created via createHarnessSession() so the
+        // same setup code runs for both fresh starts and provider-switch
+        // rebuilds. See that method for the full wiring.
         const model = msg.model || this.config.defaults.model
-        const socketPath = join(getAntonDir(), 'harness.sock')
-        const shimPath = join(getAntonDir(), '..', 'node_modules', '@anton', 'agent-core', 'dist', 'harness', 'anton-mcp-shim.js')
-
-        // Resolve workspace path from the project (if any). Full system-prompt
-        // assembly now happens per-turn inside the builder callback below.
-        let cwd: string | undefined
-        const harnessProjectId = msg.projectId
-        if (harnessProjectId) {
-          const project = loadProject(harnessProjectId)
-          if (project?.workspacePath) cwd = project.workspacePath
-        }
-
-        // Generate a per-session auth token and register it with the IPC
-        // server BEFORE the CLI can spawn the shim and attempt to connect.
-        const authToken = randomBytes(32).toString('base64url')
-        if (this.mcpIpcServer) {
-          this.mcpIpcServer.registerSession(msg.id, authToken)
-        } else {
-          log.error({ sessionId: msg.id }, 'MCP IPC server not initialized — harness session cannot authenticate')
-        }
-
-        // Register the harness-session context so the tool registry can
-        // expose project-scoped tools (activate_workflow,
-        // update_project_context) and surface-filtered connector tools.
-        this.harnessSessionContexts.set(msg.id, {
-          projectId: harnessProjectId,
-          // Harness sessions today only run on the desktop surface. When
-          // we start routing harness replies through Slack/Telegram, this
-          // should pick up the same surface string the Pi SDK uses.
-          surface: 'desktop',
-          onActivateWorkflow: harnessProjectId
-            ? this.buildActivateWorkflowHandler()
-            : undefined,
-        })
-
-        // Per-turn system-prompt builder: mirror Pi SDK's
-        // Session.getSystemPrompt() context layers (project, memory,
-        // workflows, surface) so harness turns see the same Anton-owned
-        // state. Memories load once on the first turn and are cached for
-        // subsequent turns; context_info is emitted to the desktop
-        // whenever memories (re)load.
-        const harnessSessionId = msg.id
-        let cachedMemoryData: Awaited<ReturnType<typeof assembleConversationContext>>['memoryData'] | undefined
-        let cachedContextInfoSent = false
-        const buildSystemPrompt = async (userMessage: string, turnIndex: number): Promise<string> => {
-          // Reload project each turn — cheap, keeps name/summary/instructions fresh
-          const project = harnessProjectId ? loadProject(harnessProjectId) : undefined
-          const projectInstructions = harnessProjectId ? loadProjectInstructions(harnessProjectId) : ''
-
-          // Assemble memory on the first turn using the user's first message
-          // for keyword-driven cross-conversation matching (same as Pi SDK).
-          if (turnIndex === 0) {
-            const assembled = assembleConversationContext(
-              harnessSessionId,
-              userMessage,
-              harnessProjectId,
-            )
-            cachedMemoryData = assembled.memoryData
-
-            if (!cachedContextInfoSent) {
-              cachedContextInfoSent = true
-              this.sendToClient(Channel.AI, {
-                type: 'context_info',
-                sessionId: harnessSessionId,
-                globalMemories: assembled.contextInfo.globalMemories,
-                conversationMemories: assembled.contextInfo.conversationMemories,
-                crossConversationMemories: assembled.contextInfo.crossConversationMemories,
-                projectId: assembled.contextInfo.projectId,
-              })
-            }
-          }
-
-          // Compose the project-context block the same way buildProjectContext
-          // would — kept inline so we can include instructions verbatim.
-          let projectContextBlock: string | undefined
-          if (project) {
-            const lines: string[] = [
-              `You are running inside Anton, a personal AI computer.`,
-              `Project: ${project.name}`,
-            ]
-            if (project.description) lines.push(`Description: ${project.description}`)
-            if (projectInstructions) lines.push(`\nProject Instructions:\n${projectInstructions}`)
-            if (project.context.summary) lines.push(`\nProject Summary:\n${project.context.summary}`)
-            projectContextBlock = lines.join('\n')
-          }
-
-          return buildHarnessContextPrompt({
-            projectContext: projectContextBlock,
-            projectId: harnessProjectId,
-            workspacePath: cwd,
-            memoryData: cachedMemoryData,
-            availableWorkflows: this.getAvailableWorkflowsForPrompt(),
-          })
-        }
-
-        // Initialize the on-disk session (meta.json + empty
-        // messages.jsonl) so harness sessions appear in the index and
-        // exports / desktop search pick them up the same way Pi SDK
-        // sessions do.
-        try {
-          ensureHarnessSessionInit({
-            sessionId: msg.id,
-            projectId: harnessProjectId,
-            provider: providerName,
-            model,
-          })
-        } catch (err) {
-          log.warn(
-            { err, sessionId: msg.id },
-            'failed to initialize harness session on disk — mirror will be incomplete',
-          )
-        }
-
-        // Per-turn mirror: synthesize SessionMessages from the turn's
-        // events, append to messages.jsonl, capture update_project_context
-        // tool results, and update project history / summary — matching
-        // the Pi SDK path's post-turn behavior.
-        const mirrorProjectId = harnessProjectId
-        const onTurnEnd = async (turn: {
-          userMessage: string
-          events: Parameters<
-            NonNullable<ConstructorParameters<typeof HarnessSession>[0]['onTurnEnd']>
-          >[0]['events']
-        }) => {
-          // Synthesize + append
-          const messages = synthesizeHarnessTurn(turn.userMessage, turn.events)
-          const firstText = turn.events.find((e) => e.type === 'text') as
-            | { content: string }
-            | undefined
-          appendHarnessTurn({
-            sessionId: msg.id,
-            projectId: mirrorProjectId,
-            messages,
-            firstTitle: firstText?.content,
-          })
-
-          // Capture update_project_context if called this turn. Walks
-          // the event stream the same way the Pi SDK turn loop does.
-          const pendingToolNames = new Map<string, string>()
-          let projectContextUpdate: { sessionSummary: string; projectSummary?: string } | undefined
-          for (const ev of turn.events) {
-            if (ev.type === 'tool_call') {
-              pendingToolNames.set(ev.id, ev.name)
-            } else if (ev.type === 'tool_result') {
-              if (pendingToolNames.get(ev.id) === 'update_project_context') {
-                try {
-                  const parsed = JSON.parse(ev.output) as {
-                    sessionSummary?: unknown
-                    projectSummary?: unknown
-                  }
-                  if (typeof parsed.sessionSummary === 'string') {
-                    projectContextUpdate = {
-                      sessionSummary: parsed.sessionSummary,
-                      projectSummary:
-                        typeof parsed.projectSummary === 'string'
-                          ? parsed.projectSummary
-                          : undefined,
-                    }
-                  }
-                } catch {
-                  /* malformed — ignore */
-                }
-              }
-              pendingToolNames.delete(ev.id)
-            }
-          }
-
-          // Project history: only for project-scoped harness sessions
-          // that have something to record.
-          if (mirrorProjectId && firstText?.content) {
-            try {
-              const title = firstText.content.slice(0, 60).split('\n')[0]
-              const sessionSummary = projectContextUpdate?.sessionSummary || title
-              if (projectContextUpdate?.projectSummary) {
-                updateProjectContext(mirrorProjectId, 'summary', projectContextUpdate.projectSummary)
-              }
-              appendSessionHistory(mirrorProjectId, {
-                sessionId: msg.id,
-                title,
-                summary: sessionSummary,
-                ts: Date.now(),
-              })
-              updateProjectStats(mirrorProjectId)
-              const updatedProject = loadProject(mirrorProjectId)
-              if (updatedProject) {
-                this.sendToClient(Channel.AI, { type: 'project_updated', project: updatedProject })
-              }
-            } catch (err) {
-              log.warn(
-                { err, sessionId: msg.id, projectId: mirrorProjectId },
-                'harness project-history update failed',
-              )
-            }
-          }
-        }
-
-        const session = new HarnessSession({
+        this.createHarnessSession({
           id: msg.id,
-          provider: providerName,
+          providerName,
           model,
-          adapter,
-          socketPath,
-          shimPath,
-          authToken,
-          cwd,
-          buildSystemPrompt,
-          onTurnEnd,
+          projectId: msg.projectId,
         })
-        this.sessions.set(msg.id, session)
-
-        this.sendToClient(Channel.AI, {
-          type: 'session_created',
-          id: msg.id,
-          provider: providerName,
-          model,
-        })
-
-        log.info(
-          { sessionId: msg.id, provider: providerName, model, type: 'harness' },
-          'Harness session created',
-        )
       } else {
         // ── Standard API session (Pi SDK) ──
         const session = createSession(
@@ -2033,6 +1826,346 @@ export class AgentServer {
         message: `Failed to create session: ${(err as Error).message}`,
         sessionId: msg.id,
       })
+    }
+  }
+
+  /**
+   * Build + register a HarnessSession. Shared between fresh
+   * session-start and provider-switch. Does all the wiring:
+   *   • Adapter selection
+   *   • IPC auth token + registration
+   *   • Harness session context (for tool registry scoping)
+   *   • Per-turn system-prompt builder (loads memory on first turn,
+   *     emits context_info to the client, injects an optional
+   *     `replaySeedForFirstTurn` for provider-switch continuity)
+   *   • Mirror + project-history onTurnEnd callback
+   *   • ensureHarnessSessionInit so meta.json exists
+   *   • Announces session_created so the client renders the session
+   */
+  private createHarnessSession(opts: {
+    id: string
+    providerName: string
+    model: string
+    projectId?: string
+    /**
+     * One-shot context block prepended to the first turn's system
+     * prompt after a provider switch. On turn 0 it's included; on
+     * subsequent turns the CLI's own resume tape carries history.
+     */
+    replaySeedForFirstTurn?: string
+  }): HarnessSession {
+    const { id, providerName, model, projectId: harnessProjectId, replaySeedForFirstTurn } = opts
+
+    const adapter = providerName === 'codex' ? new CodexAdapter() : new ClaudeAdapter()
+    const socketPath = join(getAntonDir(), 'harness.sock')
+    const shimPath = join(getAntonDir(), '..', 'node_modules', '@anton', 'agent-core', 'dist', 'harness', 'anton-mcp-shim.js')
+
+    // Resolve workspace path from the project (if any)
+    let cwd: string | undefined
+    if (harnessProjectId) {
+      const project = loadProject(harnessProjectId)
+      if (project?.workspacePath) cwd = project.workspacePath
+    }
+
+    // Per-session IPC auth token — registered BEFORE the shim can connect.
+    const authToken = randomBytes(32).toString('base64url')
+    if (this.mcpIpcServer) {
+      this.mcpIpcServer.registerSession(id, authToken)
+    } else {
+      log.error({ sessionId: id }, 'MCP IPC server not initialized — harness session cannot authenticate')
+    }
+
+    // Register the tool-registry session context so project-scoped
+    // tools (activate_workflow, update_project_context) and surface-
+    // filtered connector tools resolve correctly for this session.
+    this.harnessSessionContexts.set(id, {
+      projectId: harnessProjectId,
+      surface: 'desktop',
+      onActivateWorkflow: harnessProjectId ? this.buildActivateWorkflowHandler() : undefined,
+    })
+
+    // Per-turn system-prompt builder — mirrors Pi SDK's layer assembly
+    // so harness turns see the same Anton-owned state. Memory loads on
+    // the first turn using the user's first message for keyword
+    // matching; subsequent turns reuse the cache.
+    let cachedMemoryData: Awaited<ReturnType<typeof assembleConversationContext>>['memoryData'] | undefined
+    let cachedContextInfoSent = false
+    let replaySeedConsumed = false
+    const buildSystemPrompt = async (userMessage: string, turnIndex: number): Promise<string> => {
+      const project = harnessProjectId ? loadProject(harnessProjectId) : undefined
+      const projectInstructions = harnessProjectId ? loadProjectInstructions(harnessProjectId) : ''
+
+      if (turnIndex === 0) {
+        const assembled = assembleConversationContext(id, userMessage, harnessProjectId)
+        cachedMemoryData = assembled.memoryData
+
+        if (!cachedContextInfoSent) {
+          cachedContextInfoSent = true
+          this.sendToClient(Channel.AI, {
+            type: 'context_info',
+            sessionId: id,
+            globalMemories: assembled.contextInfo.globalMemories,
+            conversationMemories: assembled.contextInfo.conversationMemories,
+            crossConversationMemories: assembled.contextInfo.crossConversationMemories,
+            projectId: assembled.contextInfo.projectId,
+          })
+        }
+      }
+
+      // Build the per-turn project-context block
+      let projectContextBlock: string | undefined
+      if (project) {
+        const lines: string[] = [
+          `You are running inside Anton, a personal AI computer.`,
+          `Project: ${project.name}`,
+        ]
+        if (project.description) lines.push(`Description: ${project.description}`)
+        if (projectInstructions) lines.push(`\nProject Instructions:\n${projectInstructions}`)
+        if (project.context.summary) lines.push(`\nProject Summary:\n${project.context.summary}`)
+        projectContextBlock = lines.join('\n')
+      }
+
+      const base = buildHarnessContextPrompt({
+        projectContext: projectContextBlock,
+        projectId: harnessProjectId,
+        workspacePath: cwd,
+        memoryData: cachedMemoryData,
+        availableWorkflows: this.getAvailableWorkflowsForPrompt(),
+      })
+
+      // Inject the replay seed ONCE, on the first turn only. From turn
+      // 1 onward the CLI's own --resume tape carries the history.
+      if (turnIndex === 0 && replaySeedForFirstTurn && !replaySeedConsumed) {
+        replaySeedConsumed = true
+        return `${base}${replaySeedForFirstTurn}`
+      }
+      return base
+    }
+
+    // Ensure meta.json + empty messages.jsonl exist
+    try {
+      ensureHarnessSessionInit({
+        sessionId: id,
+        projectId: harnessProjectId,
+        provider: providerName,
+        model,
+      })
+    } catch (err) {
+      log.warn({ err, sessionId: id }, 'failed to initialize harness session on disk — mirror will be incomplete')
+    }
+
+    const mirrorProjectId = harnessProjectId
+    const onTurnEnd = async (turn: {
+      userMessage: string
+      events: Parameters<NonNullable<ConstructorParameters<typeof HarnessSession>[0]['onTurnEnd']>>[0]['events']
+    }) => {
+      const messages = synthesizeHarnessTurn(turn.userMessage, turn.events)
+      const firstText = turn.events.find((e) => e.type === 'text') as { content: string } | undefined
+      appendHarnessTurn({
+        sessionId: id,
+        projectId: mirrorProjectId,
+        messages,
+        firstTitle: firstText?.content,
+      })
+
+      // Capture update_project_context tool-result from this turn.
+      const pendingToolNames = new Map<string, string>()
+      let projectContextUpdate: { sessionSummary: string; projectSummary?: string } | undefined
+      for (const ev of turn.events) {
+        if (ev.type === 'tool_call') {
+          pendingToolNames.set(ev.id, ev.name)
+        } else if (ev.type === 'tool_result') {
+          if (pendingToolNames.get(ev.id) === 'update_project_context') {
+            try {
+              const parsed = JSON.parse(ev.output) as { sessionSummary?: unknown; projectSummary?: unknown }
+              if (typeof parsed.sessionSummary === 'string') {
+                projectContextUpdate = {
+                  sessionSummary: parsed.sessionSummary,
+                  projectSummary: typeof parsed.projectSummary === 'string' ? parsed.projectSummary : undefined,
+                }
+              }
+            } catch {
+              /* malformed — ignore */
+            }
+          }
+          pendingToolNames.delete(ev.id)
+        }
+      }
+
+      if (mirrorProjectId && firstText?.content) {
+        try {
+          const title = firstText.content.slice(0, 60).split('\n')[0]
+          const sessionSummary = projectContextUpdate?.sessionSummary || title
+          if (projectContextUpdate?.projectSummary) {
+            updateProjectContext(mirrorProjectId, 'summary', projectContextUpdate.projectSummary)
+          }
+          appendSessionHistory(mirrorProjectId, {
+            sessionId: id,
+            title,
+            summary: sessionSummary,
+            ts: Date.now(),
+          })
+          updateProjectStats(mirrorProjectId)
+          const updatedProject = loadProject(mirrorProjectId)
+          if (updatedProject) {
+            this.sendToClient(Channel.AI, { type: 'project_updated', project: updatedProject })
+          }
+        } catch (err) {
+          log.warn({ err, sessionId: id, projectId: mirrorProjectId }, 'harness project-history update failed')
+        }
+      }
+    }
+
+    const session = new HarnessSession({
+      id,
+      provider: providerName,
+      model,
+      adapter,
+      socketPath,
+      shimPath,
+      authToken,
+      cwd,
+      buildSystemPrompt,
+      onTurnEnd,
+    })
+    this.sessions.set(id, session)
+
+    this.sendToClient(Channel.AI, {
+      type: 'session_created',
+      id,
+      provider: providerName,
+      model,
+    })
+
+    log.info(
+      { sessionId: id, provider: providerName, model, type: 'harness', switched: Boolean(replaySeedForFirstTurn) },
+      'Harness session created',
+    )
+
+    return session
+  }
+
+  /**
+   * Swap the provider/model of an existing harness session without
+   * losing its conversation history. Tears down the current
+   * HarnessSession (cancels the CLI if running, clears auth +
+   * context), then rebuilds via createHarnessSession with a replay
+   * seed drawn from the mirrored messages.jsonl so the new CLI starts
+   * its first turn with full context.
+   */
+  private async handleSessionProviderSwitch(msg: {
+    id: string
+    provider: string
+    model: string
+  }): Promise<void> {
+    const existing = this.sessions.get(msg.id)
+    if (!existing) {
+      this.sendToClient(Channel.AI, {
+        type: 'error',
+        message: `Session not found: ${msg.id}`,
+        sessionId: msg.id,
+      })
+      return
+    }
+    if (!isHarnessSession(existing)) {
+      this.sendToClient(Channel.AI, {
+        type: 'error',
+        message: 'Provider switching is only supported for harness (BYOS) sessions.',
+        sessionId: msg.id,
+      })
+      return
+    }
+
+    // Validate the requested provider is a harness type — refusing here
+    // prevents the caller from silently dead-ending into an incompatible
+    // Pi SDK flow.
+    const newProviderConfig =
+      this.config.providers[msg.provider] || DEFAULT_PROVIDERS[msg.provider]
+    if (newProviderConfig?.type !== 'harness') {
+      this.sendToClient(Channel.AI, {
+        type: 'error',
+        message: `Provider ${msg.provider} is not a harness provider.`,
+        sessionId: msg.id,
+      })
+      return
+    }
+
+    const projectId = this.harnessSessionContexts.get(msg.id)?.projectId
+
+    // Tear down the old harness session. shutdown() waits for the CLI
+    // to exit gracefully (SIGTERM → SIGKILL ladder) so we don't leak
+    // the subprocess on a hot swap.
+    try {
+      await existing.shutdown()
+    } catch (err) {
+      log.warn({ err, sessionId: msg.id }, 'harness shutdown errored during provider switch — continuing')
+    }
+    if (this.mcpIpcServer) {
+      this.mcpIpcServer.unregisterSession(msg.id)
+    }
+    this.harnessSessionContexts.delete(msg.id)
+    this.sessions.delete(msg.id)
+    this.activeTurns.delete(msg.id)
+
+    // Build the replay seed from the mirror. Empty string is fine —
+    // means no prior history yet (switch before the first turn).
+    let replaySeed: string | undefined
+    try {
+      const seed = buildReplaySeed({ sessionId: msg.id, projectId })
+      if (seed) replaySeed = seed
+    } catch (err) {
+      log.warn({ err, sessionId: msg.id }, 'failed to build replay seed — continuing without history replay')
+    }
+
+    // Rebuild. createHarnessSession writes meta.json via
+    // ensureHarnessSessionInit, which is a no-op if the file exists —
+    // so the meta.json still reflects the ORIGINAL provider/model.
+    // Overwrite it with the new values so the session index + export
+    // reflect the switch.
+    this.createHarnessSession({
+      id: msg.id,
+      providerName: msg.provider,
+      model: msg.model,
+      projectId,
+      replaySeedForFirstTurn: replaySeed,
+    })
+    this.updateHarnessSessionMeta(msg.id, projectId, msg.provider, msg.model)
+
+    this.sendToClient(Channel.AI, {
+      type: 'session_provider_switched',
+      id: msg.id,
+      provider: msg.provider,
+      model: msg.model,
+    })
+    log.info(
+      { sessionId: msg.id, provider: msg.provider, model: msg.model, hadReplaySeed: Boolean(replaySeed) },
+      'Harness session provider switched',
+    )
+  }
+
+  /**
+   * Rewrite meta.json on disk with a new provider/model after a
+   * provider switch. Keeps messageCount / title / createdAt intact.
+   */
+  private updateHarnessSessionMeta(
+    sessionId: string,
+    projectId: string | undefined,
+    provider: string,
+    model: string,
+  ): void {
+    const dir = projectId
+      ? join(getProjectSessionsDir(projectId), sessionId)
+      : join(getAntonDir(), 'conversations', sessionId)
+    const metaPath = join(dir, 'meta.json')
+    if (!existsSync(metaPath)) return
+    try {
+      const current = JSON.parse(readFileSync(metaPath, 'utf-8')) as Record<string, unknown>
+      current.provider = provider
+      current.model = model
+      current.lastActiveAt = Date.now()
+      writeFileSync(metaPath, JSON.stringify(current, null, 2), 'utf-8')
+    } catch (err) {
+      log.warn({ err, sessionId }, 'failed to rewrite meta.json after provider switch')
     }
   }
 
@@ -2345,27 +2478,45 @@ export class AgentServer {
     projectId?: string
   }) {
     try {
-      // Check if already in memory
+      const limit = msg.limit ?? 200
+      const isFirstPage = msg.before === undefined
+      const projectIdHint = msg.projectId || this.extractProjectId(msg.id)
+
+      // HARNESS FAST PATH — detect harness sessions by their on-disk
+      // meta.json provider BEFORE attempting Pi SDK's resumeSession.
+      // Pi SDK validates the model against its own registry and will
+      // reject harness-only models (e.g. "gpt-5.4" for Codex). Reading
+      // our mirror directly also avoids re-hydrating a Session we
+      // don't need — harness history is the jsonl file, nothing else.
+      const harnessHit = this.tryReadHarnessHistory(msg.id, projectIdHint, msg.before, limit, isFirstPage)
+      if (harnessHit) return
+
+      // Pi SDK PATH — check if already in memory, else revive from disk.
       let session = this.sessions.get(msg.id)
+      // If the in-memory session is a harness session we somehow missed
+      // above (shouldn't happen — meta.json is authoritative), fall
+      // back to reading its mirror so we never silently return empty.
+      if (session && isHarnessSession(session)) {
+        const entries = readHarnessHistory(msg.id, this.harnessSessionContexts.get(msg.id)?.projectId)
+        this.sendHarnessHistoryPage(msg.id, entries, msg.before, limit, isFirstPage)
+        return
+      }
 
       if (!session) {
-        // Use client-provided projectId as primary hint, fall back to parsing the session ID
-        const projectId = msg.projectId || this.extractProjectId(msg.id)
-
         // Try loading from disk (project dir first, then global fallback)
         session =
-          resumeSession(msg.id, this.config, this.buildSessionOptions(msg.id, projectId)) ??
+          resumeSession(msg.id, this.config, this.buildSessionOptions(msg.id, projectIdHint)) ??
           undefined
 
         // Fallback to global sessions dir if project-scoped lookup failed
-        if (!session && projectId) {
+        if (!session && projectIdHint) {
           session =
             resumeSession(msg.id, this.config, this.buildSessionOptions(msg.id)) ?? undefined
         }
 
         if (!session) {
           log.warn(
-            { sessionId: msg.id, projectId, extracted: this.extractProjectId(msg.id) },
+            { sessionId: msg.id, projectId: projectIdHint, extracted: this.extractProjectId(msg.id) },
             'Session not found on disk',
           )
           this.sendToClient(Channel.AI, {
@@ -2376,18 +2527,14 @@ export class AgentServer {
           })
           return
         }
-        log.info({ sessionId: msg.id, projectId }, 'Resumed session from disk for history')
+        log.info({ sessionId: msg.id, projectId: projectIdHint }, 'Resumed session from disk for history')
         this.wireSessionConfirmHandler(session)
         this.wirePlanConfirmHandler(session)
         this.wireAskUserHandler(session)
         this.sessions.set(msg.id, session)
       }
 
-      const limit = msg.limit ?? 200
-      const isFirstPage = msg.before === undefined
-
-      // Get full history to compute totalCount and lastSeq
-      if (isHarnessSession(session)) return
+      // Pi SDK session: continue with existing logic.
       const fullHistory = session.getHistory()
       const totalCount = fullHistory.length
       const lastSeq = totalCount > 0 ? fullHistory[totalCount - 1].seq : 0
@@ -2438,6 +2585,89 @@ export class AgentServer {
         sessionId: msg.id,
       })
     }
+  }
+
+  /**
+   * If the session on disk belongs to a harness provider, read its
+   * mirrored messages.jsonl, flatten into SessionHistoryEntry[], and
+   * send a paginated session_history_response. Returns true when the
+   * harness path handled the request; false otherwise (so the caller
+   * falls through to the Pi SDK revive path).
+   *
+   * Checks both the project-scoped and global session dirs so that a
+   * missing projectId hint doesn't miss a project-attached session.
+   */
+  private tryReadHarnessHistory(
+    sessionId: string,
+    projectIdHint: string | undefined,
+    before: number | undefined,
+    limit: number,
+    isFirstPage: boolean,
+  ): boolean {
+    const candidates: Array<{ projectId?: string }> = []
+    if (projectIdHint) candidates.push({ projectId: projectIdHint })
+    candidates.push({}) // global fallback
+
+    for (const c of candidates) {
+      const metaDir = c.projectId
+        ? join(getProjectSessionsDir(c.projectId), sessionId)
+        : join(getAntonDir(), 'conversations', sessionId)
+      const metaPath = join(metaDir, 'meta.json')
+      if (!existsSync(metaPath)) continue
+      let meta: { provider?: unknown }
+      try {
+        meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+      } catch {
+        continue
+      }
+      const provider = typeof meta.provider === 'string' ? meta.provider : undefined
+      if (!provider || !this.isHarnessProvider(provider)) continue
+
+      const entries = readHarnessHistory(sessionId, c.projectId)
+      this.sendHarnessHistoryPage(sessionId, entries, before, limit, isFirstPage)
+      return true
+    }
+    return false
+  }
+
+  /** True if the named provider is configured as a harness-type provider. */
+  private isHarnessProvider(name: string): boolean {
+    const cfg = this.config.providers[name] || DEFAULT_PROVIDERS[name]
+    return cfg?.type === 'harness'
+  }
+
+  /** Paginate + emit session_history_response for a harness session. */
+  private sendHarnessHistoryPage(
+    sessionId: string,
+    entries: import('@anton/protocol').SessionHistoryEntry[],
+    before: number | undefined,
+    limit: number,
+    _isFirstPage: boolean,
+  ): void {
+    const totalCount = entries.length
+    const lastSeq = totalCount > 0 ? entries[totalCount - 1].seq : 0
+
+    // Pagination: entries with seq < `before`, taking the last `limit`.
+    const upToBefore = before !== undefined ? entries.filter((e) => e.seq < before) : entries
+    const page = upToBefore.slice(Math.max(0, upToBefore.length - limit))
+    const hasMore = page.length > 0 && page[0].seq > 1
+
+    log.debug(
+      { sessionId, sent: page.length, totalCount, lastSeq, hasMore, before: before ?? 'latest' },
+      'Sending harness session history from mirror',
+    )
+
+    this.sendToClient(Channel.AI, {
+      type: 'session_history_response',
+      id: sessionId,
+      messages: page,
+      lastSeq,
+      totalCount,
+      hasMore,
+      // No artifacts for harness sessions yet — we don't emit artifact
+      // events from the harness path. If/when we do, they'll be in the
+      // mirror and can be extracted here.
+    })
   }
 
   // ── Provider handlers ───────────────────────────────────────────

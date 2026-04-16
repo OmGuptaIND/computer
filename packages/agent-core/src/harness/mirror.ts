@@ -27,6 +27,7 @@ import {
   getProjectSessionsDir,
 } from '@anton/agent-config'
 import { createLogger } from '@anton/logger'
+import type { SessionHistoryEntry } from '@anton/protocol'
 import type { SessionEvent } from '../session.js'
 
 const log = createLogger('harness-mirror')
@@ -260,6 +261,125 @@ export function appendHarnessTurn(opts: AppendHarnessTurnOpts): boolean {
   }
 
   return true
+}
+
+// ── Read side: mirror → SessionHistoryEntry[] ──────────────────────
+
+/**
+ * Read a harness session's mirrored messages.jsonl and flatten it into
+ * the same SessionHistoryEntry[] shape Pi SDK sessions return from
+ * getHistory(). Gives the desktop UI a uniform list to render
+ * regardless of which backend produced the session.
+ *
+ * Pi SDK's session.getHistory() returns one entry per "thing"
+ * (user message, assistant text, tool_call, tool_result). Our mirror
+ * stores richer ContentBlock[] per message — we expand each block
+ * into its own SessionHistoryEntry here, assigning sequence numbers
+ * in document order.
+ *
+ * Returns an empty array if the mirror doesn't exist yet (fresh
+ * session with no turns recorded).
+ */
+export function readHarnessHistory(
+  sessionId: string,
+  projectId?: string,
+): SessionHistoryEntry[] {
+  const dir = resolveSessionDir(sessionId, projectId)
+  const msgsPath = join(dir, 'messages.jsonl')
+  if (!existsSync(msgsPath)) return []
+
+  let raw: string
+  try {
+    raw = readFileSync(msgsPath, 'utf-8')
+  } catch (err) {
+    log.warn({ err, sessionId }, 'failed to read messages.jsonl for history')
+    return []
+  }
+
+  const entries: SessionHistoryEntry[] = []
+  let seq = 1
+  const toolCallIdToName = new Map<string, string>()
+  const toolCallIdToInput = new Map<string, Record<string, unknown>>()
+
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    let msg: { role?: unknown; content?: unknown; timestamp?: unknown }
+    try {
+      msg = JSON.parse(trimmed)
+    } catch {
+      continue
+    }
+
+    const role = typeof msg.role === 'string' ? msg.role : ''
+    const ts = typeof msg.timestamp === 'number' ? msg.timestamp : Date.now()
+    const content = msg.content
+
+    // Plain-string content (Pi SDK's simple append path also writes this shape)
+    if (typeof content === 'string') {
+      const uiRole: SessionHistoryEntry['role'] =
+        role === 'user' || role === 'assistant' || role === 'system' ? role : 'assistant'
+      entries.push({ seq: seq++, role: uiRole, content, ts })
+      continue
+    }
+
+    if (!Array.isArray(content)) continue
+
+    for (const block of content) {
+      if (!block || typeof block !== 'object') continue
+      const b = block as Record<string, unknown>
+      const type = b.type
+
+      if (role === 'user' && type === 'text' && typeof b.text === 'string') {
+        entries.push({ seq: seq++, role: 'user', content: b.text, ts })
+      } else if (role === 'assistant' && type === 'text' && typeof b.text === 'string') {
+        entries.push({ seq: seq++, role: 'assistant', content: b.text, ts })
+      } else if (role === 'assistant' && type === 'thinking' && typeof b.thinking === 'string') {
+        entries.push({
+          seq: seq++,
+          role: 'assistant',
+          content: b.thinking,
+          ts,
+          isThinking: true,
+        })
+      } else if (role === 'assistant' && type === 'tool_use') {
+        const id = typeof b.id === 'string' ? b.id : `t-${seq}`
+        const name = typeof b.name === 'string' ? b.name : 'tool'
+        const input = (typeof b.input === 'object' && b.input !== null
+          ? (b.input as Record<string, unknown>)
+          : {}) as Record<string, unknown>
+        toolCallIdToName.set(id, name)
+        toolCallIdToInput.set(id, input)
+        entries.push({
+          seq: seq++,
+          role: 'tool_call',
+          content: '',
+          ts,
+          toolName: name,
+          toolInput: input,
+          toolId: id,
+        })
+      } else if (role === 'tool' && type === 'tool_result') {
+        const toolId = typeof b.tool_use_id === 'string' ? b.tool_use_id : undefined
+        const resultText = typeof b.content === 'string' ? b.content : JSON.stringify(b.content ?? '')
+        const isError = b.is_error === true
+        entries.push({
+          seq: seq++,
+          role: 'tool_result',
+          content: resultText,
+          ts,
+          ...(toolId ? { toolId } : {}),
+          ...(toolId && toolCallIdToName.has(toolId) ? { toolName: toolCallIdToName.get(toolId) } : {}),
+          ...(toolId && toolCallIdToInput.has(toolId) ? { toolInput: toolCallIdToInput.get(toolId) } : {}),
+          ...(isError ? { isError: true } : {}),
+        })
+      }
+      // Unknown block types are dropped — they didn't come from our
+      // synthesizer, so there's nothing meaningful to render.
+    }
+  }
+
+  return entries
 }
 
 // ── Internal helpers ───────────────────────────────────────────────
