@@ -20,6 +20,24 @@ function maybeNotify(event: Parameters<typeof notify>[0]) {
   }
 }
 
+/**
+ * Harness errors ship a `code` field that classifies the failure. Surface
+ * the code as a short actionable prefix so users can tell "re-auth needed"
+ * apart from "install the CLI" apart from "something crashed".
+ */
+function decorateHarnessError(code: string | undefined, message: string): string {
+  switch (code) {
+    case 'not_installed':
+      return `**CLI not installed.** ${message}\n\nInstall the provider's CLI and try again.`
+    case 'not_authed':
+      return `**Authentication required.** ${message}\n\nSign in to the provider from Settings → Providers and try again.`
+    case 'startup_timeout':
+      return `**CLI failed to start.** ${message}\n\nThis is usually an auth or version issue. Check Settings → Providers.`
+    default:
+      return message
+  }
+}
+
 export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): boolean {
   switch (msg.type) {
     case 'confirm': {
@@ -98,7 +116,7 @@ export function handleInteractionMessage(msg: AiMessage, ctx: MessageContext): b
         ctx.addMsg({
           id: `err_${Date.now()}`,
           role: 'system',
-          content: msg.message,
+          content: decorateHarnessError(msg.code, msg.message),
           isError: true,
           timestamp: Date.now(),
         })

@@ -7,6 +7,7 @@ export { HarnessSession, isHarnessSession, type HarnessSessionOpts } from './har
 export {
   createMcpIpcServer,
   type IpcToolProvider,
+  type McpIpcServer,
   type McpToolSchema,
   type McpToolResult,
 } from './mcp-ipc-handler.js'

@@ -79,11 +79,12 @@ export class CodexAdapter implements HarnessAdapter {
       }
 
       // Re-register MCP shim for resumed sessions
-      if (opts.shimPath && opts.socketPath && opts.sessionId) {
+      if (opts.shimPath && opts.socketPath && opts.sessionId && opts.authToken) {
         args.push('-c', `mcp_servers.anton.command="node"`)
         args.push('-c', `mcp_servers.anton.args=["${opts.shimPath}"]`)
         args.push('-c', `mcp_servers.anton.env.ANTON_SOCK="${opts.socketPath}"`)
         args.push('-c', `mcp_servers.anton.env.ANTON_SESSION="${opts.sessionId}"`)
+        args.push('-c', `mcp_servers.anton.env.ANTON_AUTH="${opts.authToken}"`)
       }
 
       return args
@@ -113,11 +114,12 @@ export class CodexAdapter implements HarnessAdapter {
 
     // Register Anton MCP shim via inline config overrides
     // Codex doesn't support --mcp-config, so we use -c to set mcp_servers
-    if (opts.shimPath && opts.socketPath && opts.sessionId) {
+    if (opts.shimPath && opts.socketPath && opts.sessionId && opts.authToken) {
       args.push('-c', `mcp_servers.anton.command="node"`)
       args.push('-c', `mcp_servers.anton.args=["${opts.shimPath}"]`)
       args.push('-c', `mcp_servers.anton.env.ANTON_SOCK="${opts.socketPath}"`)
       args.push('-c', `mcp_servers.anton.env.ANTON_SESSION="${opts.sessionId}"`)
+      args.push('-c', `mcp_servers.anton.env.ANTON_AUTH="${opts.authToken}"`)
     }
 
     return args
@@ -127,6 +129,7 @@ export class CodexAdapter implements HarnessAdapter {
     return {
       ANTON_SOCK: opts.socketPath,
       ANTON_SESSION: opts.sessionId,
+      ANTON_AUTH: opts.authToken,
     }
   }
 
@@ -169,8 +172,14 @@ export class CodexAdapter implements HarnessAdapter {
           },
         ]
 
-      case 'error':
-        return [{ type: 'error', message: event.message }]
+      case 'error': {
+        const m = event.message.toLowerCase()
+        const code =
+          m.includes('401') || m.includes('unauthorized') || m.includes('not logged in')
+            ? 'not_authed'
+            : 'runtime'
+        return [{ type: 'error', message: event.message, code }]
+      }
 
       default:
         return []

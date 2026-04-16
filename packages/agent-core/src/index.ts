@@ -64,6 +64,7 @@ export {
   type HarnessSessionOpts,
   createMcpIpcServer,
   type IpcToolProvider,
+  type McpIpcServer,
   type McpToolSchema,
   type McpToolResult,
   AntonToolRegistry,

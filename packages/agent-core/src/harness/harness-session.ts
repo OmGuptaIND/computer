@@ -26,6 +26,8 @@ export interface HarnessSessionOpts {
   adapter: HarnessAdapter
   socketPath: string
   shimPath: string
+  /** Per-session auth token presented by the shim to Anton's IPC server. */
+  authToken: string
   cwd?: string
   systemPrompt?: string
   maxBudgetUsd?: number
@@ -40,6 +42,7 @@ export class HarnessSession {
   private adapter: HarnessAdapter
   private socketPath: string
   private shimPath: string
+  private authToken: string
   private cwd?: string
   private systemPrompt?: string
   private maxBudgetUsd?: number
@@ -60,6 +63,7 @@ export class HarnessSession {
     this.adapter = opts.adapter
     this.socketPath = opts.socketPath
     this.shimPath = opts.shimPath
+    this.authToken = opts.authToken
     this.cwd = opts.cwd
     this.systemPrompt = opts.systemPrompt
     this.maxBudgetUsd = opts.maxBudgetUsd
@@ -100,6 +104,7 @@ export class HarnessSession {
         shimPath: this.shimPath,
         socketPath: this.socketPath,
         sessionId: this.id,
+        authToken: this.authToken,
       })
 
       const env = {
@@ -107,6 +112,7 @@ export class HarnessSession {
         ...this.adapter.buildEnv({
           socketPath: this.socketPath,
           sessionId: this.id,
+          authToken: this.authToken,
         }),
       }
 
@@ -184,7 +190,11 @@ export class HarnessSession {
         if (!receivedFirstEvent && !done) {
           const errMsg = stderrChunks.trim() || 'CLI did not produce any output within 30 seconds. Check that the provider is logged in and configured correctly.'
           log.error({ sessionId: this.id, stderr: stderrChunks.slice(0, 500) }, 'Harness CLI startup timeout')
-          eventQueue.push({ type: 'error', message: errMsg })
+          eventQueue.push({
+            type: 'error',
+            message: errMsg,
+            code: classifyStartupError(stderrChunks),
+          })
           done = true
           // Kill the hung process
           if (!proc.killed) proc.kill('SIGTERM')
@@ -208,7 +218,14 @@ export class HarnessSession {
 
         proc.on('error', (err) => {
           clearTimeout(startupTimeout)
-          eventQueue.push({ type: 'error', message: `CLI process error: ${err.message}` })
+          const isEnoent = (err as NodeJS.ErrnoException).code === 'ENOENT'
+          eventQueue.push({
+            type: 'error',
+            message: isEnoent
+              ? `CLI not installed: ${this.adapter.command} was not found on PATH`
+              : `CLI process error: ${err.message}`,
+            code: isEnoent ? 'not_installed' : 'runtime',
+          })
           done = true
           if (resolveWait) {
             resolveWait()
@@ -235,7 +252,7 @@ export class HarnessSession {
 
       if (exitCode !== 0 && exitCode !== null) {
         const errMsg = stderrChunks.trim() || `CLI exited with code ${exitCode}`
-        yield { type: 'error', message: errMsg }
+        yield { type: 'error', message: errMsg, code: classifyStartupError(stderrChunks) }
       }
 
       // Ensure a done event is always emitted
@@ -292,6 +309,7 @@ export class HarnessSession {
           env: {
             ANTON_SOCK: this.socketPath,
             ANTON_SESSION: this.id,
+            ANTON_AUTH: this.authToken,
           },
         },
       },
@@ -317,4 +335,24 @@ export class HarnessSession {
 /** Type guard to distinguish HarnessSession from Session */
 export function isHarnessSession(s: unknown): s is HarnessSession {
   return s instanceof HarnessSession || (s != null && (s as HarnessSession).isHarness === true)
+}
+
+/**
+ * Best-effort heuristic to classify a stderr/exit failure into an error code
+ * the UI can render distinctly. Matches on common CLI phrases; falls back to
+ * 'startup_timeout' since that's the only reason we inspect stderr today.
+ */
+function classifyStartupError(stderr: string): 'not_authed' | 'startup_timeout' | 'runtime' {
+  const s = stderr.toLowerCase()
+  if (
+    s.includes('not logged in') ||
+    s.includes('unauthorized') ||
+    s.includes(' 401') ||
+    s.includes('please log in') ||
+    s.includes('authentication failed') ||
+    s.includes('invalid credentials')
+  ) {
+    return 'not_authed'
+  }
+  return 'startup_timeout'
 }

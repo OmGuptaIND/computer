@@ -101,6 +101,7 @@ export class ClaudeAdapter implements HarnessAdapter {
     return {
       ANTON_SOCK: opts.socketPath,
       ANTON_SESSION: opts.sessionId,
+      ANTON_AUTH: opts.authToken,
     }
   }
 
@@ -189,7 +190,12 @@ export class ClaudeAdapter implements HarnessAdapter {
     const events: SessionEvent[] = []
 
     if (event.is_error && event.error) {
-      events.push({ type: 'error', message: event.error })
+      const m = event.error.toLowerCase()
+      const code =
+        m.includes('authentication') || m.includes('unauthorized') || m.includes('not logged in')
+          ? ('not_authed' as const)
+          : ('runtime' as const)
+      events.push({ type: 'error', message: event.error, code })
     }
 
     events.push({

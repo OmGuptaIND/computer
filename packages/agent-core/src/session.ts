@@ -225,7 +225,15 @@ export type SessionEvent =
       provider?: string
       model?: string
     }
-  | { type: 'error'; message: string }
+  | {
+      type: 'error'
+      message: string
+      /**
+       * Optional classification so the UI can render distinct actions.
+       * Harness sessions set this; Pi SDK errors leave it undefined.
+       */
+      code?: 'not_installed' | 'not_authed' | 'startup_timeout' | 'runtime'
+    }
   | {
       type: 'sub_agent_start'
       toolCallId: string

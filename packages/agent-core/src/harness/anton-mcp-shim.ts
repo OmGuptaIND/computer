@@ -10,6 +10,7 @@
  * Environment:
  *   ANTON_SOCK    — path to Anton's harness IPC unix socket
  *   ANTON_SESSION — session ID for tool scoping
+ *   ANTON_AUTH    — per-session token used to authenticate with Anton
  */
 
 import * as net from 'node:net'
@@ -17,41 +18,81 @@ import * as readline from 'node:readline'
 
 const ANTON_SOCK = process.env.ANTON_SOCK
 const ANTON_SESSION = process.env.ANTON_SESSION
+const ANTON_AUTH = process.env.ANTON_AUTH
 
-if (!ANTON_SOCK || !ANTON_SESSION) {
-  process.stderr.write('anton-mcp-shim: ANTON_SOCK and ANTON_SESSION env vars required\n')
+if (!ANTON_SOCK || !ANTON_SESSION || !ANTON_AUTH) {
+  process.stderr.write('anton-mcp-shim: ANTON_SOCK, ANTON_SESSION and ANTON_AUTH env vars required\n')
   process.exit(1)
 }
 
 // ── IPC connection to Anton server ──────────────────────────────────
+
+/** Reserved JSON-RPC id for the auth handshake. Regular requests start at 1. */
+const AUTH_ID = 0
 
 let socket: net.Socket | null = null
 const pendingRequests = new Map<string | number, (result: unknown) => void>()
 
 function connectToAnton(): Promise<net.Socket> {
   return new Promise((resolve, reject) => {
+    let authed = false
+    let authTimer: NodeJS.Timeout | null = null
+
     const sock = net.connect(ANTON_SOCK!, () => {
-      socket = sock
-      resolve(sock)
+      const authMsg = JSON.stringify({
+        jsonrpc: '2.0',
+        id: AUTH_ID,
+        method: 'auth',
+        params: { token: ANTON_AUTH, sessionId: ANTON_SESSION },
+      })
+      sock.write(authMsg + '\n')
+      authTimer = setTimeout(() => {
+        if (!authed) {
+          process.stderr.write('anton-mcp-shim: auth handshake timed out\n')
+          sock.destroy()
+          reject(new Error('auth timeout'))
+        }
+      }, 5_000)
     })
 
     sock.on('error', (err) => {
+      if (authTimer) clearTimeout(authTimer)
       process.stderr.write(`anton-mcp-shim: socket error: ${err.message}\n`)
-      reject(err)
+      if (!authed) reject(err)
     })
 
     // Read responses from Anton server (newline-delimited JSON)
     const rl = readline.createInterface({ input: sock })
     rl.on('line', (line) => {
+      let msg: { id?: string | number; result?: { ok?: boolean }; error?: { message?: string } }
       try {
-        const msg = JSON.parse(line)
+        msg = JSON.parse(line)
+      } catch {
+        // Ignore malformed responses
+        return
+      }
+
+      if (!authed && msg.id === AUTH_ID) {
+        if (authTimer) clearTimeout(authTimer)
+        if (msg.result?.ok === true) {
+          authed = true
+          socket = sock
+          resolve(sock)
+        } else {
+          const message = msg.error?.message || 'auth rejected'
+          process.stderr.write(`anton-mcp-shim: ${message}\n`)
+          sock.destroy()
+          reject(new Error(message))
+        }
+        return
+      }
+
+      if (msg.id !== undefined && msg.id !== null) {
         const resolver = pendingRequests.get(msg.id)
         if (resolver) {
           pendingRequests.delete(msg.id)
           resolver(msg.result)
         }
-      } catch {
-        // Ignore malformed responses
       }
     })
   })

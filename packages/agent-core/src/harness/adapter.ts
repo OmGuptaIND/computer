@@ -21,11 +21,14 @@ export interface SpawnOpts {
   socketPath?: string
   /** Session ID for MCP IPC (for adapters that register MCP inline) */
   sessionId?: string
+  /** Per-session auth token that the shim presents to the IPC server */
+  authToken?: string
 }
 
 export interface EnvOpts {
   socketPath: string
   sessionId: string
+  authToken: string
 }
 
 export interface DetectResult {

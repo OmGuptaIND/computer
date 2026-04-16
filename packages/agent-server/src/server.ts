@@ -10,6 +10,7 @@
  */
 
 import { execSync, spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -268,7 +269,7 @@ export class AgentServer {
   private slackBotProvider: SlackWebhookProvider | null = null
   private ptys: Map<string, PtyHandle> = new Map()
   private activeWorkspacePath: string | null = null
-  private mcpIpcServer: import('node:net').Server | null = null
+  private mcpIpcServer: import('@anton/agent-core').McpIpcServer | null = null
   private toolRegistry = new AntonToolRegistry()
   private pendingLoginProc: import('node:child_process').ChildProcess | null = null
 
@@ -344,7 +345,7 @@ export class AgentServer {
       }
     }
     if (this.mcpIpcServer) {
-      this.mcpIpcServer.close()
+      await this.mcpIpcServer.close()
       this.mcpIpcServer = null
     }
   }
@@ -1758,6 +1759,15 @@ export class AgentServer {
           }
         }
 
+        // Generate a per-session auth token and register it with the IPC
+        // server BEFORE the CLI can spawn the shim and attempt to connect.
+        const authToken = randomBytes(32).toString('base64url')
+        if (this.mcpIpcServer) {
+          this.mcpIpcServer.registerSession(msg.id, authToken)
+        } else {
+          log.error({ sessionId: msg.id }, 'MCP IPC server not initialized — harness session cannot authenticate')
+        }
+
         const session = new HarnessSession({
           id: msg.id,
           provider: providerName,
@@ -1765,6 +1775,7 @@ export class AgentServer {
           adapter,
           socketPath,
           shimPath,
+          authToken,
           cwd,
           systemPrompt,
         })
@@ -2110,11 +2121,15 @@ export class AgentServer {
     // Extract projectId before deleting so we can update stats
     const session = this.sessions.get(msg.id)
     const projectId = (session && !isHarnessSession(session) ? session.contextInfo?.projectId : undefined) ?? this.extractProjectId(msg.id)
+    const wasHarness = session ? isHarnessSession(session) : false
 
     try {
       this.sessions.delete(msg.id)
       this.activeTurns.delete(msg.id)
       deletePersistedSession(msg.id)
+      if (wasHarness && this.mcpIpcServer) {
+        this.mcpIpcServer.unregisterSession(msg.id)
+      }
     } catch (err: unknown) {
       log.error({ err, sessionId: msg.id }, 'Error destroying session')
     }

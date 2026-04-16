@@ -4,6 +4,12 @@
  *
  * Each harness session spawns its own MCP shim, which connects here to
  * access Anton's tool implementations.
+ *
+ * Auth model: every connection must present an {sessionId, token} pair as
+ * its first message. Tokens are registered by the server before spawning
+ * the CLI. Once authed, the connection is bound to that sessionId for its
+ * entire lifetime — any subsequent tools/call whose params claim a
+ * different `_antonSession` is rejected.
  */
 
 import * as net from 'node:net'
@@ -33,6 +39,13 @@ export interface IpcToolProvider {
   ): Promise<McpToolResult>
 }
 
+export interface McpIpcServer {
+  readonly server: net.Server
+  registerSession(sessionId: string, token: string): void
+  unregisterSession(sessionId: string): void
+  close(): Promise<void>
+}
+
 interface JsonRpcRequest {
   jsonrpc: string
   id: string | number
@@ -40,11 +53,14 @@ interface JsonRpcRequest {
   params?: Record<string, unknown> & { _antonSession?: string }
 }
 
+/** Time a connection has to present its auth frame before being dropped. */
+const AUTH_TIMEOUT_MS = 5_000
+
 /**
  * Create a unix domain socket server that handles MCP tool requests
  * from harness shim processes.
  */
-export function createMcpIpcServer(socketPath: string, provider: IpcToolProvider): net.Server {
+export function createMcpIpcServer(socketPath: string, provider: IpcToolProvider): McpIpcServer {
   // Clean up stale socket file
   if (existsSync(socketPath)) {
     try {
@@ -54,8 +70,27 @@ export function createMcpIpcServer(socketPath: string, provider: IpcToolProvider
     }
   }
 
+  // sessionId → expected token
+  const registeredSessions = new Map<string, string>()
+
   const server = net.createServer((conn) => {
     log.debug('MCP shim connected')
+
+    /** Set to the sessionId once the connection successfully authenticates. */
+    let authedSessionId: string | null = null
+
+    // Drop unauthenticated connections after a short grace period
+    const authTimer = setTimeout(() => {
+      if (!authedSessionId) {
+        log.warn('MCP shim connection dropped: auth timeout')
+        try {
+          sendError(conn, null, -32001, 'unauthenticated: auth timeout')
+        } catch {
+          // connection may already be dead
+        }
+        conn.destroy()
+      }
+    }, AUTH_TIMEOUT_MS)
 
     const rl = createInterface({ input: conn })
 
@@ -67,7 +102,53 @@ export function createMcpIpcServer(socketPath: string, provider: IpcToolProvider
         return
       }
 
-      const sessionId = request.params?._antonSession || 'unknown'
+      // First frame must be auth
+      if (!authedSessionId) {
+        if (request.method !== 'auth') {
+          sendError(conn, request.id, -32001, 'unauthenticated: auth frame required first')
+          conn.destroy()
+          clearTimeout(authTimer)
+          return
+        }
+
+        const claimedSession = request.params?.sessionId as string | undefined
+        const claimedToken = request.params?.token as string | undefined
+
+        if (!claimedSession || !claimedToken) {
+          sendError(conn, request.id, -32001, 'unauthenticated: missing sessionId or token')
+          conn.destroy()
+          clearTimeout(authTimer)
+          return
+        }
+
+        const expected = registeredSessions.get(claimedSession)
+        if (!expected || expected !== claimedToken) {
+          log.warn({ claimedSession }, 'MCP shim auth rejected: bad token or unknown session')
+          sendError(conn, request.id, -32001, 'unauthenticated: bad token or unknown session')
+          conn.destroy()
+          clearTimeout(authTimer)
+          return
+        }
+
+        authedSessionId = claimedSession
+        clearTimeout(authTimer)
+        sendResponse(conn, request.id, { ok: true })
+        log.debug({ sessionId: authedSessionId }, 'MCP shim authenticated')
+        return
+      }
+
+      // Enforce session scoping — the connection is bound to one sessionId.
+      const claimedSession = request.params?._antonSession
+      if (claimedSession && claimedSession !== authedSessionId) {
+        log.warn(
+          { authedSessionId, claimedSession, method: request.method },
+          'MCP shim session mismatch — rejecting',
+        )
+        sendError(conn, request.id, -32002, 'session_mismatch')
+        return
+      }
+
+      const sessionId = authedSessionId
 
       try {
         let result: unknown
@@ -111,6 +192,10 @@ export function createMcpIpcServer(socketPath: string, provider: IpcToolProvider
       }
     })
 
+    conn.on('close', () => {
+      clearTimeout(authTimer)
+    })
+
     conn.on('error', (err) => {
       log.debug({ err: err.message }, 'MCP shim connection error')
     })
@@ -124,15 +209,29 @@ export function createMcpIpcServer(socketPath: string, provider: IpcToolProvider
     log.error({ err }, 'MCP IPC server error')
   })
 
-  return server
+  return {
+    server,
+    registerSession(sessionId: string, token: string) {
+      registeredSessions.set(sessionId, token)
+    },
+    unregisterSession(sessionId: string) {
+      registeredSessions.delete(sessionId)
+    },
+    close() {
+      return new Promise<void>((resolve) => {
+        registeredSessions.clear()
+        server.close(() => resolve())
+      })
+    },
+  }
 }
 
-function sendResponse(conn: net.Socket, id: string | number, result: unknown) {
+function sendResponse(conn: net.Socket, id: string | number | null, result: unknown) {
   const msg = JSON.stringify({ jsonrpc: '2.0', id, result })
   conn.write(msg + '\n')
 }
 
-function sendError(conn: net.Socket, id: string | number, code: number, message: string) {
+function sendError(conn: net.Socket, id: string | number | null, code: number, message: string) {
   const msg = JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } })
   conn.write(msg + '\n')
 }
