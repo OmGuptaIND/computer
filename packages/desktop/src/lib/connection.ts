@@ -205,6 +205,15 @@ export class Connection {
     this.send(Channel.AI, { type: 'session_destroy', id })
   }
 
+  /**
+   * Swap the provider/model of an existing harness (BYOS) session.
+   * Server tears down the running CLI, rebuilds with the new provider,
+   * and seeds the new CLI with a replay of the mirrored conversation.
+   */
+  sendSessionProviderSwitch(id: string, provider: string, model: string) {
+    this.send(Channel.AI, { type: 'session_provider_switch', id, provider, model })
+  }
+
   sendSessionHistory(id: string, opts?: { before?: number; limit?: number; projectId?: string }) {
     this.send(Channel.AI, { type: 'session_history', id, ...opts })
   }

@@ -203,6 +203,23 @@ export function handleSessionMessage(msg: AiMessage): boolean {
       return true
     }
 
+    case 'session_provider_switched': {
+      // Ack from a harness provider switch. Update the active session
+      // + conversation record so the UI reflects the new provider/model
+      // immediately. History on disk stays where it was — the mirror
+      // is append-only — so no reload needed.
+      const ss = sessionStore.getState()
+      ss.setCurrentSession(msg.id, msg.provider, msg.model)
+      const root = useStore.getState()
+      root.setCurrentSession(msg.id, msg.provider, msg.model)
+      const updated = root.conversations.map((c) =>
+        c.sessionId === msg.id ? { ...c, provider: msg.provider, model: msg.model } : c,
+      )
+      saveConversations(updated)
+      useStore.setState({ conversations: updated })
+      return true
+    }
+
     case 'context_info': {
       const store = useStore.getState()
       const convs: Conversation[] = store.conversations.map((c) =>
