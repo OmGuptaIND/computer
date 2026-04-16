@@ -6,7 +6,7 @@ import type { AiMessage, AskUserQuestion, TaskItem, TokenUsage } from '@anton/pr
 
 export type AgentStatus = 'idle' | 'working' | 'error'
 
-export interface AgentStep {
+export interface RoutineStep {
   id: string
   type: 'tool_call' | 'tool_result'
   label: string
@@ -97,7 +97,7 @@ export interface SessionState {
   statusDetail: string | null
   isStreaming: boolean
   tasks: TaskItem[]
-  agentSteps: AgentStep[]
+  agentSteps: RoutineStep[]
   workingStartedAt: number | null
   lastTurnDurationMs: number | null
   turnUsage: TokenUsage | null

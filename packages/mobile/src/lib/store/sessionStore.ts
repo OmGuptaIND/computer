@@ -9,7 +9,7 @@ import { connection } from '../connection'
 import { saveSelectedModel } from '../storage'
 import {
   type AgentStatus,
-  type AgentStep,
+  type RoutineStep,
   type ProviderInfo,
   type SessionMeta,
   type SessionState,
@@ -40,8 +40,8 @@ interface SessionStoreState {
   updateSessionState: (sessionId: string, updates: Partial<SessionState>) => void
   removeSessionState: (sessionId: string) => void
   setSessionStatus: (sessionId: string, status: AgentStatus, statusDetail?: string | null) => void
-  addAgentStep: (sessionId: string, step: AgentStep) => void
-  updateAgentStep: (sessionId: string, stepId: string, updates: Partial<AgentStep>) => void
+  addRoutineStep: (sessionId: string, step: RoutineStep) => void
+  updateRoutineStep: (sessionId: string, stepId: string, updates: Partial<RoutineStep>) => void
   registerPendingSession: (id: string) => Promise<void>
   resolvePendingSession: (id: string) => void
   createSession: (
@@ -183,12 +183,12 @@ export const sessionStore = create<SessionStoreState>((set, get) => ({
     }
   },
 
-  addAgentStep: (sessionId, step) => {
+  addRoutineStep: (sessionId, step) => {
     const ss = get().getSessionState(sessionId)
     get().updateSessionState(sessionId, { agentSteps: [...ss.agentSteps, step] })
   },
 
-  updateAgentStep: (sessionId, stepId, updates) => {
+  updateRoutineStep: (sessionId, stepId, updates) => {
     const ss = get().getSessionState(sessionId)
     get().updateSessionState(sessionId, {
       agentSteps: ss.agentSteps.map((s) => (s.id === stepId ? { ...s, ...updates } : s)),

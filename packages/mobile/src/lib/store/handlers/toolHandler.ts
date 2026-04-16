@@ -47,7 +47,7 @@ export function handleToolMessage(msg: AiMessage, ctx: MessageContext): boolean 
       })
 
       if (!msg.parentToolCallId && sid) {
-        ss.addAgentStep(sid, {
+        ss.addRoutineStep(sid, {
           id: msg.id,
           type: 'tool_call',
           label: `Running: ${msg.name}`,
@@ -97,7 +97,7 @@ export function handleToolMessage(msg: AiMessage, ctx: MessageContext): boolean 
       })
 
       if (!msg.parentToolCallId && sid) {
-        ss.updateAgentStep(sid, msg.id, { status: msg.isError ? 'error' : 'complete' })
+        ss.updateRoutineStep(sid, msg.id, { status: msg.isError ? 'error' : 'complete' })
       }
       return true
     }
