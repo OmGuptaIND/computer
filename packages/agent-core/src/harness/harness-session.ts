@@ -196,6 +196,12 @@ export class HarnessSession {
         const trimmed = line.trim()
         if (!trimmed) return
 
+        // Log every raw line the CLI emits so we can discover item
+        // types the adapter doesn't model yet (e.g. Codex reasoning,
+        // first-party connector calls). Cheap — one line per JSON
+        // event, already inside an event handler that runs anyway.
+        log.info({ sessionId: this.id, raw: trimmed }, 'harness raw stdout')
+
         // Safely parse JSON — non-JSON lines (loading messages, etc.) are logged and skipped
         let parsed: Record<string, unknown>
         try {
