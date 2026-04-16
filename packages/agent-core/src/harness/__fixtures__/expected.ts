@@ -75,6 +75,7 @@ export const codexSimpleExpected: SessionEvent[] = [
 ]
 
 export const codexToolCallExpected: SessionEvent[] = [
+  { type: 'thinking', text: 'I should list the files first.' },
   {
     type: 'tool_call',
     id: 'cmd_1',

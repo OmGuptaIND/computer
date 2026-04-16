@@ -1,5 +1,6 @@
 {"type":"thread.started","thread_id":"thr-tool"}
 {"type":"turn.started"}
+{"type":"item.completed","item":{"id":"reason_1","type":"reasoning","text":"I should list the files first."}}
 {"type":"item.started","item":{"id":"cmd_1","type":"command_execution","command":"ls","aggregated_output":"","exit_code":null,"status":"in_progress"}}
 {"type":"item.completed","item":{"id":"cmd_1","type":"command_execution","command":"ls","aggregated_output":"file1.txt\nfile2.txt","exit_code":0,"status":"completed"}}
 {"type":"item.started","item":{"id":"mcp_1","type":"mcp_tool_call","server":"anton","tool":"memory_save","arguments":{"key":"notes","value":"x"},"result":null,"error":null,"status":"in_progress"}}
