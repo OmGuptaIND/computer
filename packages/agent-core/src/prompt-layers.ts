@@ -15,6 +15,7 @@
  * harness CLIs because the CLI has its own equivalents.
  */
 
+import { loadCoreSystemPrompt } from '@anton/agent-config'
 import type { MemoryData } from './context.js'
 import type { SurfaceInfo } from './session.js'
 
@@ -196,6 +197,63 @@ export function renderSurfaceBlock(surface: SurfaceInfo): string {
   return lines.join('\n')
 }
 
+// ── Memory guidelines (sourced from system.md) ─────────────────────
+
+let _memoryGuidelinesCache: string | null = null
+
+/**
+ * Extract the "## Memory guidelines" section from Pi SDK's system.md
+ * so the harness ships the SAME behavioral guidance Pi SDK sessions
+ * already see. Cached — system.md doesn't change at runtime.
+ *
+ * Returns the body of the section (without the "## Memory guidelines"
+ * header line itself), stopping at the next "## " header. If the
+ * section is missing for some reason, returns an empty string and we
+ * silently skip the block rather than breaking the harness.
+ */
+function loadMemoryGuidelinesFromSystemPrompt(): string {
+  if (_memoryGuidelinesCache !== null) return _memoryGuidelinesCache
+  try {
+    const full = loadCoreSystemPrompt()
+    const headerMarker = '## Memory guidelines'
+    const startIdx = full.indexOf(headerMarker)
+    if (startIdx < 0) {
+      _memoryGuidelinesCache = ''
+      return ''
+    }
+    const nextHeaderIdx = full.indexOf('\n## ', startIdx + headerMarker.length)
+    const section =
+      nextHeaderIdx < 0 ? full.slice(startIdx) : full.slice(startIdx, nextHeaderIdx)
+    // Strip the header line itself; we re-wrap the body under our own heading.
+    const body = section.replace(/^## Memory guidelines\s*\n+/, '').trim()
+    _memoryGuidelinesCache = body
+    return body
+  } catch {
+    _memoryGuidelinesCache = ''
+    return ''
+  }
+}
+
+/**
+ * Layer 11 — memory usage guidelines.
+ *
+ * Pi SDK sessions see this because it's part of the core system prompt
+ * (in packages/agent-config/prompts/system.md). Harness CLIs (Claude
+ * Code, Codex) do NOT see system.md — they have their own core prompts
+ * — so without this layer they'd know `memory` is a tool but wouldn't
+ * know when to save, what types of content to save, or the expected
+ * content format. That mismatch showed up in production: harness turns
+ * rarely called memory_save even when the user explicitly asked them to.
+ *
+ * Body is extracted verbatim from system.md. Do NOT author a parallel
+ * version here — edit system.md and both backends update together.
+ */
+export function buildMemoryGuidelinesLayer(): string {
+  const body = loadMemoryGuidelinesFromSystemPrompt()
+  if (!body) return ''
+  return systemReminder('Memory Usage', body)
+}
+
 /**
  * Identity block — the first thing a harness CLI sees in its appended
  * system prompt.
@@ -293,6 +351,10 @@ export function buildHarnessContextPrompt(opts: HarnessContextPromptOpts): strin
     // Identity block comes first so the CLI reads "you are inside
     // Anton" before any of the stateful context blocks below.
     buildHarnessIdentityBlock(),
+    // Memory-usage guidelines mirror what Pi SDK ships via system.md —
+    // the harness has to re-inject them because its CLI core prompt
+    // doesn't include them.
+    buildMemoryGuidelinesLayer(),
     buildCurrentContextLayer({
       projectContext: opts.projectContext,
       workspacePath: opts.workspacePath,

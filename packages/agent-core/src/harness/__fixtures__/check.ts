@@ -115,7 +115,10 @@ const layerCases: LayerCase[] = [
     name: 'empty-opts-produces-minimal-output',
     opts: {},
     mustInclude: ['# Current Context', '- Date:'],
-    mustNotInclude: ['# Memory', '# Available Workflows', '# Agent Context'],
+    // The memory-DATA block is "# Memory\n## Global Memory" — distinct
+    // from the always-on "# Memory Usage" guidelines block. Use
+    // sub-headers so we match only the data path.
+    mustNotInclude: ['## Global Memory', '# Available Workflows', '# Agent Context'],
   },
   {
     name: 'project-context-included',
@@ -304,6 +307,7 @@ import {
   buildSurfaceLayer as _buildSurfaceLayer,
   buildHarnessIdentityBlock as _buildHarnessIdentityBlock,
   buildHarnessContextPrompt as _buildHarnessContextPrompt,
+  buildMemoryGuidelinesLayer as _buildMemoryGuidelinesLayer,
 } from '../../prompt-layers.js'
 
 interface LayerSnapshot {
@@ -533,6 +537,73 @@ if (identityFailed > 0) {
 }
 
 console.log(`All ${identityCases.length} identity checks passed`)
+
+// ── Memory guidelines layer checks ─────────────────────────────────
+// Body is extracted from system.md at runtime. The load-bearing
+// markers below are from the current "## Memory guidelines" section —
+// if system.md is restructured, either update these markers or the
+// harness will silently ship an empty memory block.
+
+interface MemGuideCase {
+  name: string
+  assert: (block: string) => string | null
+}
+
+const memBlock = _buildMemoryGuidelinesLayer()
+const memCases: MemGuideCase[] = [
+  {
+    name: 'wrapped in <system-reminder># Memory Usage',
+    assert: (b) =>
+      b.startsWith('\n\n<system-reminder>\n# Memory Usage\n') ? null : 'missing header',
+  },
+  {
+    name: 'four memory types present (user/feedback/project/reference)',
+    assert: (b) => {
+      const types = ['**user**', '**feedback**', '**project**', '**reference**']
+      const missing = types.filter((t) => !b.includes(t))
+      return missing.length > 0 ? `missing types: ${missing.join(', ')}` : null
+    },
+  },
+  {
+    name: 'when-to-save + when-not-to-save sections',
+    assert: (b) =>
+      b.includes('### When to save') && b.includes('### When NOT to save')
+        ? null
+        : 'missing when-to-save structure',
+  },
+  {
+    name: 'content format template (Why / How to apply)',
+    assert: (b) =>
+      b.includes('**Why:**') && b.includes('**How to apply:**')
+        ? null
+        : 'missing Why / How to apply template',
+  },
+  {
+    name: 'prepended in full harness context prompt',
+    assert: () => {
+      const full = _buildHarnessContextPrompt({})
+      return full.includes('# Memory Usage') ? null : 'memory guidelines missing from full prompt'
+    },
+  },
+]
+
+let memFailed = 0
+for (const c of memCases) {
+  const err = c.assert(memBlock)
+  if (err === null) {
+    console.log(`✓ mem-guide: ${c.name}`)
+  } else {
+    memFailed++
+    console.error(`✗ mem-guide: ${c.name} — ${err}`)
+  }
+}
+
+if (memFailed > 0) {
+  console.error(`\n${memFailed}/${memCases.length} memory-guidelines checks failed`)
+  process.exit(1)
+}
+
+console.log(`All ${memCases.length} memory-guidelines checks passed`)
 
 // ── Mirror synthesizer tests ───────────────────────────────────────
 // Pure-function coverage of synthesizeHarnessTurn. No disk I/O.
