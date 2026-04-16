@@ -12,6 +12,8 @@ import { toTelegramMd } from '../format/telegram-md.js'
 import type {
   CanonicalEvent,
   CanonicalImageAttachment,
+  InlineMenuOpts,
+  InlineMenuRef,
   OutboundImage,
   SurfaceInfo,
   WebhookProvider,
@@ -280,6 +282,70 @@ export class TelegramWebhookProvider implements WebhookProvider {
     })
   }
 
+  // ── Inline menus (button drill-downs) ───────────────────────────
+
+  /** Build a Telegram inline_keyboard from generic MenuRow data. */
+  private toInlineKeyboard(opts: InlineMenuOpts): {
+    inline_keyboard: { text: string; callback_data: string }[][]
+  } {
+    return {
+      inline_keyboard: opts.rows.map((row) =>
+        row.map((b) => ({ text: b.label, callback_data: b.action })),
+      ),
+    }
+  }
+
+  /**
+   * Send a stateless drill-down menu. Returns a ref so the runner can
+   * editInlineMenu() the same message in response to button clicks.
+   */
+  async sendInlineMenu(
+    event: CanonicalEvent,
+    opts: InlineMenuOpts,
+  ): Promise<InlineMenuRef | null> {
+    const chatId = event.context.chatId as number
+    const res = await this.telegramPostWithMdFallback('sendMessage', {
+      chat_id: chatId,
+      text: toTelegramMd(opts.body) || opts.body,
+      reply_markup: this.toInlineKeyboard(opts),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '<unreadable>')
+      log.warn(
+        { chatId, status: res.status, body: body.slice(0, 200) },
+        'sendInlineMenu failed',
+      )
+      return null
+    }
+    const data = (await res.json()) as { ok: boolean; result?: { message_id: number } }
+    const messageId = data.result?.message_id
+    if (!messageId) return null
+    return {
+      provider: this.slug,
+      channelId: String(chatId),
+      messageId: String(messageId),
+    }
+  }
+
+  async editInlineMenu(ref: InlineMenuRef, opts: InlineMenuOpts): Promise<void> {
+    if (ref.provider !== this.slug) return
+    const chatId = Number(ref.channelId)
+    const messageId = Number(ref.messageId)
+    const res = await this.telegramPostWithMdFallback('editMessageText', {
+      chat_id: chatId,
+      message_id: messageId,
+      text: toTelegramMd(opts.body) || opts.body,
+      reply_markup: this.toInlineKeyboard(opts),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '<unreadable>')
+      log.warn(
+        { chatId, messageId, status: res.status, body: body.slice(0, 200) },
+        'editInlineMenu failed',
+      )
+    }
+  }
+
   /**
    * Send a plan for approval with an inline keyboard.
    */
@@ -329,6 +395,33 @@ export class TelegramWebhookProvider implements WebhookProvider {
     this.answerCallbackQuery(cq.id).catch((err) => {
       log.debug({ err }, 'answerCallbackQuery failed (non-fatal)')
     })
+
+    // ── Inline menu navigation (m:*) ─────────────────────────────────
+    // Stateless drill-down for button menus (model picker, etc.).
+    // We tag the synthetic event with menuAction + menuRef in context;
+    // the router's interactive intercept dispatches to the runner's
+    // handleMenuAction without going through the agent.
+    if (data.startsWith('m:') && cq.message?.message_id) {
+      log.info({ chatId, action: data }, 'parseCallbackQuery: menu nav')
+      return [
+        {
+          provider: this.slug,
+          sessionId: `telegram-${chatId}`,
+          deliveryId: `telegram-cb-${update.update_id}`,
+          text: '',
+          context: {
+            chatId,
+            isCallbackQuery: true,
+            menuAction: data,
+            menuRef: {
+              provider: this.slug,
+              channelId: String(chatId),
+              messageId: String(cq.message.message_id),
+            } satisfies InlineMenuRef,
+          },
+        },
+      ]
+    }
 
     // Parse callback data: "action:interactionId"
     const [action, interactionId] = data.split(':')

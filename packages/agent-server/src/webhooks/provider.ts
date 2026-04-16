@@ -177,6 +177,26 @@ export interface WebhookProvider {
     content: string,
   ): Promise<void>
 
+  // ── Inline button menus (model picker, project picker, etc.) ──────
+
+  /**
+   * Send a stateless multi-row button menu and return a ref so the
+   * runner can edit it later (drill-down navigation, confirmation,
+   * etc.). Each button's `action` is round-tripped through the
+   * provider's interactive callback layer back to the runner via
+   * `handleInteraction` returning an `InteractionResult` of type
+   * `menu_action`. Optional — providers without button support fall
+   * back to text replies.
+   */
+  sendInlineMenu?(event: CanonicalEvent, opts: InlineMenuOpts): Promise<InlineMenuRef | null>
+
+  /**
+   * Edit a previously sent inline menu in place. Used for drill-down
+   * (root → provider list → model list → confirm) without spamming
+   * new messages into the channel.
+   */
+  editInlineMenu?(ref: InlineMenuRef, opts: InlineMenuOpts): Promise<void>
+
   /**
    * Handle an interactive callback (button click, inline keyboard response).
    * Used for sub-path routing (e.g. /_anton/webhooks/slack-bot/interact).
@@ -184,14 +204,60 @@ export interface WebhookProvider {
   handleInteraction?(req: WebhookRequest): Promise<InteractionResult | null>
 }
 
+/** A single button in an inline menu. */
+export interface MenuButton {
+  /** Visible label. Telegram caps text at ~64 chars; Slack at 75. Keep short. */
+  label: string
+  /**
+   * Compact action identifier (≤ 64 bytes for Telegram callback_data).
+   * Round-tripped opaquely through the provider; the runner interprets it.
+   * Convention: namespaced with a 1-char prefix, e.g. "m:p:codex".
+   */
+  action: string
+}
+
+export type MenuRow = MenuButton[]
+
+export interface InlineMenuOpts {
+  /** Plain-text body shown above the buttons. */
+  body: string
+  /** 2D array of buttons. Outer = rows, inner = columns. */
+  rows: MenuRow[]
+}
+
+/**
+ * Opaque reference to a sent menu message so the runner can edit it
+ * later. Each provider populates the fields it needs to address the
+ * specific message; the runner treats this as a black box.
+ */
+export interface InlineMenuRef {
+  /** Provider slug — disambiguates which provider owns this ref. */
+  provider: string
+  /** Channel/chat scope (Telegram chat_id, Slack channel id). */
+  channelId: string
+  /** Message identifier within the scope (Telegram message_id, Slack ts). */
+  messageId: string
+}
+
 /**
  * Result of an interactive callback (button click). The router uses this
- * to resolve the pending interaction in the runner.
+ * to either resolve a pending agent interaction (confirm/plan) or
+ * dispatch a stateless menu navigation back to the runner.
  */
-export interface InteractionResult {
-  type: 'confirm_response' | 'plan_response'
-  sessionId: string
-  approved: boolean
-  feedback?: string
-  userId?: string
-}
+export type InteractionResult =
+  | {
+      type: 'confirm_response' | 'plan_response'
+      sessionId: string
+      approved: boolean
+      feedback?: string
+      userId?: string
+    }
+  | {
+      type: 'menu_action'
+      sessionId: string
+      /** The button's `action` string from InlineMenuOpts.rows. */
+      action: string
+      /** Ref to the message the button was attached to, for editInlineMenu. */
+      ref: InlineMenuRef
+      userId?: string
+    }

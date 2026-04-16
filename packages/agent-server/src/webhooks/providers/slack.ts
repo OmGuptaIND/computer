@@ -27,6 +27,8 @@ import { toSlackMrkdwn } from '../format/slack-mrkdwn.js'
 import type {
   CanonicalEvent,
   CanonicalImageAttachment,
+  InlineMenuOpts,
+  InlineMenuRef,
   OutboundImage,
   SurfaceInfo,
   WebhookHandshakeResponse,
@@ -719,6 +721,90 @@ export class SlackWebhookProvider implements WebhookProvider {
     await addReaction(token, channel, sourceTs, result.ok ? 'white_check_mark' : 'x')
   }
 
+  // ── Inline menus (Block Kit drill-downs) ─────────────────────────
+
+  /** Build the Block Kit array for a generic InlineMenuOpts. */
+  private toMenuBlocks(opts: InlineMenuOpts): Array<Record<string, unknown>> {
+    const actionRows = opts.rows.map((row, idx) => ({
+      type: 'actions',
+      block_id: `menu_row_${idx}`,
+      elements: row.map((b) => ({
+        type: 'button',
+        // Single action_id for every menu button — the action string
+        // lives in `value`, which is what handleInteraction routes on.
+        action_id: 'menu',
+        text: { type: 'plain_text', text: b.label.slice(0, 75), emoji: true },
+        value: b.action,
+      })),
+    }))
+    return [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: toSlackMrkdwn(opts.body) || opts.body },
+      },
+      ...actionRows,
+    ]
+  }
+
+  /**
+   * Send a stateless drill-down menu via Block Kit. Returns a ref the
+   * runner can hand to editInlineMenu when buttons are clicked.
+   */
+  async sendInlineMenu(
+    event: CanonicalEvent,
+    opts: InlineMenuOpts,
+  ): Promise<InlineMenuRef | null> {
+    const token = await this.opts.getBotToken()
+    if (!token) return null
+    const channel = event.context.channel as string
+    const threadTs = event.context.threadTs as string | undefined
+    const res = await fetch(`${SLACK_API}/chat.postMessage`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({
+        channel,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+        text: opts.body, // notification fallback
+        blocks: this.toMenuBlocks(opts),
+      }),
+    })
+    const data = (await res.json()) as { ok: boolean; ts?: string; error?: string }
+    if (!data.ok || !data.ts) {
+      log.warn({ channel, error: data.error }, 'sendInlineMenu: chat.postMessage failed')
+      return null
+    }
+    return { provider: this.slug, channelId: channel, messageId: data.ts }
+  }
+
+  async editInlineMenu(ref: InlineMenuRef, opts: InlineMenuOpts): Promise<void> {
+    if (ref.provider !== this.slug) return
+    const token = await this.opts.getBotToken()
+    if (!token) return
+    const res = await fetch(`${SLACK_API}/chat.update`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({
+        channel: ref.channelId,
+        ts: ref.messageId,
+        text: opts.body,
+        blocks: this.toMenuBlocks(opts),
+      }),
+    })
+    const data = (await res.json()) as { ok: boolean; error?: string }
+    if (!data.ok) {
+      log.warn(
+        { channel: ref.channelId, ts: ref.messageId, error: data.error },
+        'editInlineMenu: chat.update failed',
+      )
+    }
+  }
+
   // ── Interactive prompts (Block Kit) ──────────────────────────────
 
   /**
@@ -899,6 +985,23 @@ export class SlackWebhookProvider implements WebhookProvider {
     const sessionId = isDm
       ? `slack:dm:${teamId}:${channel}:${threadTs}`
       : `slack:thread:${teamId}:${channel}:${threadTs}`
+
+    // ── Inline menu action (action_id='menu', value='m:...') ────────
+    // Stateless drill-down — return early so the runner re-renders the
+    // menu via editInlineMenu instead of treating this as an approval.
+    if (actionId === 'menu' && interactionId.startsWith('m:') && payload.message?.ts) {
+      return {
+        type: 'menu_action',
+        sessionId,
+        action: interactionId,
+        ref: {
+          provider: this.slug,
+          channelId: channel,
+          messageId: payload.message.ts,
+        },
+        userId: payload.user?.id,
+      }
+    }
 
     // Edit the original message to remove buttons and show the decision.
     const approved = actionId.includes('approve')

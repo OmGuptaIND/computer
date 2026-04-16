@@ -34,6 +34,9 @@ import type { TaskItem } from '@anton/protocol'
 import { extractBindingKey, getBinding, saveBinding, saveModelOverride } from './bindings.js'
 import type {
   CanonicalEvent,
+  InlineMenuOpts,
+  InlineMenuRef,
+  MenuRow,
   OutboundImage,
   WebhookProvider,
   WebhookRunResult,
@@ -669,6 +672,202 @@ export class WebhookAgentRunner {
     }
   }
 
+  // ── Inline menu (button-driven /model selector) ───────────────────
+
+  /**
+   * Pre-runOne intercept for interactive flows. Returns true when the
+   * event has been handled here and the caller should NOT continue with
+   * tryCommand / agent run.
+   *
+   * Two cases:
+   *   1. Stateless menu navigation triggered by a previous button click.
+   *      The provider's parseCallbackQuery / handleInteraction tagged the
+   *      event with `context.menuAction` + `context.menuRef`.
+   *   2. The user typed `/model` with no args on a provider that
+   *      implements sendInlineMenu — open the picker as buttons rather
+   *      than fall through to the text-based command handler.
+   */
+  async tryInteractive(event: CanonicalEvent, provider: WebhookProvider): Promise<boolean> {
+    const menuAction = event.context.menuAction as string | undefined
+    const menuRef = event.context.menuRef as InlineMenuRef | undefined
+    if (menuAction && menuRef) {
+      await this.handleMenuAction(event.sessionId, menuAction, menuRef, provider)
+      return true
+    }
+    if (event.text.trim() === '/model' && provider.sendInlineMenu) {
+      await this.openModelMenu(event, provider)
+      return true
+    }
+    return false
+  }
+
+  /** Send the root model menu in response to a fresh `/model` command. */
+  private async openModelMenu(event: CanonicalEvent, provider: WebhookProvider): Promise<void> {
+    if (!provider.sendInlineMenu) return
+    const opts = this.buildModelRootMenu(event.sessionId)
+    try {
+      await provider.sendInlineMenu(event, opts)
+    } catch (err) {
+      log.warn({ err, sessionId: event.sessionId }, 'sendInlineMenu failed')
+      // Fall back to text reply so the user isn't left wondering.
+      await provider.reply(event, opts.body, []).catch(() => {})
+    }
+  }
+
+  /** Drive a single menu navigation step. Caller already validated provider supports edits. */
+  async handleMenuAction(
+    sessionId: string,
+    action: string,
+    ref: InlineMenuRef,
+    provider: WebhookProvider,
+  ): Promise<void> {
+    if (!provider.editInlineMenu) {
+      log.warn({ provider: provider.slug }, 'menu action received but provider has no editInlineMenu')
+      return
+    }
+    let next: InlineMenuOpts
+    if (action === 'm:open') {
+      next = this.buildModelRootMenu(sessionId)
+    } else if (action.startsWith('m:p:')) {
+      next = this.buildProviderModelsMenu(sessionId, action.slice(4))
+    } else if (action.startsWith('m:s:')) {
+      // Set: action is "m:s:<provider>/<model>" or "m:s:<model>".
+      const slug = action.slice(4)
+      const slashIdx = slug.indexOf('/')
+      const providerName = slashIdx > 0 ? slug.slice(0, slashIdx) : ''
+      const modelName = slashIdx > 0 ? slug.slice(slashIdx + 1) : slug
+      const bindingKey = extractBindingKey(sessionId)
+      saveModelOverride(bindingKey, slug)
+      // Drop the live session so the next message recreates it via the
+      // override we just saved. Same eviction the text-based /model does.
+      this.sessions.delete(sessionId)
+      next = {
+        body: `\u2705 Model set to *${modelName}*${providerName ? ` on *${providerName}*` : ''}.\nYour next message will use it.`,
+        rows: [[{ label: '\u2039\u2039 Back', action: 'm:open' }]],
+      }
+    } else {
+      log.warn({ action }, 'unknown menu action')
+      return
+    }
+    try {
+      await provider.editInlineMenu(ref, next)
+    } catch (err) {
+      log.warn({ err, action }, 'editInlineMenu failed')
+    }
+  }
+
+  /** Root menu: shows current model + a per-provider entry button. */
+  private buildModelRootMenu(sessionId: string): InlineMenuOpts {
+    const bindingKey = extractBindingKey(sessionId)
+    const overrideRaw = getBinding(bindingKey)?.model
+    const currentLabel = overrideRaw
+      ? overrideRaw
+      : `${this.config.defaults.provider}/${this.config.defaults.model}`
+    const providers = this.listAvailableProviders()
+    const rows: MenuRow[] = []
+    // Two providers per row to keep the menu compact.
+    for (let i = 0; i < providers.length; i += 2) {
+      const row: MenuRow = []
+      const a = providers[i]
+      if (a) row.push({ label: providerButtonLabel(a), action: `m:p:${a.name}` })
+      const b = providers[i + 1]
+      if (b) row.push({ label: providerButtonLabel(b), action: `m:p:${b.name}` })
+      rows.push(row)
+    }
+    return {
+      body: `Current model: \`${currentLabel}\`\nPick a provider to see its models.`,
+      rows,
+    }
+  }
+
+  /** Drill-down menu: lists a single provider's models, ✓ on the current one. */
+  private buildProviderModelsMenu(sessionId: string, providerName: string): InlineMenuOpts {
+    const bindingKey = extractBindingKey(sessionId)
+    const overrideRaw = getBinding(bindingKey)?.model
+    let currentProvider = this.config.defaults.provider
+    let currentModel = this.config.defaults.model
+    if (overrideRaw) {
+      const slashIdx = overrideRaw.indexOf('/')
+      if (slashIdx > 0) {
+        currentProvider = overrideRaw.slice(0, slashIdx)
+        currentModel = overrideRaw.slice(slashIdx + 1)
+      } else {
+        currentModel = overrideRaw
+      }
+    }
+    const models = this.listModelsForProvider(providerName)
+    if (models.length === 0) {
+      return {
+        body: `No models known for *${providerName}* yet. Use \`/model ${providerName}/<id>\` to set one manually.`,
+        rows: [[{ label: '\u2039\u2039 Back', action: 'm:open' }]],
+      }
+    }
+    const rows: MenuRow[] = models.map((m) => [
+      {
+        label: m === currentModel && providerName === currentProvider ? `${m} \u2713` : m,
+        action: `m:s:${providerName}/${m}`,
+      },
+    ])
+    rows.push([{ label: '\u2039\u2039 Back', action: 'm:open' }])
+    return {
+      body: `*${providerName}* models${
+        currentProvider === providerName ? ` (current: ${currentModel})` : ''
+      }`,
+      rows,
+    }
+  }
+
+  /**
+   * Providers worth showing in the picker. API providers must have a key;
+   * harness providers (codex, claude-code) are always shown — they auth
+   * via the CLI's own login, not an Anton-managed key.
+   */
+  private listAvailableProviders(): { name: string; type: 'api' | 'harness' }[] {
+    const out: { name: string; type: 'api' | 'harness' }[] = []
+    const candidates = [
+      'anton',
+      'openrouter',
+      'anthropic',
+      'openai',
+      'google',
+      'groq',
+      'together',
+      'mistral',
+      'codex',
+      'claude-code',
+    ]
+    for (const name of candidates) {
+      const cfg = this.config.providers[name] || DEFAULT_PROVIDERS[name]
+      if (!cfg) continue
+      if (cfg.type === 'harness') {
+        out.push({ name, type: 'harness' })
+      } else if (this.hasApiKey(name)) {
+        out.push({ name, type: 'api' })
+      }
+    }
+    return out
+  }
+
+  /**
+   * Static catalog of well-known models per provider. For API providers
+   * we read from DEFAULT_PROVIDERS; for harness providers (Codex,
+   * Claude Code) we hardcode the commonly available models since the
+   * CLI doesn't expose an enumeration over its supported models in a
+   * machine-readable form. Empty for unknown providers — caller renders
+   * a "set manually" hint in that case.
+   */
+  private listModelsForProvider(providerName: string): string[] {
+    if (providerName === 'codex') {
+      return ['gpt-5.4', 'gpt-5.4-codex', 'gpt-5-codex', 'gpt-5']
+    }
+    if (providerName === 'claude-code') {
+      return ['claude-sonnet-4.6', 'claude-opus-4.6', 'claude-haiku-4.5']
+    }
+    const cfg = this.config.providers[providerName] || DEFAULT_PROVIDERS[providerName]
+    const models = (cfg as { models?: string[] } | undefined)?.models
+    return Array.isArray(models) ? models : []
+  }
+
   /** Check if a provider has an API key in config or environment. */
   private hasApiKey(provider: string): boolean {
     const providerConfig = this.config.providers?.[provider]
@@ -702,24 +901,46 @@ export class WebhookAgentRunner {
       log.info({ sessionId, projectId: extra.projectId }, 'webhook session bound to project')
     }
 
+    // Resolve provider/model. Order:
+    //   1. Per-binding override saved by /model (webhook-bindings.json).
+    //      Stored as either "provider/model" (preferred) or just "model"
+    //      (legacy — assumes default provider).
+    //   2. Global config defaults.
+    // Without this, /model X silently no-ops on Slack/Telegram because
+    // getOrCreateSession previously read only the defaults.
+    const bindingKey = extractBindingKey(sessionId)
+    const overrideRaw = getBinding(bindingKey)?.model
+    let providerName = this.config.defaults.provider
+    let model = this.config.defaults.model
+    if (overrideRaw) {
+      const slashIdx = overrideRaw.indexOf('/')
+      if (slashIdx > 0) {
+        providerName = overrideRaw.slice(0, slashIdx)
+        model = overrideRaw.slice(slashIdx + 1)
+      } else {
+        // Legacy bare-model override — keep current default provider.
+        model = overrideRaw
+      }
+      log.info({ sessionId, providerName, model }, 'webhook session using model override')
+    }
+
     // ── Harness providers (Codex, Claude Code) ────────────────────────
     // Harness sessions don't go through Pi SDK's resumeSession/createSession
     // (their model isn't in Pi SDK's registry, and history is stored in
     // the harness mirror, not Pi SDK's tape). Delegate to the factory the
     // server injected so the wiring matches desktop harness sessions.
-    const providerName = this.config.defaults.provider
     const providerCfg = this.config.providers[providerName] || DEFAULT_PROVIDERS[providerName]
     if (providerCfg?.type === 'harness') {
       if (!this.harnessSessionFactory) {
         throw new Error(
-          `Default provider "${providerName}" is harness-backed but no harnessSessionFactory was injected into WebhookAgentRunner`,
+          `Provider "${providerName}" is harness-backed but no harnessSessionFactory was injected into WebhookAgentRunner`,
         )
       }
       const surfaceLabel = surface?.kind ?? 'webhook'
       const session = this.harnessSessionFactory({
         sessionId,
         providerName,
-        model: this.config.defaults.model,
+        model,
         projectId: extra?.projectId,
         surface: surfaceLabel,
       })
@@ -732,6 +953,10 @@ export class WebhookAgentRunner {
       mcpManager: this.mcpManager,
       connectorManager: this.connectorManager,
       surface,
+      // Forward the resolved override so createSession picks it up
+      // instead of defaulting to config.defaults.{provider,model}.
+      provider: providerName,
+      model,
       ...extra,
     }
 
@@ -771,6 +996,11 @@ export class WebhookAgentRunner {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
+
+/** Display label for a provider button — adds a hint at its auth source. */
+function providerButtonLabel(p: { name: string; type: 'api' | 'harness' }): string {
+  return p.type === 'harness' ? `${p.name} \u2728` : `${p.name} \ud83d\udd11`
+}
 
 /** Strip <think>…</think> blocks that some models emit as raw text. */
 function sanitizeResponse(text: string): string {

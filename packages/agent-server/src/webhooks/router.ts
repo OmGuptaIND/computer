@@ -204,14 +204,28 @@ export class WebhookRouter {
       try {
         const result = await provider.handleInteraction(webhookReq)
         if (result) {
-          this.runner.resolveInteraction(result.sessionId, {
-            approved: result.approved,
-            feedback: result.feedback,
-          })
-          log.info(
-            { slug, sessionId: result.sessionId, approved: result.approved },
-            'interaction resolved via sub-path',
-          )
+          if (result.type === 'menu_action') {
+            // Stateless drill-down click — drive the next menu state.
+            await this.runner.handleMenuAction(
+              result.sessionId,
+              result.action,
+              result.ref,
+              provider,
+            )
+            log.info(
+              { slug, sessionId: result.sessionId, action: result.action },
+              'menu action handled via sub-path',
+            )
+          } else {
+            this.runner.resolveInteraction(result.sessionId, {
+              approved: result.approved,
+              feedback: result.feedback,
+            })
+            log.info(
+              { slug, sessionId: result.sessionId, approved: result.approved },
+              'interaction resolved via sub-path',
+            )
+          }
         }
       } catch (err) {
         log.error({ err, slug }, 'handleInteraction failed')
@@ -269,6 +283,19 @@ export class WebhookRouter {
   private async processEvent(provider: WebhookProvider, event: CanonicalEvent): Promise<void> {
     const slug = provider.slug
     const started = Date.now()
+
+    // Interactive intercept — handles menu navigation callbacks
+    // (event.context.menuAction) and the button-driven /model entry.
+    // Returns true when fully handled so the rest of the pipeline skips.
+    try {
+      if (await this.runner.tryInteractive(event, provider)) {
+        log.info({ slug, sessionId: event.sessionId }, 'interactive intercept handled event')
+        return
+      }
+    } catch (err) {
+      log.error({ err, slug, sessionId: event.sessionId }, 'tryInteractive threw')
+      // fall through — better to attempt normal processing than to drop silently
+    }
 
     // Slash command intercept — zero tokens, immediate reply.
     const cmdResult = this.runner.tryCommand(event.sessionId, event.text)
