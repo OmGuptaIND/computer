@@ -1,0 +1,70 @@
+packages/agent-core/src/harness/index.ts
+  2d5ac6b7340430d4 14-19
+packages/agent-core/src/harness/__fixtures__/check.ts
+  2d5ac6b7340430d4 181-293
+packages/agent-core/src/harness/tool-registry.ts
+  2d5ac6b7340430d4 5-15,19,23,37-76,131,211-252,255-350,353-355,358-412,420-421
+packages/agent-core/src/index.ts
+  2d5ac6b7340430d4 71-72
+packages/agent-server/src/server.ts
+  2d5ac6b7340430d4 275-276,292-300,1766-1779,2202-2204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "d7ce77635452c0330df3bc78108d6381defc0540",
+  "prompts": {
+    "2d5ac6b7340430d4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a30d512c-9d2b-4864-9d97-0a0730cb300b",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Om Gupta",
+      "messages": [],
+      "total_additions": 405,
+      "total_deletions": 16,
+      "accepted_lines": 401,
+      "overriden_lines": 0
+    },
+    "9c82084046028fb6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cb6e0c9-2742-4889-a168-64c9dd238d69",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 169,
+      "overriden_lines": 0
+    },
+    "b299fb53cb40af39": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "30011bfc-eb0d-4fba-9639-68381d221d21",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 326,
+      "overriden_lines": 0
+    },
+    "d0b23d44e70ce0f4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9fe6bb27-5421-43d0-b52f-a64fe32ad91f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 574,
+      "overriden_lines": 0
+    }
+  }
+}
