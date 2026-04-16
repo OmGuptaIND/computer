@@ -97,6 +97,8 @@ import {
   CodexAdapter,
   AntonToolRegistry,
   createMcpIpcServer,
+  buildHarnessContextPrompt,
+  assembleConversationContext,
 } from '@anton/agent-core'
 import { CONNECTOR_FACTORIES, ConnectorManager } from '@anton/connectors'
 import { createLogger } from '@anton/logger'
@@ -1733,30 +1735,13 @@ export class AgentServer {
         const socketPath = join(getAntonDir(), 'harness.sock')
         const shimPath = join(getAntonDir(), '..', 'node_modules', '@anton', 'agent-core', 'dist', 'harness', 'anton-mcp-shim.js')
 
-        // Resolve workspace path and build context from project
+        // Resolve workspace path from the project (if any). Full system-prompt
+        // assembly now happens per-turn inside the builder callback below.
         let cwd: string | undefined
-        let systemPrompt: string | undefined
-        if (msg.projectId) {
-          const project = loadProject(msg.projectId)
+        const harnessProjectId = msg.projectId
+        if (harnessProjectId) {
+          const project = loadProject(harnessProjectId)
           if (project?.workspacePath) cwd = project.workspacePath
-          if (project) {
-            const contextLines: string[] = [
-              `You are running inside Anton, a personal AI computer.`,
-              `Project: ${project.name}`,
-            ]
-            if (project.description) contextLines.push(`Description: ${project.description}`)
-            if (cwd) contextLines.push(`Working directory: ${cwd}`)
-            contextLines.push(`Today's date: ${new Date().toISOString().split('T')[0]}`)
-
-            // Include project instructions if available
-            const instructions = loadProjectInstructions(msg.projectId)
-            if (instructions) contextLines.push(`\nProject Instructions:\n${instructions}`)
-
-            // Include project summary for context
-            if (project.context.summary) contextLines.push(`\nProject Summary:\n${project.context.summary}`)
-
-            systemPrompt = contextLines.join('\n')
-          }
         }
 
         // Generate a per-session auth token and register it with the IPC
@@ -1768,6 +1753,66 @@ export class AgentServer {
           log.error({ sessionId: msg.id }, 'MCP IPC server not initialized — harness session cannot authenticate')
         }
 
+        // Per-turn system-prompt builder: mirror Pi SDK's
+        // Session.getSystemPrompt() context layers (project, memory,
+        // workflows, surface) so harness turns see the same Anton-owned
+        // state. Memories load once on the first turn and are cached for
+        // subsequent turns; context_info is emitted to the desktop
+        // whenever memories (re)load.
+        const harnessSessionId = msg.id
+        let cachedMemoryData: Awaited<ReturnType<typeof assembleConversationContext>>['memoryData'] | undefined
+        let cachedContextInfoSent = false
+        const buildSystemPrompt = async (userMessage: string, turnIndex: number): Promise<string> => {
+          // Reload project each turn — cheap, keeps name/summary/instructions fresh
+          const project = harnessProjectId ? loadProject(harnessProjectId) : undefined
+          const projectInstructions = harnessProjectId ? loadProjectInstructions(harnessProjectId) : ''
+
+          // Assemble memory on the first turn using the user's first message
+          // for keyword-driven cross-conversation matching (same as Pi SDK).
+          if (turnIndex === 0) {
+            const assembled = assembleConversationContext(
+              harnessSessionId,
+              userMessage,
+              harnessProjectId,
+            )
+            cachedMemoryData = assembled.memoryData
+
+            if (!cachedContextInfoSent) {
+              cachedContextInfoSent = true
+              this.sendToClient(Channel.AI, {
+                type: 'context_info',
+                sessionId: harnessSessionId,
+                globalMemories: assembled.contextInfo.globalMemories,
+                conversationMemories: assembled.contextInfo.conversationMemories,
+                crossConversationMemories: assembled.contextInfo.crossConversationMemories,
+                projectId: assembled.contextInfo.projectId,
+              })
+            }
+          }
+
+          // Compose the project-context block the same way buildProjectContext
+          // would — kept inline so we can include instructions verbatim.
+          let projectContextBlock: string | undefined
+          if (project) {
+            const lines: string[] = [
+              `You are running inside Anton, a personal AI computer.`,
+              `Project: ${project.name}`,
+            ]
+            if (project.description) lines.push(`Description: ${project.description}`)
+            if (projectInstructions) lines.push(`\nProject Instructions:\n${projectInstructions}`)
+            if (project.context.summary) lines.push(`\nProject Summary:\n${project.context.summary}`)
+            projectContextBlock = lines.join('\n')
+          }
+
+          return buildHarnessContextPrompt({
+            projectContext: projectContextBlock,
+            projectId: harnessProjectId,
+            workspacePath: cwd,
+            memoryData: cachedMemoryData,
+            availableWorkflows: this.getAvailableWorkflowsForPrompt(),
+          })
+        }
+
         const session = new HarnessSession({
           id: msg.id,
           provider: providerName,
@@ -1777,7 +1822,7 @@ export class AgentServer {
           shimPath,
           authToken,
           cwd,
-          systemPrompt,
+          buildSystemPrompt,
         })
         this.sessions.set(msg.id, session)
 

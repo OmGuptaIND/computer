@@ -68,4 +68,7 @@ export {
   type McpToolSchema,
   type McpToolResult,
   AntonToolRegistry,
+  buildHarnessContextPrompt,
+  type HarnessContextPromptOpts,
+  type WorkflowEntry,
 } from './harness/index.js'

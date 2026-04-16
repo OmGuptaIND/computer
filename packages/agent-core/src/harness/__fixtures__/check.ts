@@ -89,3 +89,92 @@ if (failed > 0) {
 }
 
 console.log(`\nAll ${cases.length} harness fixture checks passed`)
+
+// ── Prompt layer smoke tests ────────────────────────────────────────
+// Not a full diff — just assert each layer's heading shows up when its
+// data is present, and nothing emits for empty/undefined inputs. Guards
+// against an accidental rename of a <system-reminder> heading, which
+// would silently change prompt shape for the LLM.
+
+import { buildHarnessContextPrompt } from '../prompt-layers.js'
+
+interface LayerCase {
+  name: string
+  opts: Parameters<typeof buildHarnessContextPrompt>[0]
+  mustInclude: string[]
+  mustNotInclude?: string[]
+}
+
+const layerCases: LayerCase[] = [
+  {
+    name: 'empty-opts-produces-minimal-output',
+    opts: {},
+    mustInclude: ['# Current Context', '- Date:'],
+    mustNotInclude: ['# Memory', '# Available Workflows', '# Agent Context'],
+  },
+  {
+    name: 'project-context-included',
+    opts: {
+      projectContext: 'You are running inside Anton.\nProject: foo',
+      projectId: 'proj_1',
+      workspacePath: '/tmp/foo',
+    },
+    mustInclude: ['# Current Context', 'Project: foo', '- Workspace: /tmp/foo/', '# Project Memory Instructions'],
+  },
+  {
+    name: 'memory-block-emitted',
+    opts: {
+      memoryData: {
+        globalMemories: [{ key: 'prefer_short_replies', content: 'Keep answers brief.' }],
+        conversationMemories: [],
+        crossConversationMemories: [],
+      },
+    },
+    mustInclude: ['# Memory', '## Global Memory', '### prefer_short_replies', 'Keep answers brief.'],
+  },
+  {
+    name: 'workflow-catalog-emitted',
+    opts: {
+      availableWorkflows: [
+        { name: 'triage-slack', description: 'Summarize unread Slack DMs.', whenToUse: 'user asks about slack' },
+      ],
+    },
+    mustInclude: ['# Available Workflows', '### triage-slack', 'Summarize unread Slack DMs.'],
+  },
+  {
+    name: 'agent-context-emitted',
+    opts: {
+      agentInstructions: 'Run the daily lead scan.',
+      agentMemory: 'Last run: 2026-04-15, found 3 leads.',
+    },
+    mustInclude: ['# Agent Context', '## Standing Instructions', 'Run the daily lead scan.', '## Run History'],
+  },
+]
+
+let layerFailed = 0
+for (const c of layerCases) {
+  try {
+    const out = buildHarnessContextPrompt(c.opts)
+    const missing = c.mustInclude.filter((s) => !out.includes(s))
+    const leaked = (c.mustNotInclude || []).filter((s) => out.includes(s))
+    if (missing.length === 0 && leaked.length === 0) {
+      console.log(`✓ prompt-layer: ${c.name}`)
+    } else {
+      layerFailed++
+      console.error(`✗ prompt-layer: ${c.name}`)
+      if (missing.length) console.error('  missing:', missing)
+      if (leaked.length) console.error('  leaked:', leaked)
+      console.error('  output:', out)
+    }
+  } catch (err) {
+    layerFailed++
+    console.error(`✗ prompt-layer: ${c.name} (threw)`, err)
+  }
+}
+
+if (layerFailed > 0) {
+  console.error(`\n${layerFailed}/${layerCases.length} prompt-layer checks failed`)
+  process.exit(1)
+}
+
+console.log(`All ${layerCases.length} prompt-layer checks passed`)

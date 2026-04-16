@@ -12,3 +12,15 @@ export {
   type McpToolResult,
 } from './mcp-ipc-handler.js'
 export { AntonToolRegistry } from './tool-registry.js'
+export {
+  buildHarnessContextPrompt,
+  buildCurrentContextLayer,
+  buildMemoryLayer,
+  buildProjectMemoryInstructionsLayer,
+  buildAgentContextLayer,
+  buildWorkflowsLayer,
+  buildSurfaceLayer,
+  systemReminder,
+  type HarnessContextPromptOpts,
+  type WorkflowEntry,
+} from './prompt-layers.js'

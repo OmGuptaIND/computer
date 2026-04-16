@@ -29,7 +29,19 @@ export interface HarnessSessionOpts {
   /** Per-session auth token presented by the shim to Anton's IPC server. */
   authToken: string
   cwd?: string
+  /**
+   * Static system prompt. Kept for back-compat / test paths that don't
+   * need per-turn context. Ignored if `buildSystemPrompt` is provided.
+   */
   systemPrompt?: string
+  /**
+   * Per-turn system prompt builder. Called at the start of every
+   * processMessage() with the current user message and turn index so the
+   * caller can load fresh memories / workflows / surface for this turn.
+   *
+   * When set, `systemPrompt` is ignored.
+   */
+  buildSystemPrompt?: (userMessage: string, turnIndex: number) => Promise<string>
   maxBudgetUsd?: number
 }
 
@@ -45,6 +57,8 @@ export class HarnessSession {
   private authToken: string
   private cwd?: string
   private systemPrompt?: string
+  private buildSystemPromptFn?: (userMessage: string, turnIndex: number) => Promise<string>
+  private turnIndex = 0
   private maxBudgetUsd?: number
   private proc: ChildProcess | null = null
   private title = ''
@@ -66,6 +80,7 @@ export class HarnessSession {
     this.authToken = opts.authToken
     this.cwd = opts.cwd
     this.systemPrompt = opts.systemPrompt
+    this.buildSystemPromptFn = opts.buildSystemPrompt
     this.maxBudgetUsd = opts.maxBudgetUsd
     this.createdAt = Date.now()
     this.lastActiveAt = Date.now()
@@ -92,13 +107,29 @@ export class HarnessSession {
     // Generate temp MCP config pointing to anton-mcp-shim
     const mcpConfigPath = this.writeMcpConfig()
 
+    // Assemble the per-turn system prompt. A builder takes precedence; a
+    // static prompt is kept as a fallback for tests / callers that don't
+    // want per-turn context.
+    let systemPromptForTurn: string | undefined
+    if (this.buildSystemPromptFn) {
+      try {
+        systemPromptForTurn = await this.buildSystemPromptFn(userMessage, this.turnIndex)
+      } catch (err) {
+        log.warn({ err, sessionId: this.id }, 'buildSystemPrompt threw — falling back to static systemPrompt')
+        systemPromptForTurn = this.systemPrompt
+      }
+    } else {
+      systemPromptForTurn = this.systemPrompt
+    }
+    this.turnIndex += 1
+
     try {
       const args = this.adapter.buildSpawnArgs({
         message: userMessage,
         mcpConfigPath,
         model: this.model,
         resumeSessionId: this.cliSessionId ?? undefined,
-        systemPrompt: this.systemPrompt,
+        systemPrompt: systemPromptForTurn,
         maxBudgetUsd: this.maxBudgetUsd,
         cwd: this.cwd,
         shimPath: this.shimPath,
