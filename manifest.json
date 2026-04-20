@@ -1,12 +1,12 @@
 {
-  "version": "1.0.2",
+  "version": "2.0.0",
   "gitHash": "",
   "releaseUrl": "https://github.com/billionzeros/computer/releases",
   "changelog": "Fixes:\n- biome issue",
-  "publishedAt": "2026-04-20T09:36:37.436Z",
-  "cli": "https://github.com/billionzeros/computer/releases/download/v1.0.2/anton-cli.mjs",
+  "publishedAt": "2026-04-20T09:36:46.736Z",
+  "cli": "https://github.com/billionzeros/computer/releases/download/v2.0.0/anton-cli.mjs",
   "sidecar": {
-    "linux-arm64": "https://github.com/billionzeros/computer/releases/download/v1.0.2/anton-sidecar-linux-arm64",
-    "linux-amd64": "https://github.com/billionzeros/computer/releases/download/v1.0.2/anton-sidecar-linux-amd64"
+    "linux-arm64": "https://github.com/billionzeros/computer/releases/download/v2.0.0/anton-sidecar-linux-arm64",
+    "linux-amd64": "https://github.com/billionzeros/computer/releases/download/v2.0.0/anton-sidecar-linux-amd64"
   }
 }
