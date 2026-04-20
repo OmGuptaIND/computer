@@ -12,6 +12,8 @@ kolla/clouds.yml
 packages/desktop/src-tauri/target
 packages/desktop/src-tauri/gen
 
+.claude/worktrees/
+
 frontend/.source
 
 # Binaries for programs and plugins
